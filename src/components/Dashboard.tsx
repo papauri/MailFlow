@@ -369,7 +369,7 @@ export default function Dashboard({ user }: { user: any }) {
   }, [emails, sortBy, sortDesc]);
 
   return (
-    <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "md:h-screen md:overflow-hidden")}>
+    <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
@@ -405,7 +405,7 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 md:min-h-0">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 min-h-0">
         {showHealth ? (
            <InboxHealth 
              aiSettings={aiSettings} 
@@ -496,7 +496,7 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden md:min-h-0">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden min-h-0">
           <div className="border-b border-slate-200 p-2.5 sm:p-3 bg-slate-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 sticky top-0 z-10">
             <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3">
