@@ -457,10 +457,8 @@ export default function Dashboard({ user }: { user: any }) {
             <div className="shrink-0">
               <FolderMultiSelect 
                 selected={folderFilters} 
-                onChange={(val) => {
-                  setFolderFilters(val);
-                  setTimeout(() => handleSearch(undefined, query, val), 0);
-                }} 
+                onChange={setFolderFilters} 
+                onClose={() => setTimeout(() => handleSearch(), 0)}
                 userLabels={userLabels} 
               />
             </div>
@@ -827,9 +825,14 @@ function ActionButton({ icon, label, onClick, disabled, loading, className }: an
   );
 }
 
-function FolderMultiSelect({ selected, onChange, userLabels }: { selected: string[], onChange: (s: string[]) => void, userLabels: any[] }) {
+function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { selected: string[], onChange: (s: string[]) => void, onClose?: () => void, userLabels: any[] }) {
   const [open, setOpen] = useState(false);
   
+  const handleClose = () => {
+    setOpen(false);
+    if (onClose) onClose();
+  };
+
   const options = [
     { value: 'anywhere', label: 'All Mail' },
     { value: 'inbox', label: 'Inbox' },
@@ -846,7 +849,6 @@ function FolderMultiSelect({ selected, onChange, userLabels }: { selected: strin
   const toggle = (val: string) => {
     if (val === 'anywhere') {
       onChange(['anywhere']);
-      setOpen(false);
       return;
     }
     let next = selected.filter(x => x !== 'anywhere');
@@ -857,20 +859,26 @@ function FolderMultiSelect({ selected, onChange, userLabels }: { selected: strin
     }
     if (next.length === 0) next = ['anywhere'];
     onChange(next);
-    setOpen(false);
   };
 
   const label = selected.includes('anywhere') ? 'All Mail' : selected.length === 1 ? options.find(o => o.value === selected[0])?.label : `${selected.length} Folders`;
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} className="bg-slate-50 border border-slate-200 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-slate-700 font-medium flex items-center gap-1.5 sm:gap-2 hover:bg-slate-100 transition-colors whitespace-nowrap">
+      <button 
+        type="button" 
+        onClick={() => {
+          if (open) handleClose();
+          else setOpen(true);
+        }} 
+        className="bg-slate-50 border border-slate-200 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-slate-700 font-medium flex items-center gap-1.5 sm:gap-2 hover:bg-slate-100 transition-colors whitespace-nowrap"
+      >
         <span className="truncate max-w-[110px] sm:max-w-none">{label}</span>
         <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-10" onClick={handleClose} />
           <div className="absolute top-full left-0 mt-1 w-52 sm:w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-80 sm:max-h-96 overflow-y-auto py-1">
             {options.map(opt => (
               <label key={opt.value} className="flex items-center gap-2.5 sm:gap-3 px-3 py-1.5 sm:py-2 hover:bg-slate-50 cursor-pointer text-xs sm:text-sm">
