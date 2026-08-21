@@ -1,0 +1,528 @@
+%PDF-1.3
+%�߬�
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 6930
+>>
+stream
+0.5670000000000001 w
+0 G
+0.12 0.16 0.23 rg
+51.0236220472441033 790.8663779527558972 493.2327559055117376 -68.031496062992133 re
+f
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+1. g
+68.031496062992133 762.5199212598424765 Td
+(MailFlow: System Architecture & Specification) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.796 0.835 0.882 rg
+68.031496062992133 739.8427559055118081 Td
+(Engineering Reference Document for Antigravity & AI Development) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 705.8270078740157487 Td
+(1. Executive Summary & Application Scope) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 700.1577165354329964 m
+544.2563779527558836 700.1577165354329964 l
+S
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.2 0.255 0.333 rg
+51.0236220472441033 683.1498425196850803 Td
+(MailFlow is a modern, full-stack Gmail intelligence and bulk management platform designed to automate high-volume inbox) Tj
+T* (decluttering, execute precision batch actions, and reveal behavioral patterns across recurring, automated, and unread) Tj
+T* (communications.) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 636.3781889763779418 Td
+(2. Technical Stack & Infrastructure) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 630.7088976377951894 m
+544.2563779527558836 630.7088976377951894 l
+S
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 613.7010236220471597 Td
+(�  Frontend: React 19, TypeScript, Vite 6, Tailwind CSS v4, Motion \(transitions\), Lucide React.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 595.2758267716535556 Td
+(�  Backend API Gateway: Node.js / Express 4.x compiled to standalone CommonJS \(dist/server.cjs\) via esbuild.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 576.8506299212597241 Td
+(�  Authentication: Firebase Authentication + Google Identity Services / OAuth 2.0 \(scope:) Tj
+T* (https://mail.google.com/\).) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 545.6695275590550409 Td
+(�  AI Engine: Multi-provider LLM gateway supporting Google Gemini \(@google/genai\), OpenAI, Anthropic,) Tj
+T* (DeepSeek, Groq, Mistral, and Zhipu AI.) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 514.4884251968503577 Td
+(3. Core Functional Modules) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 508.8191338582676622 m
+544.2563779527558836 508.8191338582676622 l
+S
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 491.8112598425196325 Td
+(�  Natural Language Smart Search: Converts free-form input into strict Gmail search query operators \(e.g.) Tj
+T* (larger:5M, category:promotions, before:YYYY/MM/DD, is:unread\).) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 460.6301574803148924 Td
+(�  Inbox Health & Pattern Clustering: Samples recent headers to identify automated behavioral bundles \(e.g.,) Tj
+T* (Ignored Blasts, Financial Summaries, Receipts, Trial Expirations\) with 1-click bulk purge.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 429.4490551181101523 Td
+(�  High-Throughput Batch Processing: Processes operations in concurrent chunks \(15-20 messages per batch\)) Tj
+T* (to avoid Google API throttling: Trash, Archive, Mark as Read, Permanent Delete.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 398.2679527559054691 Td
+(�  Exact Telemetry & Real-Time Aggregation: Performs live whole-inbox sweeps \(countEmails\) for top senders) Tj
+T* (and domains to eliminate sampling discrepancies.) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 367.086850393700729 Td
+(4. Server Endpoints & Data Contracts) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 361.4175590551180335 m
+544.2563779527558836 361.4175590551180335 l
+S
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 344.4096850393700038 Td
+(�  POST /api/parse-query: Input: { query, settings } -> Output: { query: string, suggestedFolder?: string,) Tj
+T* (explanation?: string }) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 313.2285826771652637 Td
+(�  POST /api/analyze-inbox: Input: { emails: Array<{id, sender, subject, labelIds}>, settings } -> Output: { clusters:) Tj
+T* (Array<{title, description, suggestedAction, searchQuery, estimatedCount, patternDetected}> }) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 282.0474803149605805 Td
+(�  POST /api/models: Input: { provider, apiKey, baseUrl? } -> Output: { models: string[] } for dynamic model) Tj
+T* (selection.) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 250.8663779527557836 Td
+(5. Resilience, Error Handling & Quota Protection) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 245.1970866141731449 m
+544.2563779527558836 245.1970866141731449 l
+S
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.2 0.255 0.333 rg
+51.0236220472441033 228.1892125984251152 Td
+(The platform features automated error interception for AI services:) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 206.9293700787401349 Td
+(�  HTTP 429 Quota Exceeded: Intercepted gracefully; disables AI for the current search, activates standard Gmail) Tj
+T* (fallback, and prompts the user to enter their personal API key.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 175.748267716535338 Td
+(�  HTTP 503 Service Unavailable: Detects provider overload and recommends switching models or providers in) Tj
+T* (Settings without crashing the client UI.) Tj
+ET
+BT
+/F2 12 Tf
+13.7999999999999989 TL
+0.059 0.09 0.165 rg
+51.0236220472441033 144.5671653543306547 Td
+(6. Antigravity Developer Roadmap \(Next Priorities\)) Tj
+ET
+0.8 0.84 0.88 RG
+1.4173228346456694 w
+51.0236220472441033 138.8978740157479308 m
+544.2563779527558836 138.8978740157479308 l
+S
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 121.8899999999998727 Td
+(�  Phase 1: Pagination & Deep Loading: Implement cursor-based pagination with nextPageToken when search) Tj
+T* (yields >100 items, showing total matching count.) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 90.7088976377951894 Td
+(�  Phase 2: Interactive Distribution Modal: Provide an on-demand modal chart visualizing category splits) Tj
+T* (\(Primary, Promotions, Social, Updates\) and read vs unread ratios.) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+501.7366929133857525 22.6771653543306684 Td
+(Page 1 of 2) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+51.0236220472441033 22.6771653543306684 Td
+(MailFlow Confidential � Built with Google AI Studio & Antigravity) Tj
+ET
+endstream
+endobj
+5 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 1029
+>>
+stream
+1.4173228346456694 w
+0.8 0.84 0.88 RG
+BT
+/F3 8 Tf
+9.1999999999999993 TL
+0.549 g
+51.0236220472441033 813.5435433070865656 Td
+(MailFlow Architecture & Engineering Specification � Antigravity Reference) Tj
+ET
+51.0236220472441033 807.8742519685039269 m
+544.2563779527558836 807.8742519685039269 l
+S
+BT
+/F3 8 Tf
+9.1999999999999993 TL
+0.549 g
+56.6929133858267775 790.8663779527558972 Td
+(�  Phase 3: Automated Rule Creation: Enable 1-click conversion of identified AI clusters into persistent Gmail) Tj
+T* (filters \(users.me.settings.filters\).) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0.118 0.161 0.231 rg
+56.6929133858267775 759.6852755905511003 Td
+(�  Phase 4: Audit & Export Logs: Offer CSV/JSON export of message metadata prior to permanent batch deletion.) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+501.7366929133857525 22.6771653543306684 Td
+(Page 2 of 2) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+51.0236220472441033 22.6771653543306684 Td
+(MailFlow Confidential � Built with Google AI Studio & Antigravity) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R 5 0 R ]
+/Count 2
+>>
+endobj
+7 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+8 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+20 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 7 0 R
+/F2 8 0 R
+/F3 9 0 R
+/F4 10 0 R
+/F5 11 0 R
+/F6 12 0 R
+/F7 13 0 R
+/F8 14 0 R
+/F9 15 0 R
+/F10 16 0 R
+/F11 17 0 R
+/F12 18 0 R
+/F13 19 0 R
+/F14 20 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+21 0 obj
+<<
+/Producer (jsPDF 4.2.1)
+/CreationDate (D:20260821201736-00'00')
+>>
+endobj
+22 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 23
+0000000000 65535 f 
+0000008352 00000 n 
+0000010177 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000007134 00000 n 
+0000007271 00000 n 
+0000008415 00000 n 
+0000008540 00000 n 
+0000008670 00000 n 
+0000008803 00000 n 
+0000008941 00000 n 
+0000009065 00000 n 
+0000009194 00000 n 
+0000009326 00000 n 
+0000009462 00000 n 
+0000009590 00000 n 
+0000009717 00000 n 
+0000009846 00000 n 
+0000009979 00000 n 
+0000010081 00000 n 
+0000010427 00000 n 
+0000010513 00000 n 
+trailer
+<<
+/Size 23
+/Root 22 0 R
+/Info 21 0 R
+/ID [ <74B32682AB4834BC05B4EE871AB1C1DD> <74B32682AB4834BC05B4EE871AB1C1DD> ]
+>>
+startxref
+10617
+%%EOF
