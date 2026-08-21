@@ -165,7 +165,9 @@ export default function Dashboard({ user }: { user: any }) {
         parts.push(`(${folderQueries.join(' OR ')})`);
       }
     } else {
-      parts.push('-in:trash -in:spam');
+      if (!actualQuery.toLowerCase().includes('in:trash') && !actualQuery.toLowerCase().includes('in:spam')) {
+        parts.push('-in:trash -in:spam');
+      }
     }
 
     if (startDate) parts.push(`after:${startDate.replace(/-/g, '/')}`);
