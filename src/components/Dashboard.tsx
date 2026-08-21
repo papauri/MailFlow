@@ -607,16 +607,18 @@ export default function Dashboard({ user }: { user: any }) {
                             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                               {(() => {
                                  let badge = '';
-                                 if (email.labelIds.includes('INBOX')) badge = 'Inbox';
-                                 else if (email.labelIds.includes('SENT')) badge = 'Sent';
-                                 else if (email.labelIds.includes('CATEGORY_PROMOTIONS')) badge = 'Promotions';
-                                 else if (email.labelIds.includes('CATEGORY_SOCIAL')) badge = 'Social';
-                                 else if (email.labelIds.includes('CATEGORY_UPDATES')) badge = 'Updates';
-                                 else if (email.labelIds.includes('CATEGORY_FORUMS')) badge = 'Forums';
-                                 else if (email.labelIds.includes('SPAM')) badge = 'Spam';
-                                 else if (email.labelIds.includes('TRASH')) badge = 'Trash';
+                                 const labels = email.labelIds || [];
+                                 if (labels.includes('CATEGORY_PROMOTIONS')) badge = 'Promotions';
+                                 else if (labels.includes('CATEGORY_SOCIAL')) badge = 'Social';
+                                 else if (labels.includes('CATEGORY_UPDATES')) badge = 'Updates';
+                                 else if (labels.includes('CATEGORY_FORUMS')) badge = 'Forums';
+                                 else if (labels.includes('CATEGORY_PERSONAL')) badge = 'Primary';
+                                 else if (labels.includes('SENT')) badge = 'Sent';
+                                 else if (labels.includes('SPAM')) badge = 'Spam';
+                                 else if (labels.includes('TRASH')) badge = 'Trash';
+                                 else if (labels.includes('INBOX')) badge = 'Inbox';
                                  else {
-                                   const custom = email.labelIds.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT');
+                                   const custom = labels.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT');
                                    if (custom) badge = custom;
                                  }
                                  
