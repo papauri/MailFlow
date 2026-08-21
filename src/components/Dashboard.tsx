@@ -165,7 +165,7 @@ export default function Dashboard({ user }: { user: any }) {
         parts.push(`(${folderQueries.join(' OR ')})`);
       }
     } else {
-      parts.push('in:anywhere');
+      parts.push('-in:trash -in:spam');
     }
 
     if (startDate) parts.push(`after:${startDate.replace(/-/g, '/')}`);
@@ -303,11 +303,17 @@ export default function Dashboard({ user }: { user: any }) {
       else if (action === "read") await batchMarkAsRead(ids);
       else if (action === "delete") await batchDeleteEmails(ids);
       
+      // Optimistically remove processed emails from the UI to reflect changes instantly
+      if (action !== "read") {
+        setEmails(prev => prev.filter(e => !ids.includes(e.id)));
+        setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
+      }
+      
       // Clear selected state
       setSelectedIds(new Set());
       
-      // Refresh the current search entirely to get accurate results/counts from the server
-      handleSearch();
+      // Silently refresh the search in the background (Gmail index takes a few seconds)
+      setTimeout(() => handleSearch(), 2000);
     } catch (err) {
       console.error(err);
     } finally {
@@ -349,7 +355,7 @@ export default function Dashboard({ user }: { user: any }) {
   }, [emails, sortBy, sortDesc]);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
+    <div className="min-h-screen md:h-screen md:overflow-hidden bg-slate-50 font-sans text-slate-900 flex flex-col">
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
@@ -385,7 +391,7 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 md:min-h-0">
         {showHealth ? (
            <InboxHealth 
              aiSettings={aiSettings} 
@@ -447,16 +453,18 @@ export default function Dashboard({ user }: { user: any }) {
              </div>
           )}
 
-          <div className="flex items-center gap-2 sm:gap-3 mt-1 overflow-x-auto no-scrollbar pb-1 -mx-3.5 px-3.5 sm:mx-0 sm:px-0 flex-nowrap">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 pb-1 relative z-50">
             <div className="shrink-0">
               <FolderMultiSelect selected={folderFilters} onChange={setFolderFilters} userLabels={userLabels} />
             </div>
             <div className="h-5 w-px bg-slate-200 shrink-0"></div>
-            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 focus-within:ring-2 focus-within:ring-slate-400 focus-within:bg-white transition-colors shrink-0 text-xs sm:text-sm">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 mr-1.5" />
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={todayStr} className="bg-transparent text-xs sm:text-sm text-slate-700 outline-none w-24 sm:w-28" />
-              <span className="text-slate-400 mx-1.5 text-xs sm:text-sm">to</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={todayStr} className="bg-transparent text-xs sm:text-sm text-slate-700 outline-none w-24 sm:w-28" />
+            <div className="flex items-center bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 focus-within:ring-2 focus-within:ring-slate-400 focus-within:border-slate-400 transition-all shadow-sm shrink-0 text-xs sm:text-sm group">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 mr-2 group-focus-within:text-slate-700" />
+              <div className="flex items-center gap-1">
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={todayStr} className="bg-transparent text-slate-700 font-medium outline-none w-[110px] sm:w-[120px] cursor-pointer" />
+                <span className="text-slate-400 font-medium px-1">&rarr;</span>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={todayStr} className="bg-transparent text-slate-700 font-medium outline-none w-[110px] sm:w-[120px] cursor-pointer" />
+              </div>
             </div>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
               <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -476,7 +484,7 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden md:min-h-0">
           <div className="border-b border-slate-200 p-2.5 sm:p-3 bg-slate-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 sticky top-0 z-10">
             <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3">
