@@ -156,10 +156,10 @@ export async function countEmails(query: string): Promise<number | string> {
     
     do {
       let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
-      if (pageToken) url += `&pageToken=${pageToken}`;
+      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
       
-      if (!res || !res.messages) break;
+      if (!res || !res.messages || res.messages.length === 0) break;
       total += res.messages.length;
       pageToken = res.nextPageToken;
       pages++;
@@ -174,3 +174,4 @@ export async function countEmails(query: string): Promise<number | string> {
     return 0;
   }
 }
+
