@@ -303,14 +303,11 @@ export default function Dashboard({ user }: { user: any }) {
       else if (action === "read") await batchMarkAsRead(ids);
       else if (action === "delete") await batchDeleteEmails(ids);
       
-      setEmails(prev => prev.filter(e => !ids.includes(e.id)));
+      // Clear selected state
       setSelectedIds(new Set());
-      setTotalCount(prev => {
-        if (typeof prev === "number") {
-          return Math.max(0, prev - ids.length);
-        }
-        return prev;
-      });
+      
+      // Refresh the current search entirely to get accurate results/counts from the server
+      handleSearch();
     } catch (err) {
       console.error(err);
     } finally {
