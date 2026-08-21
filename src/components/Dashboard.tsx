@@ -413,7 +413,8 @@ export default function Dashboard({ user }: { user: any }) {
                setQuery(q);
                let newFilters = ['anywhere'];
                if (filter) {
-                 if (filter === 'inbox') newFilters = ['inbox'];
+                 if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                 else if (filter === 'inbox') newFilters = ['inbox'];
                  else if (filter.startsWith('category:')) newFilters = [filter];
                  else newFilters = [filter];
                }
@@ -642,23 +643,26 @@ export default function Dashboard({ user }: { user: any }) {
                             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                               {(() => {
                                  let badge = '';
+                                 let badgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-100';
                                  const labels = email.labelIds || [];
-                                 if (labels.includes('CATEGORY_PROMOTIONS')) badge = 'Promotions';
-                                 else if (labels.includes('CATEGORY_SOCIAL')) badge = 'Social';
-                                 else if (labels.includes('CATEGORY_UPDATES')) badge = 'Updates';
-                                 else if (labels.includes('CATEGORY_FORUMS')) badge = 'Forums';
-                                 else if (labels.includes('CATEGORY_PERSONAL')) badge = 'Primary';
-                                 else if (labels.includes('SENT')) badge = 'Sent';
-                                 else if (labels.includes('SPAM')) badge = 'Spam';
-                                 else if (labels.includes('TRASH')) badge = 'Trash';
-                                 else if (labels.includes('INBOX')) badge = 'Inbox';
+                                 // SPAM and TRASH take highest priority — if it's junk, show it
+                                 if (labels.includes('SPAM')) { badge = 'Spam'; badgeColor = 'bg-red-50 text-red-700 border-red-100'; }
+                                 else if (labels.includes('TRASH')) { badge = 'Trash'; badgeColor = 'bg-red-50 text-red-700 border-red-100'; }
+                                 // Then sub-categories (within Inbox)
+                                 else if (labels.includes('CATEGORY_PROMOTIONS')) { badge = 'Promotions'; badgeColor = 'bg-amber-50 text-amber-700 border-amber-100'; }
+                                 else if (labels.includes('CATEGORY_SOCIAL')) { badge = 'Social'; badgeColor = 'bg-purple-50 text-purple-700 border-purple-100'; }
+                                 else if (labels.includes('CATEGORY_UPDATES')) { badge = 'Updates'; badgeColor = 'bg-green-50 text-green-700 border-green-100'; }
+                                 else if (labels.includes('CATEGORY_FORUMS')) { badge = 'Forums'; badgeColor = 'bg-slate-100 text-slate-700 border-slate-200'; }
+                                 else if (labels.includes('CATEGORY_PERSONAL')) { badge = 'Primary'; badgeColor = 'bg-blue-50 text-blue-700 border-blue-100'; }
+                                 else if (labels.includes('SENT')) { badge = 'Sent'; badgeColor = 'bg-slate-100 text-slate-600 border-slate-200'; }
+                                 else if (labels.includes('INBOX')) { badge = 'Inbox'; badgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-100'; }
                                  else {
                                    const custom = labels.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT');
                                    if (custom) badge = custom;
                                  }
                                  
                                  return badge ? (
-                                   <span className="hidden sm:inline-block text-[10px] sm:text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded truncate max-w-[100px]">
+                                   <span className={`hidden sm:inline-block text-[10px] sm:text-xs font-semibold border px-1.5 py-0.5 rounded truncate max-w-[100px] ${badgeColor}`}>
                                      {badge}
                                    </span>
                                  ) : null;

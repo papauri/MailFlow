@@ -168,7 +168,7 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
           desc="Junk accumulating in your Spam and Trash folders."
           color="border-slate-200 bg-slate-100/50 hover:bg-slate-100"
           actionText="Review Junk"
-          onAction={() => onApplyQuery("in:spam OR in:trash", "anywhere")}
+          onAction={() => onApplyQuery("", "spam+trash")}
         />
         <HealthCard 
           icon={<MailOpen className="w-6 h-6 text-slate-500" />}
