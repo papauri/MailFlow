@@ -455,7 +455,14 @@ export default function Dashboard({ user }: { user: any }) {
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 pb-1 relative z-50">
             <div className="shrink-0">
-              <FolderMultiSelect selected={folderFilters} onChange={setFolderFilters} userLabels={userLabels} />
+              <FolderMultiSelect 
+                selected={folderFilters} 
+                onChange={(val) => {
+                  setFolderFilters(val);
+                  setTimeout(() => handleSearch(undefined, query, val), 0);
+                }} 
+                userLabels={userLabels} 
+              />
             </div>
             <div className="h-5 w-px bg-slate-200 shrink-0"></div>
             <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
@@ -839,6 +846,7 @@ function FolderMultiSelect({ selected, onChange, userLabels }: { selected: strin
   const toggle = (val: string) => {
     if (val === 'anywhere') {
       onChange(['anywhere']);
+      setOpen(false);
       return;
     }
     let next = selected.filter(x => x !== 'anywhere');
@@ -849,6 +857,7 @@ function FolderMultiSelect({ selected, onChange, userLabels }: { selected: strin
     }
     if (next.length === 0) next = ['anywhere'];
     onChange(next);
+    setOpen(false);
   };
 
   const label = selected.includes('anywhere') ? 'All Mail' : selected.length === 1 ? options.find(o => o.value === selected[0])?.label : `${selected.length} Folders`;
