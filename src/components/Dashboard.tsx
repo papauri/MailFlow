@@ -612,13 +612,35 @@ export default function Dashboard({ user }: { user: any }) {
                               {email.sender.replace(/<.*>/, "").trim() || email.sender}
                             </span>
                             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                              {(() => {
+                                 let badge = '';
+                                 if (email.labelIds.includes('INBOX')) badge = 'Inbox';
+                                 else if (email.labelIds.includes('SENT')) badge = 'Sent';
+                                 else if (email.labelIds.includes('CATEGORY_PROMOTIONS')) badge = 'Promotions';
+                                 else if (email.labelIds.includes('CATEGORY_SOCIAL')) badge = 'Social';
+                                 else if (email.labelIds.includes('CATEGORY_UPDATES')) badge = 'Updates';
+                                 else if (email.labelIds.includes('CATEGORY_FORUMS')) badge = 'Forums';
+                                 else if (email.labelIds.includes('SPAM')) badge = 'Spam';
+                                 else if (email.labelIds.includes('TRASH')) badge = 'Trash';
+                                 else {
+                                   const custom = email.labelIds.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT');
+                                   if (custom) badge = custom;
+                                 }
+                                 
+                                 return badge ? (
+                                   <span className="hidden sm:inline-block text-[10px] sm:text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded truncate max-w-[100px]">
+                                     {badge}
+                                   </span>
+                                 ) : null;
+                              })()}
                               {(email.sizeEstimate || 0) > 102400 && (
-                                 <span className="text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                                 <span className="hidden sm:inline-block text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
                                    {formatSize(email.sizeEstimate || 0)}
                                  </span>
                               )}
                               <span className="text-[11px] sm:text-xs font-medium text-slate-500 tabular-nums">
                                 {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                <span className="hidden sm:inline">, {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
                               </span>
                             </div>
                           </div>
