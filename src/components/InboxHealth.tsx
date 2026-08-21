@@ -61,19 +61,23 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
           domainCounts.get(domain).count++;
         });
         
-        const rawSenders = Array.from(senderCounts.values()).sort((a, b) => b.count - a.count).slice(0, 6);
+        const rawSenders = Array.from(senderCounts.values())
+          .filter(s => s.email.includes('@')) // Only keep valid email addresses
+          .sort((a, b) => b.count - a.count).slice(0, 8);
         const exactSenders = await Promise.all(rawSenders.map(async (s) => {
-           const exactCount = await countEmails(`from:${s.email} -in:trash`);
+           const exactCount = await countEmails(`from:(${s.email}) -in:trash`);
            return { ...s, count: typeof exactCount === 'number' ? exactCount : s.count };
         }));
-        setTopSenders(exactSenders.sort((a, b) => b.count - a.count));
+        setTopSenders(exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
 
-        const rawDomains = Array.from(domainCounts.values()).sort((a, b) => b.count - a.count).slice(0, 6);
+        const rawDomains = Array.from(domainCounts.values())
+          .filter(d => d.domain !== 'unknown')
+          .sort((a, b) => b.count - a.count).slice(0, 8);
         const exactDomains = await Promise.all(rawDomains.map(async (d) => {
-           const exactCount = await countEmails(`from:${d.domain} -in:trash`);
+           const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
            return { ...d, count: typeof exactCount === 'number' ? exactCount : d.count };
         }));
-        setTopDomains(exactDomains.sort((a, b) => b.count - a.count));
+        setTopDomains(exactDomains.filter(d => d.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
 
         const res = await fetch('/api/analyze-inbox', {
           method: 'POST',
