@@ -1,0 +1,6 @@
+{
+  "name": "MailFlow",
+  "description": "An intelligent inbox router and bulk cleaner for Gmail.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
