@@ -458,14 +458,7 @@ export default function Dashboard({ user }: { user: any }) {
               <FolderMultiSelect selected={folderFilters} onChange={setFolderFilters} userLabels={userLabels} />
             </div>
             <div className="h-5 w-px bg-slate-200 shrink-0"></div>
-            <div className="flex items-center bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 focus-within:ring-2 focus-within:ring-slate-400 focus-within:border-slate-400 transition-all shadow-sm shrink-0 text-xs sm:text-sm group">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 mr-2 group-focus-within:text-slate-700" />
-              <div className="flex items-center gap-1">
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={todayStr} className="bg-transparent text-slate-700 font-medium outline-none w-[110px] sm:w-[120px] cursor-pointer" />
-                <span className="text-slate-400 font-medium px-1">&rarr;</span>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={todayStr} className="bg-transparent text-slate-700 font-medium outline-none w-[110px] sm:w-[120px] cursor-pointer" />
-              </div>
-            </div>
+            <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
               <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Exclude Sent</span>
@@ -879,6 +872,80 @@ function FolderMultiSelect({ selected, onChange, userLabels }: { selected: strin
                 <span className="text-slate-700 truncate">{opt.label}</span>
               </label>
             ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange }: any) {
+  const [open, setOpen] = useState(false);
+  const todayStr = new Date().toISOString().split("T")[0];
+  
+  let label = "Any time";
+  if (startDate && endDate) {
+    label = `${startDate} to ${endDate}`;
+  } else if (startDate) {
+    label = `After ${startDate}`;
+  } else if (endDate) {
+    label = `Before ${endDate}`;
+  }
+
+  const setRange = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - days);
+    onStartChange(start.toISOString().split("T")[0]);
+    onEndChange(end.toISOString().split("T")[0]);
+    setOpen(false);
+  };
+
+  const clearRange = () => {
+    onStartChange("");
+    onEndChange("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button 
+        type="button" 
+        onClick={() => setOpen(!open)} 
+        className={cn("bg-slate-50 border rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm shrink-0 whitespace-nowrap", startDate || endDate ? "border-slate-800 text-slate-800 bg-white" : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100")}
+      >
+        <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
+        <span className="truncate max-w-[150px]">{label}</span>
+        <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
+      </button>
+      
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-3 flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-2">Quick Select</span>
+              <button type="button" onClick={() => setRange(7)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last 7 days</button>
+              <button type="button" onClick={() => setRange(30)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last 30 days</button>
+              <button type="button" onClick={() => setRange(365)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last year</button>
+              <button type="button" onClick={clearRange} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Any time</button>
+            </div>
+            
+            <div className="h-px bg-slate-100 -mx-3" />
+            
+            <div className="flex flex-col gap-2 px-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Custom Range</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-8 font-medium">From</span>
+                  <input type="date" value={startDate} onChange={e => onStartChange(e.target.value)} max={todayStr} className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-md px-2 py-1 outline-none text-xs sm:text-sm focus:ring-2 focus:ring-slate-400 font-medium cursor-pointer" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-8 font-medium">To</span>
+                  <input type="date" value={endDate} onChange={e => onEndChange(e.target.value)} max={todayStr} className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-md px-2 py-1 outline-none text-xs sm:text-sm focus:ring-2 focus:ring-slate-400 font-medium cursor-pointer" />
+                </div>
+              </div>
+            </div>
           </div>
         </>
       )}
