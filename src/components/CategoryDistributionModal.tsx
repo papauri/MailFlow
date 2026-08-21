@@ -110,7 +110,7 @@ export function CategoryDistributionModal({
       aria-labelledby="category-distribution-title"
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200"
+        className="bg-white w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -163,15 +163,15 @@ export function CategoryDistributionModal({
           ) : data.length > 0 ? (
             <>
               {/* Donut Chart Area */}
-              <div className="w-full h-64 sm:h-72 flex items-center justify-center relative">
+              <div className="w-full h-48 sm:h-72 flex items-center justify-center relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={data}
                       cx="50%"
                       cy="50%"
-                      innerRadius={65}
-                      outerRadius={100}
+                      innerRadius="40%"
+                      outerRadius="65%"
                       paddingAngle={3}
                       dataKey="value"
                       cursor="pointer"
@@ -227,19 +227,19 @@ export function CategoryDistributionModal({
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   {activeIndex !== null && data[activeIndex] ? (
                     <>
-                      <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                      <span className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                         {data[activeIndex].displayCount}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         {data[activeIndex].name}
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                      <span className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                         {totalCount.toLocaleString()}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         Total Emails
                       </span>
                     </>
