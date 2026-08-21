@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
-import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw } from "lucide-react";
+import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert } from "lucide-react";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
 import { cn } from "../lib/utils";
@@ -303,7 +303,19 @@ export default function Dashboard({ user }: { user: any }) {
       if (action === "trash") await batchTrashEmails(ids);
       else if (action === "archive") await batchArchiveEmails(ids);
       else if (action === "read") await batchMarkAsRead(ids);
-      else if (action === "delete") await batchDeleteEmails(ids);
+      else if (action === "delete") {
+        // Permanent delete - only available from trash view, with user confirmation
+        const confirmed = window.confirm(
+          `⚠️ PERMANENT DELETE\n\nYou are about to permanently delete ${ids.length} email(s). This action cannot be undone and the emails cannot be recovered.\n\nAre you sure you want to proceed?`
+        );
+        if (!confirmed) {
+          setActionLoading(null);
+          setProcessingIds(new Set());
+          setProcessingProgress(null);
+          return;
+        }
+        await batchDeleteEmails(ids);
+      }
       
       // Optimistically remove processed emails from the UI to reflect changes instantly
       if (action !== "read") {
@@ -357,7 +369,7 @@ export default function Dashboard({ user }: { user: any }) {
   }, [emails, sortBy, sortDesc]);
 
   return (
-    <div className="min-h-screen md:h-screen md:overflow-hidden bg-slate-50 font-sans text-slate-900 flex flex-col">
+    <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "md:h-screen md:overflow-hidden")}>
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
@@ -544,11 +556,27 @@ export default function Dashboard({ user }: { user: any }) {
                     <Filter className={cn("w-4 h-4 transition-transform", !sortDesc && "rotate-180")} />
                  </button>
               </div>
-              <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-              <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
+              {folderFilters.includes('trash') ? (
+                <>
+                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Forever" onClick={() => handleBulkAction("delete")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                </>
+              ) : (
+                <>
+                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                  <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
+                </>
+              )}
               <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center" />
             </div>
           </div>
+
+          {folderFilters.includes('trash') && (
+            <div className="bg-amber-50 border-b border-amber-200 px-3 sm:px-4 py-2 flex items-center gap-2 text-amber-800 text-xs sm:text-sm">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span className="font-medium">You are viewing Trash.</span>
+              <span className="text-amber-700">Emails here will be automatically deleted by Gmail after 30 days. Use "Delete Forever" to permanently remove them — this cannot be undone.</span>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto">
             {emails.length === 0 ? (
