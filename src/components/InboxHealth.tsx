@@ -21,12 +21,12 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         const [unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner] = await Promise.all([
           countEmails("is:unread in:inbox"),
           countEmails("category:promotions older_than:6m"),
-          countEmails("larger:5M -in:trash -in:spam"),
+          countEmails("larger:5M -in:trash"),
           countEmails("in:spam OR in:trash"),
           countEmails("category:promotions OR in:spam"), // Gatekeeper
-          countEmails("is:important -category:promotions -in:trash -in:spam"), // Trust
-          countEmails("has:attachment -in:trash -in:spam"), // Content
-          countEmails("(is:starred OR label:personal) -in:trash -in:spam") // Learner
+          countEmails("is:important -category:promotions -in:trash"), // Trust
+          countEmails("has:attachment -in:trash"), // Content
+          countEmails("(is:starred OR label:personal) -in:trash") // Learner
         ]);
         setStats({ unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner });
       } catch (e) {
@@ -63,14 +63,14 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         
         const rawSenders = Array.from(senderCounts.values()).sort((a, b) => b.count - a.count).slice(0, 6);
         const exactSenders = await Promise.all(rawSenders.map(async (s) => {
-           const exactCount = await countEmails(`from:${s.email} -in:trash -in:spam`);
+           const exactCount = await countEmails(`from:${s.email} -in:trash`);
            return { ...s, count: typeof exactCount === 'number' ? exactCount : s.count };
         }));
         setTopSenders(exactSenders.sort((a, b) => b.count - a.count));
 
         const rawDomains = Array.from(domainCounts.values()).sort((a, b) => b.count - a.count).slice(0, 6);
         const exactDomains = await Promise.all(rawDomains.map(async (d) => {
-           const exactCount = await countEmails(`from:${d.domain} -in:trash -in:spam`);
+           const exactCount = await countEmails(`from:${d.domain} -in:trash`);
            return { ...d, count: typeof exactCount === 'number' ? exactCount : d.count };
         }));
         setTopDomains(exactDomains.sort((a, b) => b.count - a.count));

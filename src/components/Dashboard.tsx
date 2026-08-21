@@ -165,8 +165,8 @@ export default function Dashboard({ user }: { user: any }) {
         parts.push(`(${folderQueries.join(' OR ')})`);
       }
     } else {
-      if (!actualQuery.toLowerCase().includes('in:trash') && !actualQuery.toLowerCase().includes('in:spam')) {
-        parts.push('-in:trash -in:spam');
+      if (!finalQuery.toLowerCase().includes('in:trash')) {
+        parts.push('-in:trash');
       }
     }
 
