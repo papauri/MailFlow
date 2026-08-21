@@ -110,7 +110,7 @@ export function CategoryDistributionModal({
       aria-labelledby="category-distribution-title"
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -174,8 +174,15 @@ export function CategoryDistributionModal({
                       outerRadius={100}
                       paddingAngle={3}
                       dataKey="value"
+                      cursor="pointer"
                       onMouseEnter={(_, index) => setActiveIndex(index)}
                       onMouseLeave={() => setActiveIndex(null)}
+                      onClick={(_, index) => {
+                        if (onApplyCategory && data[index]) {
+                          onClose();
+                          onApplyCategory(data[index].query, data[index].filter);
+                        }
+                      }}
                     >
                       {data.map((entry, index) => (
                         <Cell
