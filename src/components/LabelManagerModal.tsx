@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Tag, Loader2, Sparkles, Folder, Inbox } from 'lucide-react';
+import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2 } from 'lucide-react';
 import { fetchGmailAPI, searchEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 
@@ -47,10 +47,31 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     setLoadingEmails(true);
     setAiAnalysis('');
     try {
-      // Fetch some emails for this label
-      const emails = await searchEmails(`label:${label.id}`, 20);
+      // Fix: Gmail API expects the label name in quotes if it has spaces, or formatted. 
+      // Using exact label string format works best for user labels in the "q" parameter.
+      const formattedName = label.name.includes(' ') ? `"${label.name}"` : label.name;
+      const emails = await searchEmails(`label:${formattedName}`, 20);
       setLabelEmails(emails);
     } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingEmails(false);
+    }
+  };
+
+  const handleDeleteLabel = async () => {
+    if (!activeLabel) return;
+    const confirm = window.confirm(`Are you sure you want to delete the label "${activeLabel.name}"?\n\nThe label will be removed from all associated emails, leaving them in your main inbox or archive. No emails will be deleted.`);
+    if (!confirm) return;
+    
+    try {
+      setLoadingEmails(true);
+      await fetchGmailAPI(`/labels/${activeLabel.id}`, { method: 'DELETE' });
+      setLabels(prev => prev.filter(l => l.id !== activeLabel.id));
+      setActiveLabel(null);
+      setLabelEmails([]);
+    } catch (e) {
+      alert("Failed to delete label. Check console for details.");
       console.error(e);
     } finally {
       setLoadingEmails(false);
@@ -158,16 +179,26 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
                       {activeLabel.messagesTotal || 0} total messages {activeLabel.messagesUnread ? `(${activeLabel.messagesUnread} unread)` : ''}
                     </p>
                   </div>
-                  {aiSettings?.apiKey && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={handleAnalyze}
-                      disabled={analyzing || labelEmails.length === 0}
-                      className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+                      onClick={handleDeleteLabel}
+                      className="flex items-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+                      title="Delete this label entirely"
                     >
-                      {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      AI Analysis
+                      <Trash2 className="w-4 h-4" />
+                      Delete Label
                     </button>
-                  )}
+                    {aiSettings?.apiKey && (
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={analyzing || labelEmails.length === 0}
+                        className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+                      >
+                        {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        AI Analysis
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {aiAnalysis && (
