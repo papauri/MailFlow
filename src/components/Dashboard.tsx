@@ -515,20 +515,22 @@ export default function Dashboard({ user }: { user: any }) {
       }
     });
     
+    // Optimistically update the UI instantly
+    if (action !== "read" || (action === "read" && onlyUnread)) {
+      setEmails(prev => prev.filter(e => !ids.includes(e.id)));
+      setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
+    } else {
+      setEmails(prev => prev.map(e => ids.includes(e.id) ? { ...e, labelIds: e.labelIds.filter(l => l !== 'UNREAD') } : e));
+    }
+    
+    // Clear selected state
+    setSelectedIds(new Set());
+    
     try {
       if (action === "trash") await batchTrashEmails(allMessageIds);
       else if (action === "archive") await batchArchiveEmails(allMessageIds);
       else if (action === "read") await batchMarkAsRead(allMessageIds);
       // delete action is handled separately by executeDeleteSelected
-      
-      // Optimistically remove processed emails from the UI to reflect changes instantly
-      if (action !== "read") {
-        setEmails(prev => prev.filter(e => !ids.includes(e.id)));
-        setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
-      }
-      
-      // Clear selected state
-      setSelectedIds(new Set());
       
       // Auto-replenish if we are running low on displayed emails
       const newCount = emails.length - ids.length;
@@ -582,28 +584,29 @@ export default function Dashboard({ user }: { user: any }) {
     setProcessingIds(prev => new Set([...prev, id]));
     setActionLoading(action);
 
+    // Optimistically update the UI instantly
+    if (action !== "read" || (action === "read" && onlyUnread)) {
+      setEmails(prev => prev.filter(email => email.id !== id));
+      setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - 1) : prev);
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setExpandedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } else {
+      setEmails(prev => prev.map(email => email.id === id ? { ...email, labelIds: email.labelIds.filter(l => l !== 'UNREAD') } : email));
+    }
+
     try {
       if (action === "trash") await batchTrashEmails([id]);
       else if (action === "archive") await batchArchiveEmails([id]);
       else if (action === "read") await batchMarkAsRead([id]);
       else if (action === "delete") await batchDeleteEmails([id]);
-
-      if (action !== "read") {
-        setEmails(prev => prev.filter(email => email.id !== id));
-        setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - 1) : prev);
-        setSelectedIds(prev => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        setExpandedIds(prev => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      } else {
-        setEmails(prev => prev.map(email => email.id === id ? { ...email, labelIds: email.labelIds.filter(l => l !== 'UNREAD') } : email));
-      }
     } catch (err) {
       console.error(`Failed to execute ${action} on email ${id}`, err);
     } finally {

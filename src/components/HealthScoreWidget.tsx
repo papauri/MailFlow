@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { searchEmails } from '../lib/gmail';
+import { searchEmails, countEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
 
@@ -10,33 +10,26 @@ export function HealthScoreWidget() {
   useEffect(() => {
     async function calculateScore() {
       try {
-        let actionLog: any[] = [];
-        const stored = localStorage.getItem('ais_unsub_log');
-        if (stored) {
-          actionLog = JSON.parse(stored);
-        }
-
-        const logEmails = new Set(actionLog.map(a => a.email));
-        const processedCount = logEmails.size;
-
-        const emails = await searchEmails("category:promotions OR category:updates OR unsubscribe", 150);
-        const senders = new Set();
-        emails.forEach(email => {
-          const match = email.sender.match(/<([^>]+)>/);
-          const emailAddr = match ? match[1].toLowerCase() : email.sender.toLowerCase();
-          if (!logEmails.has(emailAddr)) {
-            senders.add(emailAddr);
-          }
-        });
-
-        const activeCount = senders.size;
-        const total = processedCount + activeCount;
+        const [unread, junk, promo] = await Promise.all([
+          countEmails("is:unread in:inbox").catch(() => 0),
+          countEmails("in:spam OR in:trash").catch(() => 0),
+          countEmails("category:promotions older_than:6m").catch(() => 0)
+        ]);
         
-        if (total === 0) {
-          setScore(100);
-        } else {
-          setScore(Math.round((processedCount / total) * 100));
-        }
+        const parseCount = (val: any) => typeof val === 'number' ? val : (parseInt(String(val).replace(/\D/g, '')) || 0);
+        
+        let baseScore = 100;
+        
+        // Unread penalty: -1 for every 5 unread, up to -40
+        baseScore -= Math.min(40, (parseCount(unread) / 5));
+        
+        // Junk penalty: -1 for every 10 junk, up to -30
+        baseScore -= Math.min(30, (parseCount(junk) / 10));
+        
+        // Stale promo penalty: -1 for every 10 stale promos, up to -20
+        baseScore -= Math.min(20, (parseCount(promo) / 10));
+        
+        setScore(Math.max(12, Math.round(baseScore))); // Give at least 12% so the dial is visible
       } catch (e) {
         console.error("Failed to calculate health score", e);
       } finally {
