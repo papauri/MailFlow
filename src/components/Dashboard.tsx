@@ -555,8 +555,9 @@ export default function Dashboard({ user }: { user: any }) {
       // delete action is handled separately by executeDeleteSelected
       
       // Auto-replenish if we are running low on displayed emails
-      const newCount = emails.length - ids.length;
-      if (action !== "read" && newCount < 20 && nextPageToken) {
+      const removedCount = (action !== "read" || isUnreadView) ? ids.length : 0;
+      const newCount = emails.length - removedCount;
+      if (removedCount > 0 && newCount < 20 && nextPageToken) {
         setTimeout(() => handleLoadMore(), 100);
       }
     } catch (err) {
@@ -634,6 +635,13 @@ export default function Dashboard({ user }: { user: any }) {
       else if (action === "archive") await batchArchiveEmails([id]);
       else if (action === "read") await batchMarkAsRead([id]);
       else if (action === "delete") await batchDeleteEmails([id]);
+
+      // Auto-replenish if we are running low on displayed emails
+      const removedCount = (action !== "read" || isUnreadView) ? 1 : 0;
+      const newCount = emails.length - removedCount;
+      if (removedCount > 0 && newCount < 20 && nextPageToken) {
+        setTimeout(() => handleLoadMore(), 100);
+      }
     } catch (err) {
       console.error(`Failed to execute ${action} on email ${id}`, err);
     } finally {
