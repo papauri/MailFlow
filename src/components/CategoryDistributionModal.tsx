@@ -14,11 +14,11 @@ export interface CategoryItem {
 }
 
 const CATEGORY_CONFIG = [
-  { id: 'primary', name: 'Primary', query: 'category:primary in:anywhere', filter: 'category:primary', color: '#3B82F6' },
-  { id: 'promotions', name: 'Promotions', query: 'category:promotions in:anywhere', filter: 'category:promotions', color: '#F59E0B' },
-  { id: 'updates', name: 'Updates', query: 'category:updates in:anywhere', filter: 'category:updates', color: '#10B981' },
-  { id: 'social', name: 'Social', query: 'category:social in:anywhere', filter: 'category:social', color: '#8B5CF6' },
-  { id: 'forums', name: 'Forums', query: 'category:forums in:anywhere', filter: 'category:forums', color: '#64748B' },
+  { id: 'primary', name: 'Primary', query: 'category:primary -in:trash -in:spam', filter: 'category:primary', color: '#3B82F6' },
+  { id: 'promotions', name: 'Promotions', query: 'category:promotions -in:trash -in:spam', filter: 'category:promotions', color: '#F59E0B' },
+  { id: 'updates', name: 'Updates', query: 'category:updates -in:trash -in:spam', filter: 'category:updates', color: '#10B981' },
+  { id: 'social', name: 'Social', query: 'category:social -in:trash -in:spam', filter: 'category:social', color: '#8B5CF6' },
+  { id: 'forums', name: 'Forums', query: 'category:forums -in:trash -in:spam', filter: 'category:forums', color: '#64748B' },
   { id: 'spam', name: 'Spam & Trash', query: 'in:spam OR in:trash', filter: 'anywhere', color: '#EF4444' },
 ];
 

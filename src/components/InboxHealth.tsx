@@ -75,7 +75,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
       const normalizedUser = (userEmail || '').toLowerCase().trim();
 
       try {
-        const recentEmails = await searchEmails("in:anywhere", 250);
+        const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam", 250);
         setRecentEmailsState(recentEmails);
         
         // Local Aggregation
