@@ -48,6 +48,8 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
     setLoading(true);
     setError(null);
     setUsedAi(false);
+    setCompletedIds(new Set());
+    setExpandedRecs(new Set());
     
     const sample = emails.slice(0, 150);
 

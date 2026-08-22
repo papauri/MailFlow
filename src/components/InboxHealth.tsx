@@ -49,7 +49,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
 
   useEffect(() => {
     async function fetchStats() {
-      setLoading(true);
+      // Only show full page loader on initial mount
+      if (!stats) setLoading(true);
       try {
         const [unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner] = await Promise.all([
           countEmails("is:unread in:inbox"),
