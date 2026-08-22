@@ -144,6 +144,19 @@ export default function Dashboard({ user }: { user: any }) {
     }
   }, []);
 
+  // Automatically trigger search when quick filters change
+  const initialMount = useRef(true);
+  useEffect(() => {
+    if (initialMount.current) {
+      initialMount.current = false;
+      return;
+    }
+    if (searchIdRef.current > 0) {
+      const timer = setTimeout(() => handleSearch(undefined, undefined, undefined, true), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [onlyUnread, excludeSent, startDate, endDate]);
+
   const saveSettings = (s: any) => {
     setAiSettings(s);
     localStorage.setItem('adminAiSettings', JSON.stringify(s));
@@ -869,11 +882,22 @@ export default function Dashboard({ user }: { user: any }) {
             <div className="h-5 w-px bg-slate-200 shrink-0"></div>
             <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <input type="checkbox" checked={onlyUnread} onChange={e => {
+                const val = e.target.checked;
+                setOnlyUnread(val);
+                // Trigger search on toggle by temporarily putting the value in the query or relying on effect? 
+                // Because handleSearch uses the React state `onlyUnread` which hasn't updated yet.
+                // Wait, it uses the state. So I should call a helper or use useEffect. Let's just set the state and then the user can search, or we can use a setTimeout to wait for state to propagate (React 18 batches them). But actually we need a useEffect for this to be perfect.
+                // Alternatively, just let it be. The user says "Make sure the tabs switching is easy".
+                // I'll leave the checkbox as is, it's just a filter toggle. I'll stick to my previous change. Let me just undo this replacement by keeping it the same, except I'll just restore the original code since it works fine. Wait, I can just use a `useEffect`.
+              }} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
             </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <input type="checkbox" checked={excludeSent} onChange={e => {
+                const val = e.target.checked;
+                setExcludeSent(val);
+              }} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Exclude Sent</span>
             </label>
           </div>
@@ -891,92 +915,127 @@ export default function Dashboard({ user }: { user: any }) {
         )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden min-h-0">
-          <div className="border-b border-slate-200 p-2.5 sm:p-3 bg-slate-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 sticky top-0 z-10">
-            <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <button 
-                  onClick={() => setSelectedIds(selectedIds.size === emails.length ? new Set() : new Set(emails.map(e => e.id)))}
-                  className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
-                  disabled={emails.length === 0}
-                >
-                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", selectedIds.size > 0 ? "bg-slate-800 border-slate-800" : "border-slate-300")}>
-                    {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
-                <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
-                  {selectedIds.size > 0 ? (
-                    `${selectedIds.size} selected`
-                  ) : emails.length === 0 ? (
-                    `0 emails`
-                  ) : totalCount !== null ? (
-                    typeof totalCount === "number" ? (
-                      emails.length < totalCount ? (
-                        `Showing ${emails.length} of ${totalCount.toLocaleString()} emails`
+          <div className="sticky top-0 z-10 bg-slate-50 flex flex-col border-b border-slate-200">
+            <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <button 
+                    onClick={() => setSelectedIds(selectedIds.size === emails.length ? new Set() : new Set(emails.map(e => e.id)))}
+                    className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
+                    disabled={emails.length === 0}
+                  >
+                    <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", selectedIds.size > 0 ? "bg-slate-800 border-slate-800" : "border-slate-300")}>
+                      {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
+                    </div>
+                  </button>
+                  <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
+                    {selectedIds.size > 0 ? (
+                      `${selectedIds.size} selected`
+                    ) : emails.length === 0 ? (
+                      `0 emails`
+                    ) : totalCount !== null ? (
+                      typeof totalCount === "number" ? (
+                        emails.length < totalCount ? (
+                          `Showing ${emails.length} of ${totalCount.toLocaleString()} emails`
+                        ) : (
+                          `${emails.length} emails`
+                        )
                       ) : (
-                        `${emails.length} emails`
+                        `Showing ${emails.length} of ${totalCount} emails`
                       )
+                    ) : isCounting && nextPageToken ? (
+                      `Showing ${emails.length} emails...`
                     ) : (
-                      `Showing ${emails.length} of ${totalCount} emails`
-                    )
-                  ) : isCounting && nextPageToken ? (
-                    `Showing ${emails.length} emails...`
-                  ) : (
-                    `${emails.length} emails`
-                  )}
-                </span>
-              </div>
+                      `${emails.length} emails`
+                    )}
+                  </span>
+                </div>
 
-              {/* Mobile-only sort selector */}
-              <div className="flex sm:hidden items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
-                 <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-xs font-medium text-slate-700 outline-none px-1.5 py-1 cursor-pointer">
-                   <option value="date">Date</option>
-                   <option value="size">Size</option>
-                   <option value="sender">Sender</option>
-                 </select>
-                 <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
-                    <Filter className={cn("w-3.5 h-3.5 transition-transform", !sortDesc && "rotate-180")} />
-                 </button>
+                {/* Mobile-only sort selector */}
+                <div className="flex sm:hidden items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+                   <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-xs font-medium text-slate-700 outline-none px-1.5 py-1 cursor-pointer">
+                     <option value="date">Date</option>
+                     <option value="size">Size</option>
+                     <option value="sender">Sender</option>
+                   </select>
+                   <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
+                      <Filter className={cn("w-3.5 h-3.5 transition-transform", !sortDesc && "rotate-180")} />
+                   </button>
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
+                   <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-sm font-medium text-slate-700 outline-none px-2 cursor-pointer">
+                     <option value="date">Date</option>
+                     <option value="size">Size</option>
+                     <option value="sender">Sender</option>
+                   </select>
+                   <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
+                      <Filter className={cn("w-4 h-4 transition-transform", !sortDesc && "rotate-180")} />
+                   </button>
+                </div>
+                {folderFilters.includes('trash') ? (
+                  <>
+                    <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                    <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
+                  </>
+                ) : (
+                  <>
+                    <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                    <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
+                  </>
+                )}
+                
+                <BulkOrganizeDropdown 
+                  className="flex-1 sm:flex-initial"
+                  selectedIds={selectedIds} 
+                  emails={emails} 
+                  userLabels={userLabels} 
+                  onComplete={() => {
+                    setSelectedIds(new Set());
+                    setIsSearching(true);
+                    setTimeout(() => handleSearch(), 500);
+                  }} 
+                  disabled={selectedIds.size === 0 || actionLoading !== null} 
+                />
+                
+                <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center" />
               </div>
             </div>
-            
-            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-              <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
-                 <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-sm font-medium text-slate-700 outline-none px-2 cursor-pointer">
-                   <option value="date">Date</option>
-                   <option value="size">Size</option>
-                   <option value="sender">Sender</option>
-                 </select>
-                 <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
-                    <Filter className={cn("w-4 h-4 transition-transform", !sortDesc && "rotate-180")} />
-                 </button>
+
+            {onlyUnread && (
+              <div className="flex items-center px-2 sm:px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/50 bg-slate-50/50 pt-2 gap-1 sm:gap-2">
+                {[
+                  { id: 'anywhere', label: 'All Unread' },
+                  { id: 'category:personal', label: 'Primary' },
+                  { id: 'category:promotions', label: 'Promotions' },
+                  { id: 'category:updates', label: 'Updates' },
+                  { id: 'category:social', label: 'Social' },
+                  { id: 'category:forums', label: 'Forums' }
+                ].map(tab => {
+                  const isActive = folderFilters.length === 1 && folderFilters[0] === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        const newFilters = [tab.id];
+                        setFolderFilters(newFilters);
+                        setTimeout(() => handleSearch(undefined, query, newFilters), 0);
+                      }}
+                      className={cn(
+                        "px-3 sm:px-4 py-1.5 sm:py-2 rounded-t-lg text-xs sm:text-sm font-semibold transition-all shrink-0 border-b-2",
+                        isActive 
+                          ? "text-indigo-600 border-indigo-600 bg-indigo-50/50"
+                          : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-100/50"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
-              {folderFilters.includes('trash') ? (
-                <>
-                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-                  <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
-                </>
-              ) : (
-                <>
-                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-                  <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
-                </>
-              )}
-              
-              <BulkOrganizeDropdown 
-                className="flex-1 sm:flex-initial"
-                selectedIds={selectedIds} 
-                emails={emails} 
-                userLabels={userLabels} 
-                onComplete={() => {
-                  setSelectedIds(new Set());
-                  setIsSearching(true);
-                  setTimeout(() => handleSearch(), 500);
-                }} 
-                disabled={selectedIds.size === 0 || actionLoading !== null} 
-              />
-              
-              <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center" />
-            </div>
+            )}
           </div>
 
           {folderFilters.includes('trash') && (
@@ -1063,6 +1122,8 @@ export default function Dashboard({ user }: { user: any }) {
                               {(() => {
                                  const labels = email.labelIds || [];
                                  const badges = [];
+                                 
+                                 if (!onlyUnread) return null;
                                  
                                  if (labels.includes('SPAM')) badges.push({ text: 'Spam', color: 'bg-red-50 text-red-700 border-red-100' });
                                  else if (labels.includes('TRASH')) badges.push({ text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' });
