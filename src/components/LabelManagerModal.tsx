@@ -26,6 +26,10 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Create Label
+  const [isCreating, setIsCreating] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
     return () => clearTimeout(timer);
@@ -111,23 +115,66 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
 
   const handleDeleteLabel = async () => {
     if (!activeLabel) return;
-    const confirm = window.confirm(`Are you sure you want to delete the label "${activeLabel.name}"?\n\nThe label will be removed from all associated emails, leaving them in your main inbox or archive. No emails will be deleted.`);
+    const confirm = window.confirm(`Are you sure you want to delete the label "${activeLabel.name}"?\n\nThis will permanently delete the label and move all its emails back to your main Inbox.`);
     if (!confirm) return;
     
     try {
       setLoadingEmails(true);
+      
+      // Force emails back to inbox
+      let pageToken = "";
+      do {
+        const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
+        const url = `/messages?q=${encodeURIComponent(`label:${formattedName}`)}&maxResults=1000` + (pageToken ? `&pageToken=${pageToken}` : "");
+        const res = await fetchGmailAPI(url);
+        if (res?.messages?.length > 0) {
+          const ids = res.messages.map((m: any) => m.id);
+          await fetchGmailAPI('/messages/batchModify', {
+            method: 'POST',
+            body: JSON.stringify({ ids, addLabelIds: ['INBOX'], removeLabelIds: [activeLabel.id] })
+          });
+        }
+        pageToken = res?.nextPageToken;
+      } while (pageToken);
+
+      // Delete the label
       await fetchGmailAPI(`/labels/${activeLabel.id}`, { method: 'DELETE' });
       setLabels(prev => prev.filter(l => l.id !== activeLabel.id));
       setActiveLabel(null);
       setLabelEmails([]);
-    } catch (e) {
-      alert("Failed to delete label. Check console for details.");
+    } catch (e: any) {
+      alert(`Failed to delete label: ${e.message}`);
       console.error(e);
     } finally {
       setLoadingEmails(false);
     }
   };
-  
+
+  const handleCreateLabel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLabelName.trim()) return;
+    try {
+      setLoading(true);
+      const res = await fetchGmailAPI('/labels', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newLabelName.trim(),
+          labelListVisibility: 'labelShow',
+          messageListVisibility: 'show'
+        })
+      });
+      setLabels(prev => [...prev, { ...res, type: 'user', messagesTotal: 0, messagesUnread: 0 }]);
+      setNewLabelName('');
+      setIsCreating(false);
+      handleLabelClick(res);
+    } catch (e: any) {
+      alert(`Failed to create label: ${e.message}`);
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!aiSettings?.apiKey) {
        alert("AI is not configured. Please add an API key in settings.");
@@ -234,7 +281,33 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
 
         <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-full sm:w-64 border-r border-slate-100 bg-slate-50/30 overflow-y-auto flex-shrink-0">
+          <div className="w-full sm:w-64 border-r border-slate-100 bg-slate-50/30 overflow-y-auto flex-shrink-0 flex flex-col">
+            <div className="p-3 border-b border-slate-100">
+              {isCreating ? (
+                <form onSubmit={handleCreateLabel} className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="New label name..."
+                    value={newLabelName}
+                    onChange={e => setNewLabelName(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button type="submit" disabled={!newLabelName.trim()} className="flex-1 bg-indigo-600 text-white py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">Create</button>
+                    <button type="button" onClick={() => {setIsCreating(false); setNewLabelName('');}} className="flex-1 bg-slate-200 text-slate-700 py-1.5 rounded-lg text-xs font-semibold">Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setIsCreating(true)}
+                  className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm"
+                >
+                  <Tag className="w-4 h-4" />
+                  Create Label
+                </button>
+              )}
+            </div>
             {loading ? (
               <div className="p-8 flex justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
