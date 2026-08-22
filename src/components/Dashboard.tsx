@@ -52,6 +52,7 @@ export default function Dashboard({ user }: { user: any }) {
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false);
 
@@ -1084,16 +1085,34 @@ export default function Dashboard({ user }: { user: any }) {
             ) : (
                 <>
                   <div className="flex flex-col gap-4 pb-4">
-                    {groupedEmails.map((group, groupIdx) => (
-                    <div key={groupIdx} className="bg-white">
-                      {group.title && (
-                        <div className="bg-slate-100/80 px-4 py-2 border-y border-slate-200 font-semibold text-slate-800 text-sm flex items-center justify-between sticky top-[68px] z-10 backdrop-blur-sm shadow-sm">
-                          <span>{group.title}</span>
-                          <span className="text-xs bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-medium">{group.emails.length}</span>
-                        </div>
-                      )}
-                      <ul className="divide-y divide-slate-100">
-                        {group.emails.map(email => {
+                    {groupedEmails.map((group, groupIdx) => {
+                      const isCollapsed = collapsedGroups.has(group.title || "");
+                      const toggleGroup = () => {
+                        if (!group.title) return;
+                        setCollapsedGroups(prev => {
+                          const next = new Set(prev);
+                          if (next.has(group.title!)) next.delete(group.title!);
+                          else next.add(group.title!);
+                          return next;
+                        });
+                      };
+                      return (
+                      <div key={groupIdx} className="bg-white">
+                        {group.title && (
+                          <div 
+                            onClick={toggleGroup}
+                            className="bg-slate-100/80 px-4 py-2 border-y border-slate-200 font-semibold text-slate-800 text-sm flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-slate-200/80 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <ChevronDown className={cn("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
+                              <span>{group.title}</span>
+                            </div>
+                            <span className="text-xs bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-medium shadow-xs">{group.emails.length}</span>
+                          </div>
+                        )}
+                        {!isCollapsed && (
+                        <ul className="divide-y divide-slate-100">
+                          {group.emails.map(email => {
                     const isSelected = selectedIds.has(email.id);
                     const isProcessing = processingIds.has(email.id);
                     const isExpanded = expandedIds.has(email.id);
@@ -1303,9 +1322,11 @@ export default function Dashboard({ user }: { user: any }) {
                       </li>
                     );
                   })}
-                      </ul>
-                    </div>
-                  ))}
+                        </ul>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {nextPageToken && (
