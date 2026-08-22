@@ -44,6 +44,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
+  const [isLoadingEmails, setIsLoadingEmails] = useState(true);
 
   useEffect(() => {
     async function fetchStats() {
@@ -68,8 +69,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
     }
     
     async function fetchClusters() {
-      setLoadingClusters(true);
-      setPatternError(null);
+      setIsLoadingEmails(true);
       const normalizedUser = (userEmail || '').toLowerCase().trim();
 
       try {
@@ -128,6 +128,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
 
       } catch (err: any) {
         console.error("Pattern analysis error:", err);
+      } finally {
+        setIsLoadingEmails(false);
       }
     }
     
@@ -384,6 +386,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         emails={recentEmailsState} 
         userLabels={userLabels || []}
         aiSettings={aiSettings}
+        isFetching={isLoadingEmails}
         onComplete={() => {
           // Triggers a UI refresh of the health metrics if desired, or we just notify user
           onApplyQuery('in:inbox');

@@ -10,6 +10,7 @@ interface Props {
   userLabels: any[];
   onComplete: () => void;
   aiSettings?: any;
+  isFetching?: boolean;
 }
 
 interface Recommendation {
@@ -19,7 +20,7 @@ interface Recommendation {
   title?: string;
 }
 
-export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings }: Omit<Props, 'isOpen' | 'onClose'>) {
+export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, isFetching }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,15 +28,17 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings }: 
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [usedAi, setUsedAi] = useState(false);
 
-  // Trigger analysis when emails array changes (if we haven't already analyzed them)
+  // Trigger analysis when emails array changes or fetching completes
   useEffect(() => {
-    runAnalysis();
+    if (!isFetching) {
+      runAnalysis();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emails.length]);
+  }, [emails.length, isFetching]);
 
   const runAnalysis = async () => {
     if (emails.length === 0) {
-      setError("No emails to analyze in this view.");
+      setError("Your inbox is empty or no emails matched the scan. Nothing to optimize!");
       setLoading(false);
       return;
     }
@@ -105,20 +108,26 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings }: 
       if (!senderMap.has(emailAddr)) senderMap.set(emailAddr, []);
       senderMap.get(emailAddr)!.push(e);
 
-      if (subject.includes('sale') || subject.includes('% off') || subject.includes('discount')) {
+      if (subject.includes('sale') || subject.includes('% off') || subject.includes('discount') || subject.includes('promo')) {
         if (!keywordMap.has('Promotions')) keywordMap.set('Promotions', []);
         keywordMap.get('Promotions')!.push(e);
-      } else if (subject.includes('order') || subject.includes('receipt') || subject.includes('invoice') || subject.includes('shipped')) {
+      } else if (subject.includes('order') || subject.includes('receipt') || subject.includes('invoice') || subject.includes('shipped') || subject.includes('delivery')) {
         if (!keywordMap.has('Purchases')) keywordMap.set('Purchases', []);
         keywordMap.get('Purchases')!.push(e);
-      } else if (e.listUnsubscribe || subject.includes('newsletter') || subject.includes('digest')) {
+      } else if (subject.includes('statement') || subject.includes('bill') || subject.includes('payment') || subject.includes('bank') || subject.includes('subscription')) {
+        if (!keywordMap.has('Finance & Bills')) keywordMap.set('Finance & Bills', []);
+        keywordMap.get('Finance & Bills')!.push(e);
+      } else if (subject.includes('alert') || subject.includes('notification') || subject.includes('update') || subject.includes('security')) {
+        if (!keywordMap.has('Alerts & Notifications')) keywordMap.set('Alerts & Notifications', []);
+        keywordMap.get('Alerts & Notifications')!.push(e);
+      } else if (e.listUnsubscribe || subject.includes('newsletter') || subject.includes('digest') || subject.includes('weekly')) {
         if (!keywordMap.has('Newsletters')) keywordMap.set('Newsletters', []);
         keywordMap.get('Newsletters')!.push(e);
       }
     });
 
     senderMap.forEach((emails, addr) => {
-      if (emails.length > 3) {
+      if (emails.length > 2) {
         const domain = addr.split('@')[1] || addr;
         const brand = domain.split('.')[0];
         const title = brand.charAt(0).toUpperCase() + brand.slice(1);
