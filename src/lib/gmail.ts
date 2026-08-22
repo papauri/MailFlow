@@ -57,6 +57,10 @@ export async function processInChunks<T, R>(items: T[], chunkSize: number, proce
     const chunk = items.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(chunk.map(processor));
     results.push(...chunkResults);
+    // Add delay between chunks to respect 250 quota units / second limit (threads.get is 5 units)
+    if (i + chunkSize < items.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
   }
   return results;
 }
@@ -80,7 +84,7 @@ export async function searchEmails(query: string, maxResults = 500, onProgress?:
     allThreads.push(...newThreads);
     
     // Process this batch immediately
-    const chunkDetails = await processInChunks(newThreads, 15, async (thread: any) => {
+    const chunkDetails = await processInChunks(newThreads, 10, async (thread: any) => {
       try {
         const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
         if (!detail.messages || detail.messages.length === 0) return null;
@@ -136,7 +140,7 @@ export async function searchEmailsPaginated(query: string, maxResults = 50, page
   const listResult = await fetchGmailAPI(url);
   if (!listResult || !listResult.threads) return { emails: [] };
   
-  const chunkDetails = await processInChunks(listResult.threads, 15, async (thread: any) => {
+  const chunkDetails = await processInChunks(listResult.threads, 10, async (thread: any) => {
     try {
       const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
       if (!detail.messages || detail.messages.length === 0) return null;
