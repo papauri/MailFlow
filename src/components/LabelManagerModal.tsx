@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2 } from 'lucide-react';
-import { fetchGmailAPI, searchEmails } from '../lib/gmail';
+import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2, CheckCircle, ChevronDown, MoveRight } from 'lucide-react';
+import { fetchGmailAPI, searchEmails, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 
 export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: any) {
@@ -13,6 +13,12 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
   // AI State
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [analyzing, setAnalyzing] = useState(false);
+
+  // Selection & Drag/Drop
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moving, setMoving] = useState(false);
+  const [dragOverLabelId, setDragOverLabelId] = useState<string | null>(null);
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -46,9 +52,9 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     setActiveLabel(label);
     setLoadingEmails(true);
     setAiAnalysis('');
+    setSelectedIds(new Set());
+    setShowMoveMenu(false);
     try {
-      // Fix: Gmail API expects the label name in quotes if it has spaces, or formatted. 
-      // Using exact label string format works best for user labels in the "q" parameter.
       const formattedName = label.name.includes(' ') ? `"${label.name}"` : label.name;
       const emails = await searchEmails(`label:${formattedName}`, 20);
       setLabelEmails(emails);
@@ -103,6 +109,59 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     }
   };
 
+  const handleMoveToLabel = async (targetLabelId: string, emailIds: string[]) => {
+    if (!activeLabel || emailIds.length === 0) return;
+    setMoving(true);
+    try {
+      await batchModifyEmails(emailIds, [targetLabelId], [activeLabel.id]);
+      
+      // Update UI optimistically
+      setLabelEmails(prev => prev.filter(e => !emailIds.includes(e.id)));
+      setSelectedIds(new Set());
+      setShowMoveMenu(false);
+      
+      // Update counts in sidebar (approximate)
+      setLabels(prev => prev.map(l => {
+        if (l.id === activeLabel.id) {
+           return { ...l, messagesTotal: Math.max(0, (l.messagesTotal || 0) - emailIds.length) };
+        }
+        if (l.id === targetLabelId) {
+           return { ...l, messagesTotal: (l.messagesTotal || 0) + emailIds.length };
+        }
+        return l;
+      }));
+    } catch (e) {
+      alert("Failed to move emails.");
+      console.error(e);
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, emailId: string) => {
+    // If dragging an unselected item, select it first (or just drag it alone)
+    const idsToMove = selectedIds.has(emailId) ? Array.from(selectedIds) : [emailId];
+    e.dataTransfer.setData("text/plain", JSON.stringify(idsToMove));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetLabelId: string) => {
+    e.preventDefault();
+    setDragOverLabelId(null);
+    if (targetLabelId === activeLabel?.id) return;
+    
+    try {
+      const data = e.dataTransfer.getData("text/plain");
+      const idsToMove = JSON.parse(data);
+      if (Array.isArray(idsToMove) && idsToMove.length > 0) {
+        handleMoveToLabel(targetLabelId, idsToMove);
+      }
+    } catch (err) {
+      console.error("Invalid drop data");
+    }
+  };
+
+
   if (!isOpen) return null;
 
   return (
@@ -146,11 +205,16 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
                   <button
                     key={label.id}
                     onClick={() => handleLabelClick(label)}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    onDragEnter={() => setDragOverLabelId(label.id)}
+                    onDragLeave={() => setDragOverLabelId(null)}
+                    onDrop={(e) => handleDrop(e, label.id)}
                     className={cn(
-                      "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all text-left w-full",
+                      "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all text-left w-full border border-transparent",
                       activeLabel?.id === label.id 
                         ? "bg-indigo-50 text-indigo-700 font-semibold shadow-sm ring-1 ring-indigo-200/50" 
-                        : "text-slate-600 hover:bg-slate-100 font-medium"
+                        : "text-slate-600 hover:bg-slate-100 font-medium",
+                      dragOverLabelId === label.id && activeLabel?.id !== label.id && "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-300 scale-[1.02]"
                     )}
                   >
                     <div className="flex items-center gap-2 truncate">
@@ -226,20 +290,97 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
                       <p className="text-sm font-medium">No emails found in this label.</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-3">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Recent Emails</h4>
-                      {labelEmails.map((email: any) => (
-                        <div key={email.id} className="p-3 border border-slate-100 rounded-xl hover:border-slate-200 hover:bg-slate-50 transition-colors group cursor-default">
-                          <div className="flex items-center justify-between gap-4 mb-1">
-                            <span className="font-semibold text-slate-800 text-sm truncate">{email.sender.replace(/<.*>/, "").trim() || email.sender}</span>
-                            <span className="text-xs text-slate-400 whitespace-nowrap">
-                              {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </span>
+                    <div className="flex flex-col gap-3 relative">
+                      <div className="flex items-center justify-between mb-1 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-sm cursor-pointer", labelEmails.length > 0 && selectedIds.size === labelEmails.length ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white hover:border-slate-400")}
+                            onClick={() => {
+                              if (selectedIds.size === labelEmails.length) {
+                                setSelectedIds(new Set());
+                              } else {
+                                setSelectedIds(new Set(labelEmails.map(e => e.id)));
+                              }
+                            }}
+                          >
+                            {selectedIds.size === labelEmails.length && labelEmails.length > 0 && <CheckCircle className="w-3 h-3 text-white" />}
                           </div>
-                          <p className="text-sm font-medium text-slate-700 truncate">{email.subject}</p>
-                          <p className="text-xs text-slate-500 truncate mt-1">{email.snippet}</p>
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Emails</h4>
+                          {selectedIds.size > 0 && (
+                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+                              {selectedIds.size} selected
+                            </span>
+                          )}
                         </div>
-                      ))}
+                        {selectedIds.size > 0 && (
+                          <div className="relative">
+                            <button 
+                              onClick={() => setShowMoveMenu(!showMoveMenu)}
+                              className="flex items-center gap-1.5 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg shadow-sm transition-all"
+                            >
+                              <MoveRight className="w-3.5 h-3.5" />
+                              Move to...
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            {showMoveMenu && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setShowMoveMenu(false)} />
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20 max-h-64 overflow-y-auto">
+                                  {labels.filter(l => l.id !== activeLabel.id).map(l => (
+                                    <button
+                                      key={l.id}
+                                      onClick={() => handleMoveToLabel(l.id, Array.from(selectedIds))}
+                                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors flex items-center gap-2 truncate"
+                                    >
+                                      <Folder className="w-4 h-4 shrink-0 opacity-50" />
+                                      <span className="truncate">{l.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {labelEmails.map((email: any) => {
+                        const isSelected = selectedIds.has(email.id);
+                        return (
+                          <div 
+                            key={email.id} 
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, email.id)}
+                            onClick={() => {
+                              setSelectedIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(email.id)) next.delete(email.id);
+                                else next.add(email.id);
+                                return next;
+                              });
+                            }}
+                            className={cn(
+                              "p-3 border rounded-xl transition-colors group cursor-pointer flex gap-3",
+                              isSelected ? "bg-slate-50 border-slate-300 shadow-sm" : "border-slate-100 hover:border-slate-200 hover:bg-slate-50",
+                              moving ? "opacity-50 pointer-events-none" : ""
+                            )}
+                          >
+                            <div className="pt-0.5 shrink-0">
+                              <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", isSelected ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}>
+                                {isSelected && <CheckCircle className="w-3 h-3 text-white" />}
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-4 mb-1">
+                                <span className="font-semibold text-slate-800 text-sm truncate">{email.sender.replace(/<.*>/, "").trim() || email.sender}</span>
+                                <span className="text-xs text-slate-400 whitespace-nowrap">
+                                  {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-slate-700 truncate">{email.subject}</p>
+                              <p className="text-xs text-slate-500 truncate mt-1">{email.snippet}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
