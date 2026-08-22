@@ -19,6 +19,7 @@ interface Recommendation {
   suggestedLabel: string;
   reason: string;
   title?: string;
+  deselectedEmailIds?: string[];
 }
 
 export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, isFetching, onReload }: Omit<Props, 'isOpen' | 'onClose'>) {
@@ -168,8 +169,14 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
   const handleAction = async (idx: number, action: 'trash' | 'archive' | 'move', rec: Recommendation) => {
     setProcessingId(idx);
     try {
+      const activeEmailIds = rec.emailIds.filter(id => !(rec.deselectedEmailIds || []).includes(id));
+      if (activeEmailIds.length === 0) {
+        setProcessingId(null);
+        return;
+      }
+      
       const allMessageIds: string[] = [];
-      rec.emailIds.forEach(tid => {
+      activeEmailIds.forEach(tid => {
         const email = emails.find(e => e.id === tid);
         if (email && email.messageIds) {
           allMessageIds.push(...email.messageIds);
@@ -210,6 +217,16 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
       else next.add(idx);
       return next;
     });
+  };
+
+  const toggleEmailSelection = (recIdx: number, emailId: string) => {
+    setRecommendations(prev => prev.map((rec, i) => {
+      if (i !== recIdx) return rec;
+      const deselects = new Set(rec.deselectedEmailIds || []);
+      if (deselects.has(emailId)) deselects.delete(emailId);
+      else deselects.add(emailId);
+      return { ...rec, deselectedEmailIds: Array.from(deselects) };
+    }));
   };
 
   return (
@@ -266,6 +283,7 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
             {recommendations.map((rec, idx) => {
               const isCompleted = completedIds.has(idx);
               const isProcessing = processingId === idx;
+              const activeEmailCount = rec.emailIds.length - (rec.deselectedEmailIds?.length || 0);
               
               return (
                 <div key={idx} className={cn("bg-white border rounded-xl p-4 sm:p-5 transition-all shadow-sm flex flex-col h-full", isCompleted ? "border-emerald-200 bg-emerald-50/30 opacity-75" : "border-slate-200 hover:shadow-md")}>
@@ -274,7 +292,7 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                       <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base">
                         {rec.title || rec.suggestedLabel}
                         <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full whitespace-nowrap">
-                          {rec.emailIds.length} emails
+                          {activeEmailCount} emails
                         </span>
                       </h4>
                       <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
@@ -298,19 +316,30 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                         <div className="bg-slate-50 rounded-lg p-2.5 mb-4 max-h-[160px] overflow-y-auto border border-slate-100 flex flex-col gap-1.5 custom-scrollbar">
                           {emails
                             .filter(e => rec.emailIds.includes(e.id))
-                            .map((e, i) => (
-                              <div key={i} className="text-xs flex flex-col gap-0.5 border-b border-slate-200/60 pb-1.5 last:border-0 last:pb-0">
-                                <span className="font-semibold text-slate-700 truncate">{e.sender}</span>
-                                <span className="text-slate-500 truncate">{e.subject}</span>
-                              </div>
-                            ))}
+                            .map((e, i) => {
+                              const isSelected = !(rec.deselectedEmailIds || []).includes(e.id);
+                              return (
+                                <div key={i} className="text-xs flex items-start gap-2 border-b border-slate-200/60 pb-1.5 last:border-0 last:pb-0 cursor-pointer hover:bg-slate-100/50 p-1 rounded transition-colors" onClick={() => toggleEmailSelection(idx, e.id)}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isSelected}
+                                    readOnly
+                                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 shrink-0 cursor-pointer"
+                                  />
+                                  <div className="flex flex-col gap-0.5 min-w-0">
+                                    <span className={cn("font-semibold truncate transition-colors", isSelected ? "text-slate-700" : "text-slate-400 line-through")}>{e.sender}</span>
+                                    <span className={cn("truncate transition-colors", isSelected ? "text-slate-500" : "text-slate-400 line-through")}>{e.subject}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                         </div>
                       )}
 
                       <div className="flex flex-wrap gap-2 mt-auto pt-4 border-t border-slate-100">
                       <button
                         onClick={() => handleAction(idx, 'move', rec)}
-                        disabled={isProcessing}
+                        disabled={isProcessing || activeEmailCount === 0}
                         className="flex-1 flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
                       >
                         {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5" />}
@@ -318,7 +347,7 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                       </button>
                       <button
                         onClick={() => handleAction(idx, 'archive', rec)}
-                        disabled={isProcessing}
+                        disabled={isProcessing || activeEmailCount === 0}
                         className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
                       >
                         <Archive className="w-3.5 h-3.5" />
@@ -326,7 +355,7 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                       </button>
                       <button
                         onClick={() => handleAction(idx, 'trash', rec)}
-                        disabled={isProcessing}
+                        disabled={isProcessing || activeEmailCount === 0}
                         className="flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
