@@ -642,6 +642,18 @@ export default function Dashboard({ user }: { user: any }) {
       return sortDesc ? -cmp : cmp;
     });
   }, [emails, sortBy, sortDesc]);
+  
+  const [localKeyword, setLocalKeyword] = useState('');
+  
+  const filteredEmails = useMemo(() => {
+    if (!localKeyword.trim()) return sortedEmails;
+    const lower = localKeyword.toLowerCase();
+    return sortedEmails.filter(e => 
+      (e.subject && e.subject.toLowerCase().includes(lower)) ||
+      (e.sender && e.sender.toLowerCase().includes(lower)) ||
+      (e.snippet && e.snippet.toLowerCase().includes(lower))
+    );
+  }, [sortedEmails, localKeyword]);
 
   const showSize = sortBy === "size" || 
     query.toLowerCase().includes("larger:") || 
@@ -652,16 +664,16 @@ export default function Dashboard({ user }: { user: any }) {
 
   const groupedEmails = useMemo(() => {
     if (!onlyUnread) {
-      return [{ title: null, emails: sortedEmails }];
+      return [{ title: null, emails: filteredEmails }];
     }
-    const groups = {};
+    const groups: any = {};
     
-    const getPrimaryFolder = (email) => {
+    const getPrimaryFolder = (email: any) => {
       const labels = email.labelIds || [];
-      const customLabel = labels.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT' && l !== 'INBOX' && l !== 'SENT' && l !== 'SPAM' && l !== 'TRASH');
+      const customLabel = labels.find((l: string) => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT' && l !== 'INBOX' && l !== 'SENT' && l !== 'SPAM' && l !== 'TRASH');
       
       if (customLabel) {
-        const userLabel = userLabels.find(ul => ul.id === customLabel);
+        const userLabel = userLabels.find((ul: any) => ul.id === customLabel);
         return userLabel ? userLabel.name : customLabel.replace('Label_', 'Folder ');
       }
       
@@ -675,7 +687,7 @@ export default function Dashboard({ user }: { user: any }) {
       return 'Primary Inbox';
     };
 
-    sortedEmails.forEach(email => {
+    filteredEmails.forEach((email: any) => {
       const folder = getPrimaryFolder(email);
       if (!groups[folder]) groups[folder] = [];
       groups[folder].push(email);
@@ -683,13 +695,13 @@ export default function Dashboard({ user }: { user: any }) {
 
     // Sort groups alphabetically, but keep Primary Inbox first
     return Object.entries(groups)
-      .map(([title, emails]) => ({ title, emails }))
+      .map(([title, emails]) => ({ title, emails: emails as any[] }))
       .sort((a, b) => {
         if (a.title === 'Primary Inbox') return -1;
         if (b.title === 'Primary Inbox') return 1;
         return a.title.localeCompare(b.title);
       });
-  }, [sortedEmails, onlyUnread, userLabels]);
+  }, [filteredEmails, onlyUnread, userLabels]);
 
   return (
     <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
@@ -956,8 +968,18 @@ export default function Dashboard({ user }: { user: any }) {
                   </span>
                 </div>
 
-                {/* Mobile-only sort selector */}
-                <div className="flex sm:hidden items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+                {/* Mobile-only sort & filter */}
+                <div className="flex sm:hidden items-center bg-slate-100 rounded-lg p-0.5 shrink-0 flex-1">
+                   <div className="relative border-r border-slate-200 mr-1 pr-1 flex-1">
+                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                     <input
+                       type="text"
+                       placeholder="Filter..."
+                       value={localKeyword}
+                       onChange={e => setLocalKeyword(e.target.value)}
+                       className="bg-transparent text-xs font-medium text-slate-700 outline-none pl-6 pr-1 py-1 w-full"
+                     />
+                   </div>
                    <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-xs font-medium text-slate-700 outline-none px-1.5 py-1 cursor-pointer">
                      <option value="date">Date</option>
                      <option value="size">Size</option>
@@ -970,7 +992,17 @@ export default function Dashboard({ user }: { user: any }) {
               </div>
               
               <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
+                 <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
+                   <div className="relative border-r border-slate-200 mr-1 pr-1">
+                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                     <input
+                       type="text"
+                       placeholder="Filter view..."
+                       value={localKeyword}
+                       onChange={e => setLocalKeyword(e.target.value)}
+                       className="bg-transparent text-sm font-medium text-slate-700 outline-none pl-7 pr-2 py-0.5 w-32 focus:w-48 transition-all"
+                     />
+                   </div>
                    <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-sm font-medium text-slate-700 outline-none px-2 cursor-pointer">
                      <option value="date">Date</option>
                      <option value="size">Size</option>

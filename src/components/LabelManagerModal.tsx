@@ -211,16 +211,39 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
       setSelectedIds(new Set());
       setShowMoveMenu(false);
       
+      // Calculate how many of the moved emails were unread
+      const unreadMovedCount = emailIds.filter(id => {
+        const e = labelEmails.find(em => em.id === id);
+        return e && e.labelIds && e.labelIds.includes('UNREAD');
+      }).length;
+
       // Update counts in sidebar (approximate)
       setLabels(prev => prev.map(l => {
         if (l.id === activeLabel.id) {
-           return { ...l, messagesTotal: Math.max(0, (l.messagesTotal || 0) - emailIds.length) };
+           return { 
+             ...l, 
+             messagesTotal: Math.max(0, (l.messagesTotal || 0) - emailIds.length),
+             messagesUnread: Math.max(0, (l.messagesUnread || 0) - unreadMovedCount)
+           };
         }
         if (l.id === targetLabelId) {
-           return { ...l, messagesTotal: (l.messagesTotal || 0) + emailIds.length };
+           return { 
+             ...l, 
+             messagesTotal: (l.messagesTotal || 0) + emailIds.length,
+             messagesUnread: (l.messagesUnread || 0) + unreadMovedCount
+           };
         }
         return l;
       }));
+      
+      setActiveLabel((prev: any) => {
+        if (!prev) return prev;
+        return {
+           ...prev,
+           messagesTotal: Math.max(0, (prev.messagesTotal || 0) - emailIds.length),
+           messagesUnread: Math.max(0, (prev.messagesUnread || 0) - unreadMovedCount)
+        };
+      });
     } catch (e) {
       alert("Failed to move emails.");
       console.error(e);
