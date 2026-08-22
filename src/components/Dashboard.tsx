@@ -121,6 +121,7 @@ export default function Dashboard({ user }: { user: any }) {
             if (aiSettings.provider === 'deepseek') setDynamicModels(['deepseek-chat', 'deepseek-reasoner']);
             if (aiSettings.provider === 'mistral') setDynamicModels(['mistral-small-latest', 'mistral-large-latest']);
             if (aiSettings.provider === 'zhipu') setDynamicModels(['glm-4-flash', 'glm-4-plus']);
+            if (aiSettings.provider === 'grok') setDynamicModels(['grok-2-latest', 'grok-beta']);
           }
         }
       } catch (e) {
@@ -1606,6 +1607,7 @@ export default function Dashboard({ user }: { user: any }) {
                        if (p === 'deepseek') saveSettings({...aiSettings, model: 'deepseek-chat'});
                        if (p === 'zhipu') saveSettings({...aiSettings, model: 'glm-4-flash'});
                        if (p === 'mistral') saveSettings({...aiSettings, model: 'mistral-small-latest'});
+                       if (p === 'grok') saveSettings({...aiSettings, model: 'grok-2-latest'});
                     }}
                     className="text-[11px] sm:text-xs font-semibold text-slate-600 bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded transition-colors self-start sm:self-auto"
                   >
@@ -1614,7 +1616,7 @@ export default function Dashboard({ user }: { user: any }) {
                 </div>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mb-3 sm:mb-4">
-                  {['gemini', 'openai', 'anthropic', 'groq', 'deepseek', 'zhipu', 'mistral'].map(p => (
+                  {['gemini', 'openai', 'anthropic', 'groq', 'deepseek', 'zhipu', 'mistral', 'grok'].map(p => (
                     <button
                       key={p}
                       onClick={() => saveSettings({...aiSettings, provider: p, model: (
@@ -1624,11 +1626,12 @@ export default function Dashboard({ user }: { user: any }) {
     p === 'groq' ? 'llama-3.1-8b-instant' :
     p === 'deepseek' ? 'deepseek-chat' :
     p === 'zhipu' ? 'glm-4-flash' :
-    p === 'mistral' ? 'mistral-small-latest' : aiSettings.model
+    p === 'mistral' ? 'mistral-small-latest' :
+    p === 'grok' ? 'grok-2-latest' : aiSettings.model
   )})}
                       className={cn("px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border text-xs sm:text-sm font-medium capitalize text-center truncate", aiSettings.provider === p ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')}
                     >
-                      {p === 'zhipu' ? 'Zhipu (GLM)' : p}
+                      {p === 'zhipu' ? 'Zhipu (GLM)' : p === 'openai' ? 'ChatGPT' : p === 'grok' ? 'Grok (xAI)' : p}
                     </button>
                   ))}
                 </div>
@@ -1660,13 +1663,14 @@ export default function Dashboard({ user }: { user: any }) {
                       aiSettings.provider === 'groq' ? 'https://console.groq.com/keys' : 
                       aiSettings.provider === 'zhipu' ? 'https://open.bigmodel.cn/usercenter/apikeys' :
                       aiSettings.provider === 'mistral' ? 'https://console.mistral.ai/api-keys/' :
+                      aiSettings.provider === 'grok' ? 'https://console.x.ai/team/api-keys' :
                       'https://platform.deepseek.com/api_keys'
                     }
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="inline-block bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-medium px-3 py-2 rounded-lg transition-colors text-xs text-center shadow-sm"
                   >
-                    Get {aiSettings.provider === 'zhipu' ? 'Zhipu (GLM)' : aiSettings.provider} API Key &rarr;
+                    Get {aiSettings.provider === 'zhipu' ? 'Zhipu (GLM)' : aiSettings.provider === 'openai' ? 'ChatGPT' : aiSettings.provider === 'grok' ? 'Grok (xAI)' : aiSettings.provider} API Key &rarr;
                   </a>
                 </div>
               </div>

@@ -23,7 +23,7 @@ async function generateAIContent(prompt, schema, settings) {
       }
     });
     return JSON.parse(response.text);
-  } else if (['deepseek', 'openai', 'groq', 'anthropic', 'zhipu', 'mistral'].includes(provider)) {
+  } else if (['deepseek', 'openai', 'groq', 'anthropic', 'zhipu', 'mistral', 'grok'].includes(provider)) {
     const enrichedPrompt = prompt + `\n\nIMPORTANT: You MUST respond in pure JSON format matching this exact schema: \n${JSON.stringify(schema, null, 2)}`;
     
     if (provider === 'anthropic') {
@@ -50,6 +50,7 @@ async function generateAIContent(prompt, schema, settings) {
         : provider === 'groq' ? 'https://api.groq.com/openai/v1' 
         : provider === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4'
         : provider === 'mistral' ? 'https://api.mistral.ai/v1'
+        : provider === 'grok' ? 'https://api.x.ai/v1'
         : 'https://api.openai.com/v1';
       const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -362,8 +363,23 @@ ${subsText}
           const data = await fetchRes.json();
           if (data.data) models = data.data.map(m => m.id);
         }
+      } else if (provider === 'grok') {
+        const fetchRes = await fetch('https://api.x.ai/v1/models', { headers: { Authorization: `Bearer ${apiKey}` }});
+        if (fetchRes.ok) {
+          const data = await fetchRes.json();
+          if (data.data) models = data.data.map(m => m.id);
+        }
       } else if (provider === 'zhipu') {
-         models = ['glm-4', 'glm-4-flash', 'glm-4-plus'];
+        try {
+          const fetchRes = await fetch('https://open.bigmodel.cn/api/paas/v4/models', { headers: { Authorization: `Bearer ${apiKey}` }});
+          if (fetchRes.ok) {
+            const data = await fetchRes.json();
+            if (data.data) models = data.data.map(m => m.id);
+          }
+        } catch(e) {
+          // ignore
+        }
+        if (models.length === 0) models = ['glm-4', 'glm-4-flash', 'glm-4-plus'];
       }
       
       // Sort models descending or alphabetically
