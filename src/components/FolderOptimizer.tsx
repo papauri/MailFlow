@@ -29,6 +29,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [usedAi, setUsedAi] = useState(false);
   const [expandedRecs, setExpandedRecs] = useState<Set<number>>(new Set());
+  const [actionedEmailIds, setActionedEmailIds] = useState<Set<string>>(new Set());
 
   // Trigger analysis when emails array changes or fetching completes
   useEffect(() => {
@@ -51,7 +52,14 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
     setCompletedIds(new Set());
     setExpandedRecs(new Set());
     
-    const sample = emails.slice(0, 150);
+    const freshEmails = emails.filter(e => !actionedEmailIds.has(e.id));
+    if (freshEmails.length === 0 && emails.length > 0) {
+      setError("All available outliers have been optimized! You're caught up.");
+      setLoading(false);
+      return;
+    }
+    
+    const sample = freshEmails.slice(0, 150);
 
     try {
       const hasAiKey = !!(aiSettings?.apiKey || sessionStorage.getItem('ai_quota_ok') !== 'false');
@@ -202,6 +210,11 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       }
       
       setCompletedIds(prev => new Set(prev).add(idx));
+      setActionedEmailIds(prev => {
+        const next = new Set(prev);
+        activeEmailIds.forEach(id => next.add(id));
+        return next;
+      });
     } catch (e) {
       console.error(e);
       alert("Failed to apply action.");
