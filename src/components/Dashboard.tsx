@@ -763,9 +763,9 @@ export default function Dashboard({ user }: { user: any }) {
             <HelpCircle className="w-4 h-4 shrink-0" />
           </button>
           <button 
-            onClick={() => handleSearch(undefined, undefined, undefined, true)}
+            onClick={() => window.location.reload()}
             className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-            title="Refresh Inbox"
+            title="Refresh Page"
           >
             <RefreshCw className={cn("w-4 h-4 shrink-0", isSearching && "animate-spin")} />
           </button>
