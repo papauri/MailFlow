@@ -237,6 +237,36 @@ export async function emptyAllTrash(onProgress?: (deletedCount: number) => void)
   return totalDeleted;
 }
 
+export async function markAllAsReadByQuery(query: string, onProgress?: (markedCount: number) => void) {
+  let pageToken = "";
+  let totalMarked = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let url = `/messages?q=${encodeURIComponent(query + ' is:unread')}&maxResults=1000`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    
+    const listResult = await fetchGmailAPI(url);
+    if (!listResult || !listResult.messages || listResult.messages.length === 0) {
+      break;
+    }
+    
+    const ids = listResult.messages.map((m: any) => m.id);
+    await batchMarkAsRead(ids);
+    
+    totalMarked += ids.length;
+    if (onProgress) {
+      onProgress(totalMarked);
+    }
+    
+    pageToken = listResult.nextPageToken;
+    if (!pageToken) {
+      hasMore = false;
+    }
+  }
+  return totalMarked;
+}
+
 export async function countEmails(query: string): Promise<number | string> {
   try {
     let total = 0;

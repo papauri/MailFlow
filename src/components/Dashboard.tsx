@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
 import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity } from "lucide-react";
-import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash } from "../lib/gmail";
+import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
@@ -472,6 +472,23 @@ export default function Dashboard({ user }: { user: any }) {
     }
   };
 
+  const executeMarkAllRead = async () => {
+    if (emails.length === 0) return;
+    const confirm = window.confirm("Are you sure you want to mark ALL emails matching this view as read?");
+    if (!confirm) return;
+
+    setActionLoading("read");
+    try {
+      await markAllAsReadByQuery(lastExecutedQuery);
+      handleSearch(); // Refresh list to reflect changes
+    } catch (e) {
+      console.error(e);
+      alert("Failed to mark all as read");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleEmptyTrash = async () => {
     setShowEmptyTrashConfirm(true);
   };
@@ -515,8 +532,13 @@ export default function Dashboard({ user }: { user: any }) {
       }
     });
     
+    const isUnreadView = onlyUnread || 
+      query.toLowerCase().includes('is:unread') || 
+      (parsedQuery?.query || '').toLowerCase().includes('is:unread') ||
+      lastExecutedQuery.toLowerCase().includes('is:unread');
+
     // Optimistically update the UI instantly
-    if (action !== "read" || (action === "read" && onlyUnread)) {
+    if (action !== "read" || (action === "read" && isUnreadView)) {
       setEmails(prev => prev.filter(e => !ids.includes(e.id)));
       setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
     } else {
@@ -584,8 +606,13 @@ export default function Dashboard({ user }: { user: any }) {
     setProcessingIds(prev => new Set([...prev, id]));
     setActionLoading(action);
 
+    const isUnreadView = onlyUnread || 
+      query.toLowerCase().includes('is:unread') || 
+      (parsedQuery?.query || '').toLowerCase().includes('is:unread') ||
+      lastExecutedQuery.toLowerCase().includes('is:unread');
+
     // Optimistically update the UI instantly
-    if (action !== "read" || (action === "read" && onlyUnread)) {
+    if (action !== "read" || (action === "read" && isUnreadView)) {
       setEmails(prev => prev.filter(email => email.id !== id));
       setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - 1) : prev);
       setSelectedIds(prev => {
@@ -1037,7 +1064,11 @@ export default function Dashboard({ user }: { user: any }) {
                   disabled={selectedIds.size === 0 || actionLoading !== null} 
                 />
                 
-                <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center" />
+                {selectedIds.size > 0 ? (
+                   <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100" />
+                ) : (
+                   <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark All Read" onClick={executeMarkAllRead} disabled={emails.length === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center bg-slate-100 text-slate-700 hover:bg-slate-200" title="Mark all unread emails in this view as read" />
+                )}
               </div>
             </div>
 
