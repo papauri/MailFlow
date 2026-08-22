@@ -4,7 +4,6 @@ import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails,
 import { InboxHealth } from "./InboxHealth";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
-import { FolderOptimizerModal } from "./FolderOptimizerModal";
 import { WalkthroughTip } from "./WalkthroughTip";
 import { HealthScoreWidget } from "./HealthScoreWidget";
 import { cn } from "../lib/utils";
