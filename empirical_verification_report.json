@@ -1,0 +1,1042 @@
+{
+  "verdict": "APPROVE",
+  "timestamp": "2026-08-21T21:26:13.492Z",
+  "results": [
+    {
+      "viewport": {
+        "name": "iPhone SE 1st Gen (320px)",
+        "width": 320,
+        "height": 568
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 320,
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "bodyScrollWidth": 320,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 288,
+          "btnWidth": 222,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "bodyScrollWidth": 320,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 320,
+            "healthBtnTextVisible": false,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 175.828125,
+            "btnWidth": 74.171875
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 84.65625,
+            "archiveWidth": 84.671875,
+            "readWidth": 84.671875
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 80.53125
+            },
+            {
+              "text": "GitHub",
+              "width": 45.390625
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 70.65625
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 84.65625,
+            "height": 26
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 208,
+          "menuLeft": 31,
+          "menuRight": 239,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 296,
+          "modalHeight": 482.796875,
+          "modalTop": 42.59375,
+          "modalBottom": 525.390625,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 2,
+          "autoSelectBtnWidth": 192.515625,
+          "autoSelectBtnHeight": 23.703125
+        },
+        "inboxHealth": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "bodyScrollWidth": 320,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": true,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 183.28125,
+              "height": 31.328125
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 184.125,
+              "height": 31.328125
+            },
+            {
+              "text": "With Attachments",
+              "width": 171.859375,
+              "height": 31.328125
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 174.15625,
+              "height": 31.328125
+            }
+          ],
+          "topSendersWidth": 42,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 288
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 288
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 288
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 288
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 320,
+          "scrollWidth": 320,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 144.296875,
+          "senderRight": 199.296875,
+          "subjectTextWidth": 236,
+          "subjectRight": 291,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "Galaxy S9 / Android Small (360px)",
+        "width": 360,
+        "height": 640
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 360,
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "bodyScrollWidth": 360,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 328,
+          "btnWidth": 262,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "bodyScrollWidth": 360,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 360,
+            "healthBtnTextVisible": false,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 215.828125,
+            "btnWidth": 74.171875
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 98,
+            "archiveWidth": 98,
+            "readWidth": 98
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 80.53125
+            },
+            {
+              "text": "GitHub",
+              "width": 45.390625
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 70.65625
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 98,
+            "height": 26
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 208,
+          "menuLeft": 31,
+          "menuRight": 239,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 336,
+          "modalHeight": 544,
+          "modalTop": 48,
+          "modalBottom": 592,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 2,
+          "autoSelectBtnWidth": 192.515625,
+          "autoSelectBtnHeight": 23.703125
+        },
+        "inboxHealth": {
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "bodyScrollWidth": 360,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": true,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 183.28125,
+              "height": 31.328125
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 184.125,
+              "height": 31.328125
+            },
+            {
+              "text": "With Attachments",
+              "width": 171.859375,
+              "height": 31.328125
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 174.15625,
+              "height": 31.328125
+            }
+          ],
+          "topSendersWidth": 42,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 328
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 328
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 328
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 328
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 360,
+          "scrollWidth": 360,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 184.296875,
+          "senderRight": 239.296875,
+          "subjectTextWidth": 276,
+          "subjectRight": 331,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "iPhone SE 2nd / iPhone 8 (375px)",
+        "width": 375,
+        "height": 667
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 375,
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "bodyScrollWidth": 375,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 343,
+          "btnWidth": 277,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "bodyScrollWidth": 375,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 375,
+            "healthBtnTextVisible": false,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 230.828125,
+            "btnWidth": 74.171875
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 103,
+            "archiveWidth": 103,
+            "readWidth": 103
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 80.53125
+            },
+            {
+              "text": "GitHub",
+              "width": 45.390625
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 70.65625
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 103,
+            "height": 26
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 208,
+          "menuLeft": 31,
+          "menuRight": 239,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 351,
+          "modalHeight": 566.9375,
+          "modalTop": 50.03125,
+          "modalBottom": 616.96875,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 2,
+          "autoSelectBtnWidth": 192.515625,
+          "autoSelectBtnHeight": 23.703125
+        },
+        "inboxHealth": {
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "bodyScrollWidth": 375,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": true,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 183.28125,
+              "height": 31.328125
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 184.125,
+              "height": 31.328125
+            },
+            {
+              "text": "With Attachments",
+              "width": 171.859375,
+              "height": 31.328125
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 174.15625,
+              "height": 31.328125
+            }
+          ],
+          "topSendersWidth": 42,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 343
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 343
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 343
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 343
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 199.296875,
+          "senderRight": 254.296875,
+          "subjectTextWidth": 291,
+          "subjectRight": 346,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "iPhone 11 / XR / Plus (414px)",
+        "width": 414,
+        "height": 896
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 414,
+          "clientWidth": 414,
+          "scrollWidth": 414,
+          "bodyScrollWidth": 414,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 382,
+          "btnWidth": 316,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 414,
+          "scrollWidth": 414,
+          "bodyScrollWidth": 414,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 414,
+            "healthBtnTextVisible": false,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 269.828125,
+            "btnWidth": 74.171875
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 116,
+            "archiveWidth": 116,
+            "readWidth": 116
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 80.53125
+            },
+            {
+              "text": "GitHub",
+              "width": 45.390625
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 70.65625
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 116,
+            "height": 26
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 208,
+          "menuLeft": 31,
+          "menuRight": 239,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 390,
+          "modalHeight": 592.765625,
+          "modalTop": 151.609375,
+          "modalBottom": 744.375,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 2,
+          "autoSelectBtnWidth": 192.515625,
+          "autoSelectBtnHeight": 23.703125
+        },
+        "inboxHealth": {
+          "clientWidth": 414,
+          "scrollWidth": 414,
+          "bodyScrollWidth": 414,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": true,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 183.28125,
+              "height": 31.328125
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 184.125,
+              "height": 31.328125
+            },
+            {
+              "text": "With Attachments",
+              "width": 171.859375,
+              "height": 31.328125
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 174.15625,
+              "height": 31.328125
+            }
+          ],
+          "topSendersWidth": 42,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 382
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 382
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 382
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 382
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 414,
+          "scrollWidth": 414,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 238.296875,
+          "senderRight": 293.296875,
+          "subjectTextWidth": 330,
+          "subjectRight": 385,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "Phablet / Wide Mobile (480px)",
+        "width": 480,
+        "height": 854
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 480,
+          "clientWidth": 480,
+          "scrollWidth": 480,
+          "bodyScrollWidth": 480,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 448,
+          "btnWidth": 382,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 480,
+          "scrollWidth": 480,
+          "bodyScrollWidth": 480,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 480,
+            "healthBtnTextVisible": false,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 335.828125,
+            "btnWidth": 74.171875
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 138,
+            "archiveWidth": 138,
+            "readWidth": 138
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 80.53125
+            },
+            {
+              "text": "GitHub",
+              "width": 45.390625
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 70.65625
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 138,
+            "height": 26
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 208,
+          "menuLeft": 31,
+          "menuRight": 239,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 456,
+          "modalHeight": 592.765625,
+          "modalTop": 130.609375,
+          "modalBottom": 723.375,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 2,
+          "autoSelectBtnWidth": 192.515625,
+          "autoSelectBtnHeight": 23.703125
+        },
+        "inboxHealth": {
+          "clientWidth": 480,
+          "scrollWidth": 480,
+          "bodyScrollWidth": 480,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": true,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 183.28125,
+              "height": 31.328125
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 184.125,
+              "height": 31.328125
+            },
+            {
+              "text": "With Attachments",
+              "width": 171.859375,
+              "height": 31.328125
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 174.15625,
+              "height": 31.328125
+            }
+          ],
+          "topSendersWidth": 42,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 448
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 448
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 448
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 448
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 480,
+          "scrollWidth": 480,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 304.296875,
+          "senderRight": 359.296875,
+          "subjectTextWidth": 396,
+          "subjectRight": 451,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "Mobile Landscape / Small Tablet sm (640px)",
+        "width": 640,
+        "height": 960
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 640,
+          "clientWidth": 640,
+          "scrollWidth": 640,
+          "bodyScrollWidth": 640,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 448,
+          "btnWidth": 382,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 640,
+          "scrollWidth": 640,
+          "bodyScrollWidth": 640,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 640,
+            "healthBtnTextVisible": true,
+            "userEmailVisible": false
+          },
+          "search": {
+            "inputWidth": 430,
+            "btnWidth": 120
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 81.265625,
+            "archiveWidth": 95.28125,
+            "readWidth": 116.15625
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 92.03125
+            },
+            {
+              "text": "GitHub",
+              "width": 51.859375
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 80.75
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 81.265625,
+            "height": 32
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 224,
+          "menuLeft": 41,
+          "menuRight": 265,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 512,
+          "modalHeight": 594,
+          "modalTop": 183,
+          "modalBottom": 777,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 4,
+          "autoSelectBtnWidth": 208.5625,
+          "autoSelectBtnHeight": 24
+        },
+        "inboxHealth": {
+          "clientWidth": 640,
+          "scrollWidth": 640,
+          "bodyScrollWidth": 640,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": false,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 216.671875,
+              "height": 38
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 217.671875,
+              "height": 38
+            },
+            {
+              "text": "With Attachments",
+              "width": 203.34375,
+              "height": 38
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 206.03125,
+              "height": 38
+            }
+          ],
+          "topSendersWidth": 54,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 608
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 608
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 608
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 608
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 640,
+          "scrollWidth": 640,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 423.046875,
+          "senderRight": 492.046875,
+          "subjectTextWidth": 538,
+          "subjectRight": 607,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    },
+    {
+      "viewport": {
+        "name": "iPad Portrait md (768px)",
+        "width": 768,
+        "height": 1024
+      },
+      "tests": {
+        "loginScreen": {
+          "viewportWidth": 768,
+          "clientWidth": 768,
+          "scrollWidth": 768,
+          "bodyScrollWidth": 768,
+          "hasHorizontalScroll": false,
+          "cardFits": true,
+          "cardWidth": 448,
+          "btnWidth": 382,
+          "btnHeight": 50
+        },
+        "dashboard": {
+          "clientWidth": 768,
+          "scrollWidth": 768,
+          "bodyScrollWidth": 768,
+          "hasHorizontalScroll": false,
+          "overflowCount": 0,
+          "overflows": [],
+          "header": {
+            "width": 768,
+            "healthBtnTextVisible": true,
+            "userEmailVisible": true
+          },
+          "search": {
+            "inputWidth": 542,
+            "btnWidth": 120
+          },
+          "toolbar": {
+            "hasMobileSort": true,
+            "trashWidth": 81.265625,
+            "archiveWidth": 95.28125,
+            "readWidth": 116.15625
+          },
+          "emailCount": 8,
+          "senders": [
+            {
+              "text": "Stripe Billing",
+              "width": 92.03125
+            },
+            {
+              "text": "GitHub",
+              "width": 51.859375
+            },
+            {
+              "text": "Alex Rivera",
+              "width": 80.75
+            }
+          ]
+        },
+        "bulkSelection": {
+          "countText": "8 selected",
+          "trashEnabled": true,
+          "trashTapArea": {
+            "width": 81.265625,
+            "height": 32
+          }
+        },
+        "folderMenu": {
+          "menuOpen": true,
+          "menuWidth": 224,
+          "menuLeft": 49,
+          "menuRight": 273,
+          "itemsCount": 13,
+          "fitsWithinViewport": true
+        },
+        "byokModal": {
+          "modalVisible": true,
+          "modalWidth": 512,
+          "modalHeight": 594,
+          "modalTop": 215,
+          "modalBottom": 809,
+          "fitsViewportWidth": true,
+          "fitsViewportHeight": true,
+          "providerGridColumns": 4,
+          "autoSelectBtnWidth": 208.5625,
+          "autoSelectBtnHeight": 24
+        },
+        "inboxHealth": {
+          "clientWidth": 768,
+          "scrollWidth": 768,
+          "bodyScrollWidth": 768,
+          "hasHorizontalScroll": false,
+          "healthCardsCount": 2,
+          "quickFiltersCount": 4,
+          "quickFilterScrollable": false,
+          "quickFilters": [
+            {
+              "text": "Newsletters & Spam",
+              "width": 216.671875,
+              "height": 38
+            },
+            {
+              "text": "Important & Trusted",
+              "width": 217.671875,
+              "height": 38
+            },
+            {
+              "text": "With Attachments",
+              "width": 203.34375,
+              "height": 38
+            },
+            {
+              "text": "Starred & Personal",
+              "width": 206.03125,
+              "height": 38
+            }
+          ],
+          "topSendersWidth": 54,
+          "patternCardsCount": 4,
+          "patternCards": [
+            {
+              "title": "GitHub CI Notifications",
+              "width": 352
+            },
+            {
+              "title": "Stripe Billing & Receipts",
+              "width": 352
+            },
+            {
+              "title": "Substack & Tech Newsletters",
+              "width": 352
+            },
+            {
+              "title": "Security & Auth Alerts",
+              "width": 352
+            }
+          ]
+        },
+        "adversarialStress": {
+          "clientWidth": 768,
+          "scrollWidth": 768,
+          "hasHorizontalScroll": false,
+          "senderTextWidth": 535.046875,
+          "senderRight": 612.046875,
+          "subjectTextWidth": 650,
+          "subjectRight": 727,
+          "containedWithinPage": true
+        }
+      },
+      "passed": true
+    }
+  ]
+}

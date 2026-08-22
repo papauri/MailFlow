@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
 import { UnsubscribeManager } from "./UnsubscribeManager";
+import { LabelManagerModal } from "./LabelManagerModal";
 
 const GENERIC_EMAIL_DOMAINS = new Set([
   'gmail.com',
@@ -33,11 +34,12 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   'fastmail.com'
 ]);
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings }: { userEmail?: string, onApplyQuery: (q: string, filter?: string) => void, aiSettings?: any }) {
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }: { userEmail?: string, onApplyQuery: (q: string, filter?: string) => void, aiSettings?: any, userLabels?: any[] }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
+  const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [clusters, setClusters] = useState<any[]>([]);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
@@ -249,7 +251,25 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings }: { userEmail
           actionText="Triage Unread"
           onAction={() => onApplyQuery("is:unread", "inbox")}
         />
+        <HealthCard 
+          icon={<Tag className="w-6 h-6 text-teal-500" />}
+          title="Label Manager"
+          count="Manage"
+          desc="Explore and manage your custom labels"
+          color="border-teal-200 bg-teal-50/50 hover:bg-teal-50"
+          actionText="Open Labels"
+          onAction={() => setIsLabelManagerOpen(true)}
+        />
       </div>
+
+      {isLabelManagerOpen && (
+        <LabelManagerModal 
+          isOpen={isLabelManagerOpen}
+          onClose={() => setIsLabelManagerOpen(false)}
+          userLabels={userLabels}
+          aiSettings={aiSettings}
+        />
+      )}
 
       
       

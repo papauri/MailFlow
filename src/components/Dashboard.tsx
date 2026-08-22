@@ -786,6 +786,7 @@ export default function Dashboard({ user }: { user: any }) {
            <InboxHealth 
              userEmail={user?.email}
              aiSettings={aiSettings} 
+             userLabels={userLabels}
              onApplyQuery={(q, filter) => {
                setQuery(q);
                let newFilters = ['anywhere'];
