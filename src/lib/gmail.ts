@@ -127,6 +127,50 @@ export async function searchEmails(query: string, maxResults = 500, onProgress?:
   return totalDetailed;
 }
 
+export async function searchEmailsPaginated(query: string, maxResults = 50, pageToken = ""): Promise<{ emails: EmailData[], nextPageToken?: string }> {
+  let url = `/threads?q=${encodeURIComponent(query)}&maxResults=${maxResults}`;
+  if (pageToken) url += `&pageToken=${pageToken}`;
+
+  const listResult = await fetchGmailAPI(url);
+  if (!listResult || !listResult.threads) return { emails: [] };
+  
+  const chunkDetails = await processInChunks(listResult.threads, 15, async (thread: any) => {
+    try {
+      const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
+      if (!detail.messages || detail.messages.length === 0) return null;
+      
+      const firstMsg = detail.messages[0];
+      const lastMsg = detail.messages[detail.messages.length - 1];
+      
+      const firstHeaders = firstMsg.payload?.headers || [];
+      const lastHeaders = lastMsg.payload?.headers || firstHeaders;
+      
+      const sizeEstimate = detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0);
+      const messageIds = detail.messages.map((m: any) => m.id);
+      const labelIds = [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[];
+
+      return {
+        id: thread.id,
+        threadId: thread.id,
+        messageIds: messageIds,
+        snippet: detail.messages.length > 1 ? `(${detail.messages.length}) ${lastMsg.snippet || thread.snippet}` : (lastMsg.snippet || thread.snippet),
+        labelIds: labelIds,
+        sender: firstHeaders.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown Sender',
+        subject: firstHeaders.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)',
+        date: new Date(lastMsg.internalDate ? parseInt(lastMsg.internalDate) : (lastHeaders.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date())),
+        sizeEstimate: sizeEstimate,
+        listUnsubscribe: detail.messages.flatMap((m: any) => m.payload?.headers || []).find((h: any) => h.name.toLowerCase() === 'list-unsubscribe')?.value,
+      } as EmailData;
+    } catch (err) {
+      console.error(`Error fetching thread ${thread.id}`, err);
+      return null;
+    }
+  });
+
+  const validDetails = chunkDetails.filter(Boolean) as EmailData[];
+  return { emails: validDetails, nextPageToken: listResult.nextPageToken };
+}
+
 export async function batchModifyEmails(ids: string[], addLabelIds: string[], removeLabelIds: string[]) {
   if (ids.length === 0) return;
   await fetchGmailAPI('/messages/batchModify', {

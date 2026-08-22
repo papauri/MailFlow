@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2, CheckCircle, ChevronDown, MoveRight } from 'lucide-react';
-import { fetchGmailAPI, searchEmails, batchModifyEmails } from '../lib/gmail';
+import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2, CheckCircle, ChevronDown, MoveRight, Search } from 'lucide-react';
+import { fetchGmailAPI, searchEmails, searchEmailsPaginated, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 
 export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: any) {
@@ -19,6 +19,17 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
   const [moving, setMoving] = useState(false);
   const [dragOverLabelId, setDragOverLabelId] = useState<string | null>(null);
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+
+  // Pagination & Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [pageToken, setPageToken] = useState<string | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     if (isOpen) {
@@ -48,20 +59,53 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     }
   };
 
-  const handleLabelClick = async (label: any) => {
+  const handleLabelClick = (label: any) => {
     setActiveLabel(label);
-    setLoadingEmails(true);
+    setSearchQuery('');
+    setDebouncedQuery('');
     setAiAnalysis('');
     setSelectedIds(new Set());
     setShowMoveMenu(false);
+  };
+
+  useEffect(() => {
+    if (!activeLabel) return;
+    const fetchFirstPage = async () => {
+      setLoadingEmails(true);
+      try {
+        const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
+        let query = `label:${formattedName}`;
+        if (debouncedQuery.trim()) {
+           query += ` (${debouncedQuery})`;
+        }
+        const res = await searchEmailsPaginated(query, 50, "");
+        setLabelEmails(res.emails);
+        setPageToken(res.nextPageToken);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingEmails(false);
+      }
+    };
+    fetchFirstPage();
+  }, [activeLabel, debouncedQuery]);
+
+  const handleLoadMore = async () => {
+    if (!activeLabel || !pageToken || loadingMore) return;
+    setLoadingMore(true);
     try {
-      const formattedName = label.name.includes(' ') ? `"${label.name}"` : label.name;
-      const emails = await searchEmails(`label:${formattedName}`, 20);
-      setLabelEmails(emails);
+      const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
+      let query = `label:${formattedName}`;
+      if (debouncedQuery.trim()) {
+         query += ` (${debouncedQuery})`;
+      }
+      const res = await searchEmailsPaginated(query, 50, pageToken);
+      setLabelEmails(prev => [...prev, ...res.emails]);
+      setPageToken(res.nextPageToken);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoadingEmails(false);
+      setLoadingMore(false);
     }
   };
 
@@ -265,6 +309,19 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
                   </div>
                 </div>
 
+                <div className="px-4 sm:px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Filter by sender, subject, or keywords..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                    />
+                  </div>
+                </div>
+
                 {aiAnalysis && (
                    <div className="mx-4 sm:mx-5 mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl relative">
                      <button onClick={() => setAiAnalysis('')} className="absolute top-3 right-3 text-indigo-400 hover:text-indigo-600"><X className="w-4 h-4" /></button>
@@ -381,6 +438,19 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
                           </div>
                         );
                       })}
+                      
+                      {pageToken && (
+                        <div className="pt-2 flex justify-center">
+                          <button
+                            onClick={handleLoadMore}
+                            disabled={loadingMore}
+                            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+                          >
+                            {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+                            Load More
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
