@@ -6,6 +6,7 @@ import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
 import { UnsubscribeManager } from "./UnsubscribeManager";
 import { LabelManagerModal } from "./LabelManagerModal";
+import { FolderOptimizer } from "./FolderOptimizer";
 
 const GENERIC_EMAIL_DOMAINS = new Set([
   'gmail.com',
@@ -40,11 +41,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
-  const [clusters, setClusters] = useState<any[]>([]);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
-  const [loadingClusters, setLoadingClusters] = useState(true);
-  const [patternError, setPatternError] = useState<string|null>(null);
+  const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchStats() {
@@ -75,6 +74,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
 
       try {
         const recentEmails = await searchEmails("in:anywhere", 250);
+        setRecentEmailsState(recentEmails);
         
         // Local Aggregation
         const senderCounts = new Map();
@@ -126,38 +126,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         }));
         setTopDomains(exactDomains.filter(d => d.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
 
-        const res = await fetch('/api/analyze-inbox', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            emails: recentEmails.map(e => ({ id: e.id, sender: e.sender, subject: e.subject, labelIds: e.labelIds })), 
-            userEmail: normalizedUser,
-            settings: aiSettings 
-          })
-        });
-        
-        if (res.status === 429) {
-          throw new Error("AI API rate limit reached. Please try again later or add your own key in Settings.");
-        }
-        if (res.status === 503) {
-          throw new Error("The AI model is currently experiencing high demand. Please try again later, or try a different model in Settings.");
-        }
-        
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to analyze inbox");
-        
-        const rawClusters = data.clusters || [];
-        const clustersWithExactCounts = await Promise.all(rawClusters.map(async (c: any) => {
-           const exactCount = await countEmails(c.searchQuery);
-           return { ...c, estimatedCount: exactCount };
-        }));
-
-        setClusters(clustersWithExactCounts.filter(c => c.estimatedCount !== 0));
       } catch (err: any) {
         console.error("Pattern analysis error:", err);
-        setPatternError(err.message || "Failed to analyze");
-      } finally {
-        setLoadingClusters(false);
       }
     }
     
@@ -410,57 +380,15 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         </div>
       )}
 
-      <div className="mt-6 sm:mt-8 flex flex-col gap-3 sm:gap-4">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-slate-800 shrink-0" />
-          <h3 className="text-lg sm:text-xl font-bold text-slate-800">Recurring Inbox Patterns</h3>
-        </div>
-        <p className="text-xs sm:text-sm text-slate-600 mb-1 sm:mb-2">Our system autonomously learns from your inbox data to identify hidden habits, common themes, and bulk-cleanup opportunities.</p>
-        
-        {loadingClusters ? (
-          <div className="flex items-center gap-3 text-slate-500 p-4 sm:p-6 bg-slate-100/50 rounded-xl border border-slate-200">
-            <Loader2 className="w-5 h-5 animate-spin text-slate-800 shrink-0" />
-            <span className="text-xs sm:text-sm font-medium">Analyzing your recent messages for patterns...</span>
-          </div>
-        ) : patternError ? (
-          <div className="p-3.5 sm:p-4 bg-slate-100 text-slate-700 rounded-xl text-xs sm:text-sm border border-slate-200">
-            {patternError}
-          </div>
-        ) : clusters.length === 0 ? (
-          <div className="p-3.5 sm:p-4 bg-slate-50 text-slate-600 rounded-xl text-xs sm:text-sm border border-slate-200">
-            Your recent inbox looks very clean. No significant clutter clusters found!
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            {clusters.map((cluster, i) => (
-              <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col gap-3 sm:gap-4 shadow-sm hover:shadow-md transition-shadow h-full">
-                <div className="flex items-start justify-between gap-3 sm:gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-900 text-base sm:text-lg">{cluster.title}</h4>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-snug">{cluster.description}</p>
-                  </div>
-                  <div className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-bold whitespace-nowrap shrink-0">
-                    {cluster.estimatedCount} found
-                  </div>
-                </div>
-                
-                <div className="bg-slate-50 rounded-lg p-2.5 sm:p-3 text-xs text-slate-600 border border-slate-100 italic">
-                  <span className="font-semibold text-slate-700 not-italic block mb-1">Pattern Detected:</span>
-                  {cluster.patternDetected}
-                </div>
-                
-                <button
-                  onClick={() => onApplyQuery(cluster.searchQuery, "anywhere")}
-                  className="mt-auto w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  Find & {cluster.suggestedAction}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <FolderOptimizer 
+        emails={recentEmailsState} 
+        userLabels={userLabels || []}
+        aiSettings={aiSettings}
+        onComplete={() => {
+          // Triggers a UI refresh of the health metrics if desired, or we just notify user
+          onApplyQuery('in:inbox');
+        }}
+      />
 
       <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
 
