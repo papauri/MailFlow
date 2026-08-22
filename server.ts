@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 async function generateAIContent(prompt, schema, settings) {
   const provider = settings?.provider || 'gemini';
-  const model = settings?.model || 'gemini-1.5-flash';
+  const model = settings?.model || 'gemini-2.5-flash';
   const apiKey = settings?.apiKey || process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -134,7 +134,7 @@ async function startServer() {
 
   app.post("/api/analyze-inbox", async (req, res) => {
     try {
-      const { emails, settings } = req.body;
+      const { emails, userEmail, settings } = req.body;
       if (!emails || !Array.isArray(emails)) {
         return res.status(400).json({ error: "Emails array is required" });
       }
@@ -166,6 +166,7 @@ async function startServer() {
 
       const aiPrompt = `You are an advanced data analysis engine designed to identify behavioral habits and structural patterns in an inbox.
         I am providing you a sample of email headers, including their current Gmail labels (e.g., UNREAD, CATEGORY_PROMOTIONS). 
+        ${userEmail ? `The current user's email is: "${userEmail}". Do NOT create clusters or groups of emails sent from the user themselves.` : ''}
         
         Your Goal: Perform a deep pattern analysis to identify actionable, high-volume groups that can be managed together. 
         Go beyond simple sender matching—look for habits, subscription cadences, transactional flows, auto-responses, financial summaries, promotional blasts, calendar invites, and system alerts.
@@ -181,8 +182,8 @@ async function startServer() {
         - "Morning Newsletters" (Often UNREAD)
 
         CRITICAL RULES:
-        1. Ignore human-to-human conversations. If a subject looks like a real conversation (e.g. "Checking in", "Dinner tonight?"), ignore it entirely.
-        2. Focus ONLY on grouping the automated, recurring, or transactional emails into structural clusters.
+        1. Ignore human-to-human personal conversations and generic consumer webmail domains. Never create a cluster solely titled or scoped to "@gmail.com", "@yahoo.com", or "@hotmail.com" unless it's a specific recognized automated service or topic.
+        2. Focus ONLY on grouping automated, recurring, promotional, or transactional emails into structural clusters.
         3. For 'searchQuery', use highly precise Gmail operators to target the cluster safely. If the cluster targets unread emails, include "is:unread" in the searchQuery (e.g., from:alerts@company.com OR subject:"Your weekly summary" is:unread).
         4. Try to find 4 to 8 distinct recurring habits/clusters to help the user clear clutter.
         
@@ -200,7 +201,118 @@ async function startServer() {
     }
   });
 
+  app.post("/api/analyze-subscriptions", async (req, res) => {
+    try {
+      const { subscriptions, settings } = req.body;
+      if (!subscriptions || !Array.isArray(subscriptions)) {
+        return res.status(400).json({ error: "Subscriptions array is required" });
+      }
+
+      const subsText = subscriptions.map((s: any) => `Sender: ${s.name} (${s.email}) | Count: ${s.count} | Example: ${s.exampleSubject}`).join('\n');
+
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          analysis: {
+            type: Type.ARRAY,
+            description: "Analysis of each subscription",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                email: { type: Type.STRING, description: "The exact email address of the sender" },
+                category: { type: Type.STRING, description: "One of: 'Marketing & Promo', 'Newsletter & Content', 'Transactional/Alerts', 'Cold Outreach', 'Unknown'" },
+                intent: { type: Type.STRING, description: "A very brief 3-5 word description of what they send." },
+                spamScore: { type: Type.NUMBER, description: "A score from 1-100 indicating how likely this is considered spam or aggressive noise." },
+                recommendation: { type: Type.STRING, description: "One of: 'Unsubscribe', 'Ghost Block', 'Keep'" }
+              },
+              required: ["email", "category", "intent", "spamScore", "recommendation"]
+            }
+          }
+        },
+        required: ["analysis"]
+      };
+
+      const prompt = `Analyze the following list of frequent email senders (subscriptions/newsletters/promos).
+Determine their category, their underlying intent, assign a spam/noise score (1-100), and recommend an action (Unsubscribe, Ghost Block, or Keep).
+
+Ghost Block is recommended for aggressive cold outreach or high-noise spam.
+Unsubscribe is recommended for standard marketing/newsletters that are no longer needed.
+Keep is recommended for important transactional alerts or high-value content.
+
+Senders:
+${subsText}
+`;
+
+      const parsed = await generateAIContent(prompt, schema, settings);
+      res.json(parsed);
+    } catch (e: any) {
+      console.error("Analyze Subscriptions Error:", e);
+      res.status(500).json({ error: e.message || "Failed to analyze subscriptions" });
+    }
+  });
+
+  app.post("/api/suggest-labels", async (req, res) => {
+    try {
+      const { emails, userLabels, settings } = req.body;
+      if (!emails || !Array.isArray(emails)) {
+        return res.status(400).json({ error: "Emails array is required" });
+      }
+      const emailText = emails.map((e: any) => `ID: ${e.id} | From: ${e.sender} | Subject: ${e.subject}`).join('\n');
+      const existingLabels = userLabels ? userLabels.map((l: any) => l.name).join(', ') : '';
+      
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          recommendations: {
+            type: Type.ARRAY,
+            description: "List of recommended actions to organize these specific emails",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                emailIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: "The specific email IDs from the provided list that belong in this group." },
+                suggestedLabel: { type: Type.STRING, description: "The name of the label/folder to move them to (can be an existing one or a new one)." },
+                reason: { type: Type.STRING, description: "Brief explanation of why these go together, or if they are outliers/anomalies." }
+              },
+              required: ["emailIds", "suggestedLabel", "reason"]
+            }
+          }
+        },
+        required: ["recommendations"]
+      };
+
+      const aiPrompt = `You are an AI email assistant helping a user organize a batch of selected emails.
+        Here are the existing folder/label names they have: [${existingLabels}]
+        
+        Here are the selected emails:
+        ${emailText}
+        
+        Analyze these specific emails. Group them together by topic, sender, or purpose.
+        Spot what goes together, and if there are anomalies or outliers, group them appropriately.
+        For each group, suggest a label (either one of their existing labels, or a new clear, concise label name) and provide the exact email IDs that belong in that group.
+        Every email ID provided in the input must be assigned to exactly one recommendation group.
+      `;
+      
+      const result = await generateAIContent(aiPrompt, schema, settings);
+      res.json(result);
+    } catch (error: any) {
+      console.error("AI API Error (Suggest Labels):", error);
+      res.status(500).json({ error: error.message || "Failed to suggest labels" });
+    }
+  });
   
+  app.post("/api/check-quota", async (req, res) => {
+    try {
+      const { settings } = req.body;
+      const schema = { type: Type.STRING };
+      // Lightweight prompt just to verify limits
+      await generateAIContent("Reply OK", schema, settings);
+      res.json({ ok: true });
+    } catch (err: any) {
+      const isRateLimit = err.message && (err.message.includes("429") || err.message.includes("quota") || err.message.includes("rate limit") || err.message.includes("exhausted"));
+      res.status(isRateLimit ? 429 : 500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/models", async (req, res) => {
     try {
       const { settings } = req.body;
@@ -285,3 +397,4 @@ async function startServer() {
 }
 
 startServer();
+

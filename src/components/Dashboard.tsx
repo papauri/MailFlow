@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
-import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert } from "lucide-react";
-import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData } from "../lib/gmail";
+import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity } from "lucide-react";
+import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
+import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
+import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
+import { WalkthroughTip } from "./WalkthroughTip";
+import { HealthScoreWidget } from "./HealthScoreWidget";
 import { cn } from "../lib/utils";
 
 function formatSize(bytes: number) {
@@ -13,10 +17,15 @@ function formatSize(bytes: number) {
 }
 
 export default function Dashboard({ user }: { user: any }) {
+  const [walkthroughKey, setWalkthroughKey] = useState(0);
   const [query, setQuery] = useState("");
+  const queryRef = useRef(query);
+  useEffect(() => { queryRef.current = query; }, [query]);
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [excludeSent, setExcludeSent] = useState(false);
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [folderFilters, setFolderFilters] = useState<string[]>(["anywhere"]);
   const [userLabels, setUserLabels] = useState<any[]>([]);
   const [parsedQuery, setParsedQuery] = useState<{
@@ -42,10 +51,48 @@ export default function Dashboard({ user }: { user: any }) {
   const [showHealth, setShowHealth] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
+  const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false);
 
   const [useAI, setUseAI] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: '' });
+  const [showContextHelp, setShowContextHelp] = useState(false);
+  const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' });
+  const [connectionStatus, setConnectionStatus] = useState<'idle'|'testing'|'success'|'error'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState('');
+  
+  useEffect(() => {
+    if (!aiSettings.apiKey) {
+      setConnectionStatus('idle');
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setConnectionStatus('testing');
+      setConnectionMessage('Testing connection...');
+      try {
+        const res = await fetch('/api/check-quota', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: aiSettings })
+        });
+        if (res.ok) {
+          setConnectionStatus('success');
+          setConnectionMessage('Connection successful! AI features enabled.');
+          setUseAI(true);
+          setAiError(null);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setConnectionStatus('error');
+          setConnectionMessage(err.error || 'Connection failed.');
+        }
+      } catch (e) {
+        setConnectionStatus('error');
+        setConnectionMessage('Network error during test.');
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [aiSettings.apiKey, aiSettings.provider]);
   const [dynamicModels, setDynamicModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
@@ -65,7 +112,7 @@ export default function Dashboard({ user }: { user: any }) {
             setDynamicModels(data.models);
           } else {
             // Fallbacks
-            if (aiSettings.provider === 'gemini') setDynamicModels(['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash']);
+            if (aiSettings.provider === 'gemini') setDynamicModels(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash']);
             if (aiSettings.provider === 'openai') setDynamicModels(['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini']);
             if (aiSettings.provider === 'anthropic') setDynamicModels(['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest']);
             if (aiSettings.provider === 'groq') setDynamicModels(['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']);
@@ -91,7 +138,7 @@ export default function Dashboard({ user }: { user: any }) {
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        setAiSettings({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: '', ...parsed });
+        setAiSettings({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '', ...parsed });
         if (parsed.apiKey) setUseAI(true);
       } catch (e) {}
     }
@@ -159,7 +206,7 @@ export default function Dashboard({ user }: { user: any }) {
         if (f === 'inbox') return 'in:inbox';
         if (f === 'spam') return 'in:spam';
         if (f === 'trash') return 'in:trash';
-        return `label:${f.replace(/ /g, '-')}`;
+        return `label:"${f}"`;
       });
       if (folderQueries.length > 0) {
         parts.push(`(${folderQueries.join(' OR ')})`);
@@ -173,6 +220,7 @@ export default function Dashboard({ user }: { user: any }) {
     if (startDate) parts.push(`after:${startDate.replace(/-/g, '/')}`);
     if (endDate) parts.push(`before:${endDate.replace(/-/g, '/')}`);
     if (excludeSent) parts.push(`-in:sent`);
+    if (onlyUnread) parts.push(`is:unread`);
 
     const q = parts.filter(Boolean).join(" ");
     setLastExecutedQuery(q);
@@ -197,25 +245,50 @@ export default function Dashboard({ user }: { user: any }) {
       });
     
     try {
-      const results = await fetchGmailAPI(`/messages?q=${encodeURIComponent(q)}&maxResults=100`);
+      const results = await fetchGmailAPI(`/threads?q=${encodeURIComponent(q)}&maxResults=100`);
       if (searchIdRef.current !== searchId) return;
 
-      if (results && results.messages && results.messages.length > 0) {
+      if (results && results.threads && results.threads.length > 0) {
         setNextPageToken(results.nextPageToken || null);
-        const detailed = await processInChunks(results.messages, 15, async (msg: any) => {
+        const detailed = await processInChunks(results.threads, 15, async (thread: any) => {
           try {
-            const detail = await fetchGmailAPI(`/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
-            const headers = detail.payload?.headers || [];
+            const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
+            if (!detail.messages || detail.messages.length === 0) return null;
+            
+            const firstMsg = detail.messages[0];
+            const lastMsg = detail.messages[detail.messages.length - 1];
+            const firstHeaders = firstMsg.payload?.headers || [];
+            const lastHeaders = lastMsg.payload?.headers || firstHeaders;
+            const sizeEstimate = detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0);
+            const messageIds = detail.messages.map((m: any) => m.id);
+            const labelIds = [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[];
+
+            const nestedMessages = detail.messages.map((m: any) => {
+              const h = m.payload?.headers || [];
+              return {
+                id: m.id,
+                sender: h.find((x: any) => x.name.toLowerCase() === 'from')?.value || 'Unknown',
+                subject: h.find((x: any) => x.name.toLowerCase() === 'subject')?.value || '(No Subject)',
+                snippet: m.snippet || '',
+                date: new Date(m.internalDate ? parseInt(m.internalDate) : (h.find((x: any) => x.name.toLowerCase() === 'date')?.value || new Date())),
+                labelIds: m.labelIds || [],
+                listUnsubscribe: h.find((x: any) => x.name.toLowerCase() === 'list-unsubscribe')?.value
+              };
+            });
+
             return {
-              id: detail.id,
-              threadId: detail.threadId,
-              snippet: detail.snippet,
-              labelIds: detail.labelIds || [],
-              sender: headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown',
-              subject: headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)',
-              date: new Date(headers.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date()),
-              sizeEstimate: detail.sizeEstimate || 0
-            };
+              id: thread.id,
+              threadId: thread.id,
+              messageIds: messageIds,
+              snippet: detail.messages.length > 1 ? `(${detail.messages.length}) ${lastMsg.snippet || thread.snippet}` : (lastMsg.snippet || thread.snippet),
+              labelIds: labelIds,
+              sender: firstHeaders.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown',
+              subject: firstHeaders.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)',
+              date: new Date(lastMsg.internalDate ? parseInt(lastMsg.internalDate) : (lastHeaders.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date())),
+              sizeEstimate: sizeEstimate,
+              listUnsubscribe: firstHeaders.find((h: any) => h.name.toLowerCase() === 'list-unsubscribe')?.value,
+              messages: nestedMessages
+            } as EmailData;
           } catch (e) {
             return null;
           }
@@ -246,23 +319,46 @@ export default function Dashboard({ user }: { user: any }) {
     const currentToken = nextPageToken;
 
     try {
-      const results = await fetchGmailAPI(`/messages?q=${encodeURIComponent(lastExecutedQuery)}&maxResults=100&pageToken=${encodeURIComponent(currentToken)}`);
-      if (results && results.messages && results.messages.length > 0) {
+      const results = await fetchGmailAPI(`/threads?q=${encodeURIComponent(lastExecutedQuery)}&maxResults=100&pageToken=${encodeURIComponent(currentToken)}`);
+      if (results && results.threads && results.threads.length > 0) {
         setNextPageToken(results.nextPageToken || null);
-        const detailed = await processInChunks(results.messages, 15, async (msg: any) => {
+        const detailed = await processInChunks(results.threads, 15, async (thread: any) => {
           try {
-            const detail = await fetchGmailAPI(`/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
-            const headers = detail.payload?.headers || [];
+            const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
+            if (!detail.messages || detail.messages.length === 0) return null;
+            
+            const firstMsg = detail.messages[0];
+            const lastMsg = detail.messages[detail.messages.length - 1];
+            const firstHeaders = firstMsg.payload?.headers || [];
+            const lastHeaders = lastMsg.payload?.headers || firstHeaders;
+            const sizeEstimate = detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0);
+            const messageIds = detail.messages.map((m: any) => m.id);
+            const labelIds = [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[];
+
+            const nestedMessages = detail.messages.map((m: any) => {
+              const h = m.payload?.headers || [];
+              return {
+                id: m.id,
+                sender: h.find((x: any) => x.name.toLowerCase() === 'from')?.value || 'Unknown',
+                subject: h.find((x: any) => x.name.toLowerCase() === 'subject')?.value || '(No Subject)',
+                snippet: m.snippet || '',
+                date: new Date(m.internalDate ? parseInt(m.internalDate) : (h.find((x: any) => x.name.toLowerCase() === 'date')?.value || new Date())),
+                labelIds: m.labelIds || []
+              };
+            });
+
             return {
-              id: detail.id,
-              threadId: detail.threadId,
-              snippet: detail.snippet,
-              labelIds: detail.labelIds || [],
-              sender: headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown',
-              subject: headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)',
-              date: new Date(headers.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date()),
-              sizeEstimate: detail.sizeEstimate || 0
-            };
+              id: thread.id,
+              threadId: thread.id,
+              messageIds: messageIds,
+              snippet: detail.messages.length > 1 ? `(${detail.messages.length}) ${lastMsg.snippet || thread.snippet}` : (lastMsg.snippet || thread.snippet),
+              labelIds: labelIds,
+              sender: firstHeaders.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown',
+              subject: firstHeaders.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)',
+              date: new Date(lastMsg.internalDate ? parseInt(lastMsg.internalDate) : (lastHeaders.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date())),
+              sizeEstimate: sizeEstimate,
+              messages: nestedMessages
+            } as EmailData;
           } catch (e) {
             return null;
           }
@@ -284,12 +380,108 @@ export default function Dashboard({ user }: { user: any }) {
   };
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      handleSearch();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [startDate, endDate, excludeSent, onlyUnread]);
+
+  useEffect(() => {
     fetchGmailAPI('/labels').then(data => {
       if (data && data.labels) setUserLabels(data.labels);
     });
-    handleSearch();
+    
+  const handleHashChange = () => {
+      const hash = decodeURIComponent(window.location.hash.replace('#', '')) || 'dashboard';
+      if (hash === 'health') {
+        setShowHealth(true);
+      } else {
+        setShowHealth(false);
+        let folders = ['anywhere'];
+        if (hash.startsWith('folders=')) {
+          folders = Array.from(new Set(hash.replace('folders=', '').split(',').filter(Boolean)));
+        } else if (hash.startsWith('folder-')) { // Backwards compat with what I just wrote
+          folders = [hash.replace('folder-', '')];
+        }
+        
+        if (folders.length === 0) folders = ['anywhere'];
+        
+        setFolderFilters(folders);
+        setTimeout(() => handleSearch(undefined, queryRef.current, folders), 0);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange(); // Trigger on mount
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    setShowDeleteSelectedConfirm(true);
+  };
+
+  const executeDeleteSelected = async () => {
+    setShowDeleteSelectedConfirm(false);
+    setActionLoading("delete");
+    setProcessingProgress({ current: 0, total: selectedIds.size });
+    const ids = Array.from(selectedIds) as string[];
+    setProcessingIds(new Set(ids));
+    
+    const allMessageIds: string[] = [];
+    ids.forEach(tid => {
+      const email = emails.find(e => e.id === tid);
+      if (email && email.messageIds) {
+        allMessageIds.push(...email.messageIds);
+      } else {
+        allMessageIds.push(tid);
+      }
+    });
+    
+    try {
+      await batchDeleteEmails(allMessageIds);
+      setEmails(prev => prev.filter(e => !ids.includes(e.id)));
+      setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
+      setSelectedIds(new Set());
+      const newCount = emails.length - ids.length;
+      if (newCount < 20 && nextPageToken) {
+        setTimeout(() => handleLoadMore(), 100);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading(null);
+      setProcessingIds(new Set());
+      setProcessingProgress(null);
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    setShowEmptyTrashConfirm(true);
+  };
+
+  const executeEmptyTrash = async () => {
+    setShowEmptyTrashConfirm(false);
+    setActionLoading("empty_trash");
+    setProcessingProgress({ current: 0, total: 1 }); // We don't know the exact total upfront, just show progress
+    
+    try {
+      await emptyAllTrash((deleted) => {
+        setProcessingProgress({ current: deleted, total: deleted + 1 });
+      });
+      
+      setEmails([]);
+      setTotalCount(0);
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading(null);
+      setProcessingProgress(null);
+    }
+  };
 
   const handleBulkAction = async (action: "trash" | "archive" | "read" | "delete") => {
     if (selectedIds.size === 0) return;
@@ -299,23 +491,21 @@ export default function Dashboard({ user }: { user: any }) {
     const ids = Array.from(selectedIds) as string[];
     setProcessingIds(new Set(ids));
     
-    try {
-      if (action === "trash") await batchTrashEmails(ids);
-      else if (action === "archive") await batchArchiveEmails(ids);
-      else if (action === "read") await batchMarkAsRead(ids);
-      else if (action === "delete") {
-        // Permanent delete - only available from trash view, with user confirmation
-        const confirmed = window.confirm(
-          `⚠️ PERMANENT DELETE\n\nYou are about to permanently delete ${ids.length} email(s). This action cannot be undone and the emails cannot be recovered.\n\nAre you sure you want to proceed?`
-        );
-        if (!confirmed) {
-          setActionLoading(null);
-          setProcessingIds(new Set());
-          setProcessingProgress(null);
-          return;
-        }
-        await batchDeleteEmails(ids);
+    const allMessageIds: string[] = [];
+    ids.forEach(tid => {
+      const email = emails.find(e => e.id === tid);
+      if (email && email.messageIds) {
+        allMessageIds.push(...email.messageIds);
+      } else {
+        allMessageIds.push(tid);
       }
+    });
+    
+    try {
+      if (action === "trash") await batchTrashEmails(allMessageIds);
+      else if (action === "archive") await batchArchiveEmails(allMessageIds);
+      else if (action === "read") await batchMarkAsRead(allMessageIds);
+      // delete action is handled separately by executeDeleteSelected
       
       // Optimistically remove processed emails from the UI to reflect changes instantly
       if (action !== "read") {
@@ -326,8 +516,11 @@ export default function Dashboard({ user }: { user: any }) {
       // Clear selected state
       setSelectedIds(new Set());
       
-      // Silently refresh the search in the background (Gmail index takes a few seconds)
-      setTimeout(() => handleSearch(), 2000);
+      // Auto-replenish if we are running low on displayed emails
+      const newCount = emails.length - ids.length;
+      if (action !== "read" && newCount < 20 && nextPageToken) {
+        setTimeout(() => handleLoadMore(), 100);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -342,6 +535,71 @@ export default function Dashboard({ user }: { user: any }) {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
+  };
+
+  const toggleExpand = (id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSingleAction = async (id: string, action: "trash" | "archive" | "read" | "delete", e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    if (actionLoading !== null || processingIds.has(id)) return;
+
+    if (action === "delete") {
+      const confirmed = window.confirm(
+        "⚠️ PERMANENT DELETE\n\nYou are about to permanently delete this email from Gmail. This action cannot be undone.\n\nAre you sure you want to delete this email permanently?"
+      );
+      if (!confirmed) return;
+    }
+
+    setProcessingIds(prev => new Set([...prev, id]));
+    setActionLoading(action);
+
+    try {
+      if (action === "trash") await batchTrashEmails([id]);
+      else if (action === "archive") await batchArchiveEmails([id]);
+      else if (action === "read") await batchMarkAsRead([id]);
+      else if (action === "delete") await batchDeleteEmails([id]);
+
+      if (action !== "read") {
+        setEmails(prev => prev.filter(email => email.id !== id));
+        setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - 1) : prev);
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        setExpandedIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      } else {
+        setEmails(prev => prev.map(email => email.id === id ? { ...email, labelIds: email.labelIds.filter(l => l !== 'UNREAD') } : email));
+      }
+    } catch (err) {
+      console.error(`Failed to execute ${action} on email ${id}`, err);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setActionLoading(null);
+    }
   };
 
   const sortedEmails = useMemo(() => {
@@ -368,22 +626,89 @@ export default function Dashboard({ user }: { user: any }) {
     });
   }, [emails, sortBy, sortDesc]);
 
+  const showSize = sortBy === "size" || 
+    query.toLowerCase().includes("larger:") || 
+    query.toLowerCase().includes("size:") ||
+    (parsedQuery?.query || "").toLowerCase().includes("larger:") ||
+    (parsedQuery?.query || "").toLowerCase().includes("size:");
+
+
+  const groupedEmails = useMemo(() => {
+    if (!onlyUnread) {
+      return [{ title: null, emails: sortedEmails }];
+    }
+    const groups = {};
+    
+    const getPrimaryFolder = (email) => {
+      const labels = email.labelIds || [];
+      const customLabel = labels.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT' && l !== 'INBOX' && l !== 'SENT' && l !== 'SPAM' && l !== 'TRASH');
+      
+      if (customLabel) {
+        const userLabel = userLabels.find(ul => ul.id === customLabel);
+        return userLabel ? userLabel.name : customLabel.replace('Label_', 'Folder ');
+      }
+      
+      if (labels.includes('CATEGORY_PROMOTIONS')) return 'Promotions';
+      if (labels.includes('CATEGORY_SOCIAL')) return 'Social';
+      if (labels.includes('CATEGORY_UPDATES')) return 'Updates';
+      if (labels.includes('CATEGORY_FORUMS')) return 'Forums';
+      if (labels.includes('SPAM')) return 'Spam';
+      if (labels.includes('TRASH')) return 'Trash';
+      
+      return 'Primary Inbox';
+    };
+
+    sortedEmails.forEach(email => {
+      const folder = getPrimaryFolder(email);
+      if (!groups[folder]) groups[folder] = [];
+      groups[folder].push(email);
+    });
+
+    // Sort groups alphabetically, but keep Primary Inbox first
+    return Object.entries(groups)
+      .map(([title, emails]) => ({ title, emails }))
+      .sort((a, b) => {
+        if (a.title === 'Primary Inbox') return -1;
+        if (b.title === 'Primary Inbox') return 1;
+        return a.title.localeCompare(b.title);
+      });
+  }, [sortedEmails, onlyUnread, userLabels]);
+
   return (
     <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
+      <OnboardingWalkthrough key={walkthroughKey} onComplete={() => {}} />
+      
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
             <Mail className="w-5 h-5" />
           </div>
           <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-800">MailFlow</h1>
+          <div className="hidden sm:block ml-4 border-l border-slate-200 pl-4">
+            <HealthScoreWidget />
+          </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <button 
-            onClick={() => setShowHealth(!showHealth)}
+            onClick={() => setShowContextHelp(true)}
+            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+            title="Help / Walkthrough"
+          >
+            <HelpCircle className="w-4 h-4 shrink-0" />
+          </button>
+          <button 
+            onClick={() => handleSearch(undefined, undefined, undefined, true)}
+            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+            title="Refresh Inbox"
+          >
+            <RefreshCw className={cn("w-4 h-4 shrink-0", isSearching && "animate-spin")} />
+          </button>
+          <button 
+            onClick={() => { window.location.hash = showHealth ? '#dashboard' : '#health'; }}
             className={cn("p-2 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 sm:gap-2", showHealth ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")}
             title="Inbox Health"
           >
-            <Sparkles className="w-4 h-4 shrink-0" /> 
+            <Activity className="w-4 h-4 shrink-0" /> 
             <span className="hidden sm:inline">Inbox Health</span>
           </button>
           <button 
@@ -406,8 +731,46 @@ export default function Dashboard({ user }: { user: any }) {
       </header>
 
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 min-h-0">
+        
+        {/* Breadcrumbs Navigation */}
+        <div className="flex items-center gap-2 text-sm text-slate-500 mb-[-12px]">
+          <button 
+            onClick={() => { window.location.hash = '#dashboard'; }} 
+            className="hover:text-slate-900 transition-colors flex items-center gap-1"
+          >
+            Dashboard
+          </button>
+          
+          {showHealth && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-800 font-medium flex items-center gap-1">
+                <Activity className="w-3.5 h-3.5" />
+                Inbox Health
+              </span>
+            </>
+          )}
+
+          {!showHealth && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
+                {folderFilters.length === 1 ? (
+                  <>
+                    {folderFilters[0] === 'trash' ? <Trash2 className="w-3.5 h-3.5" /> : null}
+                    {folderFilters[0].replace('category:', '')}
+                  </>
+                ) : (
+                  <span>Multiple Folders</span>
+                )}
+              </span>
+            </>
+          )}
+        </div>
+
         {showHealth ? (
            <InboxHealth 
+             userEmail={user?.email}
              aiSettings={aiSettings} 
              onApplyQuery={(q, filter) => {
                setQuery(q);
@@ -419,12 +782,28 @@ export default function Dashboard({ user }: { user: any }) {
                  else newFilters = [filter];
                }
                setFolderFilters(newFilters);
-               setShowHealth(false);
+               
+               // We want hash so back button works!
+               const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                 ? `#folders=${newFilters.join(',')}` 
+                 : '#dashboard';
+                 
+               if (window.location.hash !== newHash) {
+                 window.location.hash = newHash;
+               } else {
+                 setShowHealth(false);
+               }
+               
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
              }} 
            />
         ) : (
         <>
+        <WalkthroughTip 
+          storageKey="tip_dashboard" 
+          title="Welcome to the Smart Inbox" 
+          description="Start by typing a conversational search like 'newsletters from last month' to quickly filter your inbox. Select multiple emails below to bulk delete or archive them."
+        />
         <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 sm:gap-4">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1 min-w-0">
@@ -472,13 +851,27 @@ export default function Dashboard({ user }: { user: any }) {
             <div className="shrink-0">
               <FolderMultiSelect 
                 selected={folderFilters} 
-                onChange={setFolderFilters} 
-                onClose={() => setTimeout(() => handleSearch(), 0)}
+                onChange={(newFilters) => {
+                  const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                    ? `#folders=${newFilters.join(',')}` 
+                    : '#dashboard';
+                  
+                  if (window.location.hash !== newHash) {
+                    window.location.hash = newHash;
+                  }
+                  // We also call setFolderFilters synchronously so the component feels responsive
+                  setFolderFilters(newFilters);
+                }} 
+                
                 userLabels={userLabels} 
               />
             </div>
             <div className="h-5 w-px bg-slate-200 shrink-0"></div>
             <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
+            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
+              <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
+            </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
               <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Exclude Sent</span>
@@ -546,7 +939,7 @@ export default function Dashboard({ user }: { user: any }) {
               </div>
             </div>
             
-            <div className="flex items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto mt-2 sm:mt-0">
               <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
                  <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-sm font-medium text-slate-700 outline-none px-2 cursor-pointer">
                    <option value="date">Date</option>
@@ -559,7 +952,8 @@ export default function Dashboard({ user }: { user: any }) {
               </div>
               {folderFilters.includes('trash') ? (
                 <>
-                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Forever" onClick={() => handleBulkAction("delete")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                  <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                  <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
                 </>
               ) : (
                 <>
@@ -567,6 +961,20 @@ export default function Dashboard({ user }: { user: any }) {
                   <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
                 </>
               )}
+              
+              <BulkOrganizeDropdown 
+                className="flex-1 sm:flex-initial"
+                selectedIds={selectedIds} 
+                emails={emails} 
+                userLabels={userLabels} 
+                onComplete={() => {
+                  setSelectedIds(new Set());
+                  setIsSearching(true);
+                  setTimeout(() => handleSearch(), 500);
+                }} 
+                disabled={selectedIds.size === 0 || actionLoading !== null} 
+              />
+              
               <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center" />
             </div>
           </div>
@@ -581,7 +989,7 @@ export default function Dashboard({ user }: { user: any }) {
 
           <div className="flex-1 overflow-y-auto">
             {emails.length === 0 ? (
-              isSearching ? (
+              (isSearching || isLoadingMore) ? (
                 <div className="flex flex-col items-center justify-center h-96 text-slate-400 px-4 text-center">
                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
                     <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
@@ -615,14 +1023,25 @@ export default function Dashboard({ user }: { user: any }) {
                 </div>
               )
             ) : (
-              <>
-                <ul className="divide-y divide-slate-100">
-                  {sortedEmails.map(email => {
+                <>
+                  <div className="flex flex-col gap-4 pb-4">
+                    {groupedEmails.map((group, groupIdx) => (
+                    <div key={groupIdx} className="bg-white">
+                      {group.title && (
+                        <div className="bg-slate-100/80 px-4 py-2 border-y border-slate-200 font-semibold text-slate-800 text-sm flex items-center justify-between sticky top-[68px] z-10 backdrop-blur-sm shadow-sm">
+                          <span>{group.title}</span>
+                          <span className="text-xs bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-medium">{group.emails.length}</span>
+                        </div>
+                      )}
+                      <ul className="divide-y divide-slate-100">
+                        {group.emails.map(email => {
                     const isSelected = selectedIds.has(email.id);
                     const isProcessing = processingIds.has(email.id);
+                    const isExpanded = expandedIds.has(email.id);
                     return (
                       <li 
                         key={email.id} 
+                        id={`email-row-${email.id}`}
                         className={cn(
                           "flex items-start gap-2.5 sm:gap-4 p-3 sm:p-4 hover:bg-slate-50 active:bg-slate-100/70 transition-colors group cursor-pointer",
                           isSelected ? "bg-slate-50/80" : "",
@@ -642,33 +1061,56 @@ export default function Dashboard({ user }: { user: any }) {
                             </span>
                             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                               {(() => {
-                                 let badge = '';
-                                 let badgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-100';
                                  const labels = email.labelIds || [];
-                                 // SPAM and TRASH take highest priority — if it's junk, show it
-                                 if (labels.includes('SPAM')) { badge = 'Spam'; badgeColor = 'bg-red-50 text-red-700 border-red-100'; }
-                                 else if (labels.includes('TRASH')) { badge = 'Trash'; badgeColor = 'bg-red-50 text-red-700 border-red-100'; }
-                                 // Then sub-categories (within Inbox)
-                                 else if (labels.includes('CATEGORY_PROMOTIONS')) { badge = 'Promotions'; badgeColor = 'bg-amber-50 text-amber-700 border-amber-100'; }
-                                 else if (labels.includes('CATEGORY_SOCIAL')) { badge = 'Social'; badgeColor = 'bg-purple-50 text-purple-700 border-purple-100'; }
-                                 else if (labels.includes('CATEGORY_UPDATES')) { badge = 'Updates'; badgeColor = 'bg-green-50 text-green-700 border-green-100'; }
-                                 else if (labels.includes('CATEGORY_FORUMS')) { badge = 'Forums'; badgeColor = 'bg-slate-100 text-slate-700 border-slate-200'; }
-                                 else if (labels.includes('CATEGORY_PERSONAL')) { badge = 'Primary'; badgeColor = 'bg-blue-50 text-blue-700 border-blue-100'; }
-                                 else if (labels.includes('SENT')) { badge = 'Sent'; badgeColor = 'bg-slate-100 text-slate-600 border-slate-200'; }
-                                 else if (labels.includes('INBOX')) { badge = 'Inbox'; badgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-100'; }
-                                 else {
-                                   const custom = labels.find(l => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT');
-                                   if (custom) badge = custom;
-                                 }
+                                 const badges = [];
                                  
-                                 return badge ? (
-                                   <span className={`hidden sm:inline-block text-[10px] sm:text-xs font-semibold border px-1.5 py-0.5 rounded truncate max-w-[100px] ${badgeColor}`}>
-                                     {badge}
-                                   </span>
-                                 ) : null;
+                                 if (labels.includes('SPAM')) badges.push({ text: 'Spam', color: 'bg-red-50 text-red-700 border-red-100' });
+                                 else if (labels.includes('TRASH')) badges.push({ text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' });
+                                 
+                                 labels.forEach(l => {
+                                   if (l.startsWith('CATEGORY_')) {
+                                      if (l === 'CATEGORY_PROMOTIONS') badges.push({ text: 'Promotions', color: 'bg-amber-50 text-amber-700 border-amber-100' });
+                                      else if (l === 'CATEGORY_SOCIAL') badges.push({ text: 'Social', color: 'bg-purple-50 text-purple-700 border-purple-100' });
+                                      else if (l === 'CATEGORY_UPDATES') badges.push({ text: 'Updates', color: 'bg-green-50 text-green-700 border-green-100' });
+                                      else if (l === 'CATEGORY_FORUMS') badges.push({ text: 'Forums', color: 'bg-slate-100 text-slate-700 border-slate-200' });
+                                      else if (l === 'CATEGORY_PERSONAL') badges.push({ text: 'Primary', color: 'bg-blue-50 text-blue-700 border-blue-100' });
+                                   } else if (l === 'SENT') {
+                                      badges.push({ text: 'Sent', color: 'bg-slate-100 text-slate-600 border-slate-200' });
+                                   } else if (l === 'INBOX' && !labels.some(x => x.startsWith('CATEGORY_'))) {
+                                      badges.push({ text: 'Inbox', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' });
+                                   } else if (!['UNREAD', 'STARRED', 'IMPORTANT', 'INBOX', 'SPAM', 'TRASH', 'SENT'].includes(l)) {
+                                      // Custom Label
+                                      const ul = userLabels.find(ul => ul.id === l);
+                                      const name = ul ? ul.name : l.replace('Label_', 'Folder ');
+                                      badges.push({ text: name, color: 'bg-teal-50 text-teal-700 border-teal-100' });
+                                   }
+                                 });
+                                 
+                                 // Deduplicate badges by text
+                                 const uniqueBadges = Array.from(new Map(badges.map(item => [item.text, item])).values());
+                                 
+                                 return (
+                                   <div className="flex gap-1.5 flex-wrap">
+                                     {uniqueBadges.slice(0, 3).map((b, i) => (
+                                       <span key={i} className={`inline-block text-[10px] sm:text-xs font-semibold border px-1.5 py-0.5 rounded truncate max-w-[100px] ${b.color}`}>
+                                         {b.text}
+                                       </span>
+                                     ))}
+                                     {uniqueBadges.length > 3 && (
+                                       <span className="inline-block text-[10px] sm:text-xs font-semibold border px-1.5 py-0.5 rounded bg-slate-50 text-slate-500 border-slate-200">
+                                         +{uniqueBadges.length - 3}
+                                       </span>
+                                     )}
+                                   </div>
+                                 );
                               })()}
-                              {(email.sizeEstimate || 0) > 102400 && (
-                                 <span className="hidden sm:inline-block text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                              {showSize && (email.sizeEstimate || 0) > 102400 && (
+                                 <span className={cn(
+                                   "inline-block text-[10px] sm:text-xs font-semibold px-1.5 py-0.5 rounded shadow-sm border",
+                                   (email.sizeEstimate || 0) > 5242880 ? "bg-red-50 text-red-700 border-red-200" : // > 5MB
+                                   (email.sizeEstimate || 0) > 1048576 ? "bg-amber-50 text-amber-700 border-amber-200" : // > 1MB
+                                   "bg-slate-50 text-slate-600 border-slate-200" // Default for large emails
+                                 )}>
                                    {formatSize(email.sizeEstimate || 0)}
                                  </span>
                               )}
@@ -676,15 +1118,134 @@ export default function Dashboard({ user }: { user: any }) {
                                 {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 <span className="hidden sm:inline">, {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
                               </span>
+                              <button
+                                type="button"
+                                id={`preview-btn-${email.id}`}
+                                onClick={(e) => toggleExpand(email.id, e)}
+                                className={cn(
+                                  "flex items-center gap-1 text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-md border transition-all cursor-pointer",
+                                  isExpanded
+                                    ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                                )}
+                                title={isExpanded ? "Collapse thread" : "Expand thread"}
+                              >
+                                {isExpanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 text-slate-600" />}
+                                <span>{isExpanded ? "Hide" : (email.messages && email.messages.length > 1 ? `View ${email.messages.length} replies` : "Preview")}</span>
+                              </button>
                             </div>
                           </div>
                           <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{email.subject}</p>
-                          <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5">{email.snippet}</p>
+                          {!isExpanded && (
+                            <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5">{email.snippet}</p>
+                          )}
+
+                          {isExpanded && (
+                            <div 
+                              id={`email-preview-card-${email.id}`}
+                              className="mt-3 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-col shadow-inner select-text cursor-default overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="max-h-[60vh] overflow-y-auto p-3 sm:p-4 flex flex-col gap-4">
+                                {(email.messages && email.messages.length > 0 ? email.messages : [email as any]).map((msg, idx, arr) => (
+                                  <div key={msg.id} className={cn("flex flex-col gap-2.5", idx !== arr.length - 1 && "pb-4 border-b border-slate-200/80")}>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-semibold text-slate-900 break-all">{msg.sender.replace(/<.*>/, "").trim() || msg.sender}</span>
+                                        <span className="text-slate-500 hidden sm:inline">&lt;{msg.sender.match(/<(.*)>/)?.[1] || msg.sender}&gt;</span>
+                                      </div>
+                                      <div className="text-slate-500 font-medium text-[11px] sm:text-xs shrink-0">
+                                        {(msg.date instanceof Date && !isNaN(msg.date.getTime()) ? msg.date : new Date(msg.date)).toLocaleString(undefined, { 
+                                          weekday: 'short', 
+                                          year: 'numeric', 
+                                          month: 'short', 
+                                          day: 'numeric', 
+                                          hour: 'numeric', 
+                                          minute: '2-digit' 
+                                        })}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      {idx === 0 && <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2 leading-snug">{msg.subject || '(No Subject)'}</h4>}
+                                      <div className="bg-white p-3 sm:p-3.5 rounded-lg border border-slate-200 text-slate-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-normal">
+                                        {msg.snippet ? msg.snippet : <span className="italic text-slate-400">No snippet preview available for this message.</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between p-3 sm:p-4 gap-2 border-t border-slate-200/60 bg-slate-50">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {folderFilters.includes('trash') ? (
+                                    <button
+                                      type="button"
+                                      id={`single-del-${email.id}`}
+                                      onClick={(e) => handleSingleAction(email.id, "delete", e)}
+                                      disabled={actionLoading !== null || isProcessing}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Delete Forever</span>
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        id={`single-trash-${email.id}`}
+                                        onClick={(e) => handleSingleAction(email.id, "trash", e)}
+                                        disabled={actionLoading !== null || isProcessing}
+                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Trash</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        id={`single-archive-${email.id}`}
+                                        onClick={(e) => handleSingleAction(email.id, "archive", e)}
+                                        disabled={actionLoading !== null || isProcessing}
+                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                      >
+                                        <Archive className="w-3.5 h-3.5" />
+                                        <span>Archive</span>
+                                      </button>
+                                    </>
+                                  )}
+                                  {email.labelIds?.includes('UNREAD') && (
+                                    <button
+                                      type="button"
+                                      id={`single-read-${email.id}`}
+                                      onClick={(e) => handleSingleAction(email.id, "read", e)}
+                                      disabled={actionLoading !== null || isProcessing}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      <span>Mark Read</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  id={`single-collapse-${email.id}`}
+                                  onClick={(e) => toggleExpand(email.id, e)}
+                                  className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2 py-1 hover:bg-slate-200 rounded-lg transition-colors ml-auto cursor-pointer"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                  <span>Hide Preview</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </li>
                     );
                   })}
-                </ul>
+                      </ul>
+                    </div>
+                  ))}
+                </div>
 
                 {nextPageToken && (
                   <div className="p-3.5 sm:p-5 flex justify-center border-t border-slate-100 bg-slate-50/50">
@@ -715,6 +1276,122 @@ export default function Dashboard({ user }: { user: any }) {
         )}
       </main>
 
+      {showDeleteSelectedConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+            <div className="p-5 sm:p-6 flex flex-col gap-3">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+                Delete Selected?
+              </h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                You are about to permanently delete {selectedIds.size} selected email(s). This action cannot be undone.
+              </p>
+            </div>
+            <div className="bg-slate-50 px-5 py-4 flex gap-2 justify-end border-t border-slate-100">
+              <button
+                onClick={() => setShowDeleteSelectedConfirm(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDeleteSelected}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEmptyTrashConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+            <div className="p-5 sm:p-6 flex flex-col gap-3">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+                Empty Trash?
+              </h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                All emails in your Trash will be permanently deleted. You won't be able to recover them.
+              </p>
+            </div>
+            <div className="bg-slate-50 px-5 py-4 flex gap-2 justify-end border-t border-slate-100">
+              <button
+                onClick={() => setShowEmptyTrashConfirm(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeEmptyTrash}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContextHelp && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-3 sm:p-4 overscroll-contain backdrop-blur-sm"
+          onClick={() => setShowContextHelp(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 sm:p-6 flex flex-col gap-4">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <HelpCircle className="w-6 h-6 text-indigo-600" />
+                Help & Tips
+              </h2>
+              <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
+                {showHealth ? (
+                  <p>You are viewing <strong>Inbox Health</strong>. This dashboard provides analytics about your email habits, highlights top senders, and helps you identify where most of your clutter is coming from.</p>
+                ) : folderFilters.includes('trash') ? (
+                  <>
+                    <p>You are viewing the <strong>Trash</strong> folder. Emails here will be automatically deleted by Gmail after 30 days.</p>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li>Use <strong>Empty Trash</strong> to instantly and permanently remove everything in this folder.</li>
+                      <li>Select specific emails and use <strong>Delete Selected</strong> to permanently remove only those items.</li>
+                    </ul>
+                    <div className="p-3 bg-amber-50 rounded-lg text-amber-800 text-xs font-medium flex gap-2 items-start mt-2 border border-amber-200/50">
+                      <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p>Note: Deletions from the Trash are permanent and cannot be undone.</p>
+                    </div>
+                  </>
+                ) : folderFilters.includes('archive') ? (
+                  <p>You are viewing the <strong>Archive</strong>. These are emails you have removed from your main Inbox to keep it clean, but haven't deleted. They will remain here indefinitely unless you move them to Trash.</p>
+                ) : (
+                  <>
+                    <p>You are viewing your <strong>Inbox</strong> (or a custom filter). From here, you can manage your messages efficiently:</p>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li><strong>Advanced Filtering:</strong> Use the filter bar to select multiple folders, set a date range, or toggle <strong>Unread Only / Exclude Sent</strong> to focus purely on new incoming messages.</li>
+                      <li><strong>AI Natural Language Search:</strong> Use the search bar to find emails conversationally (e.g., <em>"show me receipts from last week"</em> or <em>"newsletters about ai"</em>).</li>
+                      <li><strong>Smart Organize:</strong> Select multiple emails and use Organize to have AI categorize them or bulk apply labels.</li>
+                      <li><strong>Archive:</strong> Removes the email from your Inbox but keeps it safe for future reference.</li>
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="bg-slate-50 px-5 py-4 flex justify-end border-t border-slate-100">
+              <button
+                onClick={() => setShowContextHelp(false)}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div 
           className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-3 sm:p-4 overscroll-contain"
@@ -739,7 +1416,7 @@ export default function Dashboard({ user }: { user: any }) {
                   <button 
                     onClick={() => {
                        const p = aiSettings.provider;
-                       if (p === 'gemini') saveSettings({...aiSettings, model: 'gemini-1.5-flash'});
+                       if (p === 'gemini') saveSettings({...aiSettings, model: 'gemini-2.5-flash'});
                        if (p === 'openai') saveSettings({...aiSettings, model: 'gpt-4o-mini'});
                        if (p === 'anthropic') saveSettings({...aiSettings, model: 'claude-3-5-haiku-20241022'});
                        if (p === 'groq') saveSettings({...aiSettings, model: 'llama-3.1-8b-instant'});
@@ -757,7 +1434,15 @@ export default function Dashboard({ user }: { user: any }) {
                   {['gemini', 'openai', 'anthropic', 'groq', 'deepseek', 'zhipu', 'mistral'].map(p => (
                     <button
                       key={p}
-                      onClick={() => saveSettings({...aiSettings, provider: p})}
+                      onClick={() => saveSettings({...aiSettings, provider: p, model: (
+    p === 'gemini' ? 'gemini-2.5-flash' :
+    p === 'openai' ? 'gpt-4o-mini' :
+    p === 'anthropic' ? 'claude-3-5-haiku-20241022' :
+    p === 'groq' ? 'llama-3.1-8b-instant' :
+    p === 'deepseek' ? 'deepseek-chat' :
+    p === 'zhipu' ? 'glm-4-flash' :
+    p === 'mistral' ? 'mistral-small-latest' : aiSettings.model
+  )})}
                       className={cn("px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border text-xs sm:text-sm font-medium capitalize text-center truncate", aiSettings.provider === p ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')}
                     >
                       {p === 'zhipu' ? 'Zhipu (GLM)' : p}
@@ -772,7 +1457,7 @@ export default function Dashboard({ user }: { user: any }) {
                     list="model-suggestions"
                     value={aiSettings.model}
                     onChange={e => saveSettings({...aiSettings, model: e.target.value})}
-                    placeholder={aiSettings.provider === 'zhipu' ? 'e.g. glm-4' : 'e.g. gemini-1.5-flash'}
+                    placeholder={aiSettings.provider === 'zhipu' ? 'e.g. glm-4' : 'e.g. gemini-2.5-flash'}
                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs sm:text-sm focus:ring-slate-500 focus:border-slate-500 outline-none"
                   />
                   <datalist id="model-suggestions">
@@ -815,6 +1500,18 @@ export default function Dashboard({ user }: { user: any }) {
                 <p className="text-[11px] sm:text-xs text-slate-500 mt-1.5 sm:mt-2 flex items-center gap-1">
                   <CheckCircle className="w-3 h-3 text-slate-400 shrink-0" /> Stored securely in your browser's local storage.
                 </p>
+                {connectionStatus !== 'idle' && (
+                  <div className={"mt-2 text-[11px] sm:text-xs font-medium flex items-center gap-1.5 px-2 py-1.5 rounded " + (
+                    connectionStatus === 'testing' ? "bg-blue-50 text-blue-600" :
+                    connectionStatus === 'success' ? "bg-emerald-50 text-emerald-600" :
+                    "bg-red-50 text-red-600"
+                  )}>
+                    {connectionStatus === 'testing' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {connectionStatus === 'success' && <CheckCircle className="w-3.5 h-3.5" />}
+                    {connectionStatus === 'error' && <AlertTriangle className="w-3.5 h-3.5" />}
+                    {connectionMessage}
+                  </div>
+                )}
               </div>
             </div>
             <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2 sm:gap-3 shrink-0">
@@ -895,7 +1592,7 @@ function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { select
     onChange(next);
   };
 
-  const label = selected.includes('anywhere') ? 'All Mail' : selected.length === 1 ? options.find(o => o.value === selected[0])?.label : `${selected.length} Folders`;
+  const label = selected.includes('anywhere') || selected.length === 0 ? 'All Mail' : selected.length === 1 ? options.find(o => o.value === selected[0])?.label || selected[0].replace('category:', '') : `${selected.length} Folders`;
 
   return (
     <div className="relative">

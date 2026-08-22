@@ -6,7 +6,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/gmail.modify');
+provider.addScope('https://mail.google.com/');
+provider.setCustomParameters({ prompt: 'consent' });
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

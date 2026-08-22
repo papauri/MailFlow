@@ -2,12 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails } from '../lib/gmail';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
+import { UnsubscribeManager } from "./UnsubscribeManager";
 
-export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: string, filter?: string) => void, aiSettings?: any }) {
+const GENERIC_EMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'yahoo.co.uk',
+  'yahoo.ca',
+  'ymail.com',
+  'hotmail.com',
+  'hotmail.co.uk',
+  'outlook.com',
+  'live.com',
+  'msn.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'protonmail.com',
+  'proton.me',
+  'zoho.com',
+  'yandex.com',
+  'yandex.ru',
+  'mail.com',
+  'gmx.com',
+  'gmx.net',
+  'fastmail.com'
+]);
+
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings }: { userEmail?: string, onApplyQuery: (q: string, filter?: string) => void, aiSettings?: any }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
+  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [clusters, setClusters] = useState<any[]>([]);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
@@ -39,6 +69,8 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
     async function fetchClusters() {
       setLoadingClusters(true);
       setPatternError(null);
+      const normalizedUser = (userEmail || '').toLowerCase().trim();
+
       try {
         const recentEmails = await searchEmails("in:anywhere", 250);
         
@@ -52,17 +84,30 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
           if (match) email = match[1];
           email = email.toLowerCase().trim();
           
-          const domain = email.includes('@') ? email.split('@')[1] : 'unknown';
+          if (!email || !email.includes('@')) return;
+          // Filter out the user's own email from top senders
+          if (normalizedUser && (email === normalizedUser || email.includes(normalizedUser))) return;
+
+          const domain = email.split('@')[1] || 'unknown';
           
-          if (!senderCounts.has(email)) senderCounts.set(email, { email, name: e.sender.replace(/<[^>]+>/, '').trim() || email, count: 0 });
+          if (!senderCounts.has(email)) {
+            senderCounts.set(email, { 
+              email, 
+              name: e.sender.replace(/<[^>]+>/, '').trim() || email, 
+              count: 0 
+            });
+          }
           senderCounts.get(email).count++;
           
-          if (!domainCounts.has(domain)) domainCounts.set(domain, { domain, count: 0 });
-          domainCounts.get(domain).count++;
+          // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers)
+          if (domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(domain)) {
+            if (!domainCounts.has(domain)) domainCounts.set(domain, { domain, count: 0 });
+            domainCounts.get(domain).count++;
+          }
         });
         
         const rawSenders = Array.from(senderCounts.values())
-          .filter(s => s.email.includes('@')) // Only keep valid email addresses
+          .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
           .sort((a, b) => b.count - a.count).slice(0, 8);
         const exactSenders = await Promise.all(rawSenders.map(async (s) => {
            const exactCount = await countEmails(`from:(${s.email}) -in:trash`);
@@ -71,7 +116,7 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         setTopSenders(exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
 
         const rawDomains = Array.from(domainCounts.values())
-          .filter(d => d.domain !== 'unknown')
+          .filter(d => d.domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(d.domain))
           .sort((a, b) => b.count - a.count).slice(0, 8);
         const exactDomains = await Promise.all(rawDomains.map(async (d) => {
            const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
@@ -82,7 +127,11 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         const res = await fetch('/api/analyze-inbox', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ emails: recentEmails.map(e => ({ id: e.id, sender: e.sender, subject: e.subject })), settings: aiSettings })
+          body: JSON.stringify({ 
+            emails: recentEmails.map(e => ({ id: e.id, sender: e.sender, subject: e.subject, labelIds: e.labelIds })), 
+            userEmail: normalizedUser,
+            settings: aiSettings 
+          })
         });
         
         if (res.status === 429) {
@@ -94,7 +143,14 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to analyze inbox");
-        setClusters(data.clusters || []);
+        
+        const rawClusters = data.clusters || [];
+        const clustersWithExactCounts = await Promise.all(rawClusters.map(async (c: any) => {
+           const exactCount = await countEmails(c.searchQuery);
+           return { ...c, estimatedCount: exactCount };
+        }));
+
+        setClusters(clustersWithExactCounts.filter(c => c.estimatedCount !== 0));
       } catch (err: any) {
         console.error("Pattern analysis error:", err);
         setPatternError(err.message || "Failed to analyze");
@@ -105,7 +161,7 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
     
     fetchStats();
     fetchClusters();
-  }, []);
+  }, [userEmail]);
 
   if (loading) {
     return (
@@ -119,6 +175,11 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
 
   return (
     <div className="flex flex-col gap-6">
+      <WalkthroughTip 
+        storageKey="tip_health" 
+        title="Inbox Health Scan" 
+        description="This dashboard analyzes your inbox patterns. It identifies your most frequent senders, categorizes your storage usage, and helps you quickly find large files or noisy newsletters to clear out."
+      />
       <div className="bg-gradient-to-br from-indigo-50/50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
         <div className="flex items-center gap-3 sm:gap-5">
           <div className="p-2.5 sm:p-3.5 bg-white border border-slate-100 text-indigo-600 rounded-xl shadow-sm shrink-0">
@@ -142,7 +203,7 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
         </button>
       </div>
 
-      <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+      <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         <HealthCard 
           icon={<HardDrive className="w-6 h-6 text-orange-500" />}
           title="Storage Hogs"
@@ -169,6 +230,15 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
           color="border-slate-200 bg-slate-100/50 hover:bg-slate-100"
           actionText="Review Junk"
           onAction={() => onApplyQuery("", "spam+trash")}
+        />
+        <HealthCard 
+          icon={<ShieldCheck className="w-6 h-6 text-indigo-500" />}
+          title="Subscriptions"
+          count="Manage"
+          desc="Manage newsletters & promos"
+          color="border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50"
+          actionText="Open Manager"
+          onAction={() => setIsUnsubscribeModalOpen(true)}
         />
         <HealthCard 
           icon={<MailOpen className="w-6 h-6 text-slate-500" />}
@@ -350,7 +420,7 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
                     <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-snug">{cluster.description}</p>
                   </div>
                   <div className="bg-slate-100 text-slate-700 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-bold whitespace-nowrap shrink-0">
-                    ~{cluster.estimatedCount} found
+                    {cluster.estimatedCount} found
                   </div>
                 </div>
                 
@@ -371,6 +441,8 @@ export function InboxHealth({ onApplyQuery, aiSettings }: { onApplyQuery: (q: st
           </div>
         )}
       </div>
+
+      <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
 
       <CategoryDistributionModal
         isOpen={isChartModalOpen}
