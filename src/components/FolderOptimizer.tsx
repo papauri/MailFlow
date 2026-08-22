@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, CheckCircle, Trash2, Archive, FolderInput, AlertTriangle, Cpu } from 'lucide-react';
+import { X, Sparkles, Loader2, CheckCircle, Trash2, Archive, FolderInput, AlertTriangle, Cpu, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel } from '../lib/gmail';
 
@@ -11,6 +11,7 @@ interface Props {
   onComplete: () => void;
   aiSettings?: any;
   isFetching?: boolean;
+  onReload?: () => void;
 }
 
 interface Recommendation {
@@ -20,13 +21,14 @@ interface Recommendation {
   title?: string;
 }
 
-export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, isFetching }: Omit<Props, 'isOpen' | 'onClose'>) {
+export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, isFetching, onReload }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [usedAi, setUsedAi] = useState(false);
+  const [expandedRecs, setExpandedRecs] = useState<Set<number>>(new Set());
 
   // Trigger analysis when emails array changes or fetching completes
   useEffect(() => {
@@ -201,6 +203,15 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
     }
   };
 
+  const toggleExpand = (idx: number) => {
+    setExpandedRecs(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-sm mt-6 sm:mt-8">
       <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50">
@@ -217,6 +228,17 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
             </p>
           </div>
         </div>
+        {onReload && (
+          <button 
+            onClick={onReload}
+            disabled={loading || isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            title="Scan inbox again for new outliers"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", (loading || isFetching) && "animate-spin")} />
+            <span className="hidden sm:inline">Scan Again</span>
+          </button>
+        )}
       </div>
 
       <div className="p-4 sm:p-6 bg-slate-50/30">
@@ -263,7 +285,29 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                   </div>
                   
                   {!isCompleted && (
-                    <div className="flex flex-wrap gap-2 mt-auto pt-4 border-t border-slate-100">
+                    <>
+                      <button 
+                        onClick={() => toggleExpand(idx)}
+                        className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-3 transition-colors"
+                      >
+                        {expandedRecs.has(idx) ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {expandedRecs.has(idx) ? 'Hide contents' : 'View contents'}
+                      </button>
+                      
+                      {expandedRecs.has(idx) && (
+                        <div className="bg-slate-50 rounded-lg p-2.5 mb-4 max-h-[160px] overflow-y-auto border border-slate-100 flex flex-col gap-1.5 custom-scrollbar">
+                          {emails
+                            .filter(e => rec.emailIds.includes(e.id))
+                            .map((e, i) => (
+                              <div key={i} className="text-xs flex flex-col gap-0.5 border-b border-slate-200/60 pb-1.5 last:border-0 last:pb-0">
+                                <span className="font-semibold text-slate-700 truncate">{e.sender}</span>
+                                <span className="text-slate-500 truncate">{e.subject}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-auto pt-4 border-t border-slate-100">
                       <button
                         onClick={() => handleAction(idx, 'move', rec)}
                         disabled={isProcessing}
@@ -289,6 +333,7 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
                         Trash
                       </button>
                     </div>
+                    </>
                   )}
                 </div>
               );

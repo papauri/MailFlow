@@ -45,6 +45,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(true);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {
     async function fetchStats() {
@@ -135,7 +136,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
     
     fetchStats();
     fetchClusters();
-  }, [userEmail]);
+  }, [userEmail, reloadTrigger]);
 
   if (loading) {
     return (
@@ -387,8 +388,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         userLabels={userLabels || []}
         aiSettings={aiSettings}
         isFetching={isLoadingEmails}
+        onReload={() => setReloadTrigger(prev => prev + 1)}
         onComplete={() => {
-          // Triggers a UI refresh of the health metrics if desired, or we just notify user
+          setReloadTrigger(prev => prev + 1);
           onApplyQuery('in:inbox');
         }}
       />
