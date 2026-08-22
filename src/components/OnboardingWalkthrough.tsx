@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Search, Trash2, Sparkles, X, ChevronRight, ChevronLeft, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void; key?: any }) {
+export function OnboardingWalkthrough({ onComplete, key }: { onComplete: () => void, key?: any }) {
   const [step, setStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   

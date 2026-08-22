@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, CheckCircle, Trash2, Archive, FolderInput, AlertTriangle, Cpu, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel } from '../lib/gmail';
+import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
 
 interface Props {
   isOpen: boolean;
@@ -30,6 +30,9 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
   const [usedAi, setUsedAi] = useState(false);
   const [expandedRecs, setExpandedRecs] = useState<Set<number>>(new Set());
   const [actionedEmailIds, setActionedEmailIds] = useState<Set<string>>(new Set());
+  const [completedActions, setCompletedActions] = useState<Map<number, { action: string, labelId?: string }>>(new Map());
+  const [ruleCreatedIds, setRuleCreatedIds] = useState<Set<number>>(new Set());
+  const [creatingRuleId, setCreatingRuleId] = useState<number | null>(null);
 
   // Trigger analysis when emails array changes or fetching completes
   useEffect(() => {
@@ -51,6 +54,8 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
     setUsedAi(false);
     setCompletedIds(new Set());
     setExpandedRecs(new Set());
+    setCompletedActions(new Map());
+    setRuleCreatedIds(new Set());
     
     const freshEmails = emails.filter(e => !actionedEmailIds.has(e.id));
     if (freshEmails.length === 0 && emails.length > 0) {
@@ -194,10 +199,14 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
         }
       });
 
+      let finalLabelId: string | undefined;
+      
       if (action === 'trash') {
         await batchTrashEmails(allMessageIds);
+        finalLabelId = 'TRASH';
       } else if (action === 'archive') {
         await batchArchiveEmails(allMessageIds);
+        finalLabelId = undefined;
       } else if (action === 'move') {
         let labelId = userLabels.find(l => l.name.toLowerCase() === rec.suggestedLabel.toLowerCase())?.id;
         if (!labelId) {
@@ -206,10 +215,16 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
         }
         if (labelId) {
           await batchModifyEmails(allMessageIds, [labelId], ['INBOX']);
+          finalLabelId = labelId;
         }
       }
       
       setCompletedIds(prev => new Set(prev).add(idx));
+      setCompletedActions(prev => {
+        const next = new Map(prev);
+        next.set(idx, { action, labelId: finalLabelId });
+        return next;
+      });
       setActionedEmailIds(prev => {
         const next = new Set(prev);
         activeEmailIds.forEach(id => next.add(id));
@@ -220,6 +235,42 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       alert("Failed to apply action.");
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleCreateRule = async (idx: number, rec: Recommendation) => {
+    const act = completedActions.get(idx);
+    if (!act) return;
+    
+    setCreatingRuleId(idx);
+    try {
+      const activeEmailIds = rec.emailIds.filter(id => !(rec.deselectedEmailIds || []).includes(id));
+      const activeEmails = emails.filter(e => activeEmailIds.includes(e.id));
+      
+      const senders = new Set<string>();
+      activeEmails.forEach(e => {
+        const match = e.sender.match(/<([^>]+)>/);
+        if (match) senders.add(match[1].toLowerCase());
+        else senders.add(e.sender.toLowerCase());
+      });
+      
+      if (senders.size === 0) return;
+      
+      // Gmail filters support OR syntax with curly braces: {from:a@b.com from:c@d.com}
+      const query = `{${Array.from(senders).map(s => `from:${s}`).join(' ')}}`;
+      
+      const addLabelIds: string[] = [];
+      if (act.action === 'trash') addLabelIds.push('TRASH');
+      else if (act.action === 'move' && act.labelId) addLabelIds.push(act.labelId);
+      
+      await createFilter(query, addLabelIds, ['INBOX']);
+      
+      setRuleCreatedIds(prev => new Set(prev).add(idx));
+    } catch (e) {
+      console.error(e);
+      alert("Failed to create rule. You may have too many filters or reached a Gmail API limit.");
+    } finally {
+      setCreatingRuleId(null);
     }
   };
 
@@ -314,6 +365,26 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
                     </div>
                     {isCompleted && <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />}
                   </div>
+
+                  {isCompleted && !ruleCreatedIds.has(idx) && (
+                    <div className="mt-auto pt-4 border-t border-emerald-100/50 flex flex-col gap-2">
+                      <p className="text-xs text-emerald-800 font-medium">Want to automate this for future emails?</p>
+                      <button
+                        onClick={() => handleCreateRule(idx, rec)}
+                        disabled={creatingRuleId === idx}
+                        className="flex items-center justify-center gap-1.5 w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {creatingRuleId === idx ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        Create Automatic Rule
+                      </button>
+                    </div>
+                  )}
+                  {isCompleted && ruleCreatedIds.has(idx) && (
+                    <div className="mt-auto pt-3 border-t border-emerald-100/50 flex items-center gap-2 text-emerald-700 text-xs font-bold">
+                      <CheckCircle className="w-4 h-4" />
+                      Rule created successfully!
+                    </div>
+                  )}
                   
                   {!isCompleted && (
                     <>

@@ -311,3 +311,18 @@ export async function createLabel(name: string) {
     })
   });
 }
+
+export async function createFilter(query: string, addLabelIds: string[], removeLabelIds: string[] = ['INBOX']) {
+  return await fetchGmailAPI('/settings/filters', {
+    method: 'POST',
+    body: JSON.stringify({
+      criteria: {
+        query
+      },
+      action: {
+        addLabelIds,
+        removeLabelIds
+      }
+    })
+  });
+}

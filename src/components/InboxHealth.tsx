@@ -7,6 +7,7 @@ import { CategoryDistributionModal } from './CategoryDistributionModal';
 import { UnsubscribeManager } from "./UnsubscribeManager";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { FolderOptimizer } from "./FolderOptimizer";
+import { RuleSuggester } from './RuleSuggester';
 
 const GENERIC_EMAIL_DOMAINS = new Set([
   'gmail.com',
@@ -391,6 +392,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         isFetching={isLoadingEmails}
         onReload={() => setReloadTrigger(prev => prev + 1)}
       />
+
+      <RuleSuggester userLabels={userLabels || []} />
 
       <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
 
