@@ -4,6 +4,7 @@ import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails,
 import { InboxHealth } from "./InboxHealth";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
+import { FolderOptimizerModal } from "./FolderOptimizerModal";
 import { WalkthroughTip } from "./WalkthroughTip";
 import { HealthScoreWidget } from "./HealthScoreWidget";
 import { cn } from "../lib/utils";
@@ -58,6 +59,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   const [useAI, setUseAI] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showOptimizer, setShowOptimizer] = useState(false);
   const [showContextHelp, setShowContextHelp] = useState(false);
   const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' });
   const [connectionStatus, setConnectionStatus] = useState<'idle'|'testing'|'success'|'error'>('idle');
@@ -1072,6 +1074,17 @@ export default function Dashboard({ user }: { user: any }) {
                   disabled={selectedIds.size === 0 || actionLoading !== null} 
                 />
                 
+                <button
+                  onClick={() => setShowOptimizer(true)}
+                  disabled={emails.length === 0}
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-lg text-sm font-semibold transition-all shadow-sm shrink-0 flex-1 sm:flex-initial"
+                  title="Detect outliers and clean this folder"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span className="hidden lg:inline">Optimize View</span>
+                  <span className="inline lg:hidden">Optimize</span>
+                </button>
+                
                 {selectedIds.size > 0 ? (
                    <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100" />
                 ) : (
@@ -1716,6 +1729,17 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         </div>
       )}
+      <FolderOptimizerModal 
+        isOpen={showOptimizer} 
+        onClose={() => setShowOptimizer(false)} 
+        emails={filteredEmails} 
+        userLabels={userLabels} 
+        onComplete={() => {
+          setSelectedIds(new Set());
+          setTimeout(() => handleSearch(), 500);
+        }} 
+        aiSettings={settings?.ai} 
+      />
     </div>
   );
 }
