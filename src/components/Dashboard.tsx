@@ -1104,9 +1104,29 @@ export default function Dashboard({ user }: { user: any }) {
                             onClick={toggleGroup}
                             className="bg-slate-100/80 px-4 py-2 border-y border-slate-200 font-semibold text-slate-800 text-sm flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-slate-200/80 transition-colors"
                           >
-                            <div className="flex items-center gap-2">
-                              <ChevronDown className={cn("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
-                              <span>{group.title}</span>
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-sm", group.emails.length > 0 && group.emails.every(e => selectedIds.has(e.id)) ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const allSelected = group.emails.every(e => selectedIds.has(e.id));
+                                  setSelectedIds(prev => {
+                                    const next = new Set(prev);
+                                    if (allSelected) {
+                                      group.emails.forEach(e => next.delete(e.id));
+                                    } else {
+                                      group.emails.forEach(e => next.add(e.id));
+                                    }
+                                    return next;
+                                  });
+                                }}
+                              >
+                                {group.emails.length > 0 && group.emails.every(e => selectedIds.has(e.id)) && <CheckCircle className="w-3 h-3 text-white" />}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <ChevronDown className={cn("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
+                                <span>{group.title}</span>
+                              </div>
                             </div>
                             <span className="text-xs bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-medium shadow-xs">{group.emails.length}</span>
                           </div>
