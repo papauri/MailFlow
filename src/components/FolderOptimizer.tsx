@@ -8,7 +8,6 @@ interface Props {
   onClose: () => void;
   emails: any[];
   userLabels: any[];
-  onComplete: () => void;
   aiSettings?: any;
   isFetching?: boolean;
   onReload?: () => void;
@@ -22,7 +21,7 @@ interface Recommendation {
   deselectedEmailIds?: string[];
 }
 
-export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, isFetching, onReload }: Omit<Props, 'isOpen' | 'onClose'>) {
+export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, onReload }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +200,6 @@ export function FolderOptimizer({ emails, userLabels, onComplete, aiSettings, is
       }
       
       setCompletedIds(prev => new Set(prev).add(idx));
-      setTimeout(() => onComplete(), 500);
     } catch (e) {
       console.error(e);
       alert("Failed to apply action.");

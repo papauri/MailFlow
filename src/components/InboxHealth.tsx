@@ -389,10 +389,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         aiSettings={aiSettings}
         isFetching={isLoadingEmails}
         onReload={() => setReloadTrigger(prev => prev + 1)}
-        onComplete={() => {
-          setReloadTrigger(prev => prev + 1);
-          onApplyQuery('in:inbox');
-        }}
       />
 
       <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
