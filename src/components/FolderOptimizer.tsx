@@ -42,7 +42,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emails.length, isFetching]);
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (forceAi: boolean = false) => {
     if (emails.length === 0) {
       setError("Your inbox is empty or no emails matched the scan. Nothing to optimize!");
       setLoading(false);
@@ -70,7 +70,8 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       const hasAiKey = !!(aiSettings?.apiKey || sessionStorage.getItem('ai_quota_ok') !== 'false');
       let aiSucceeded = false;
       
-      if (hasAiKey) {
+      // ONLY run AI if explicitly requested to save costs
+      if (forceAi && hasAiKey) {
         try {
           const payload = {
             emails: sample.map(e => ({ id: e.id, sender: e.sender, subject: e.subject })),
@@ -94,8 +95,8 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
           } else if (res.status === 429) {
             sessionStorage.setItem('ai_quota_ok', 'false');
           }
-        } catch (e) {
-          console.warn("AI optimization failed, falling back to local heuristics", e);
+        } catch (err) {
+          console.error("AI Analysis failed, falling back to heuristics", err);
         }
       }
 
@@ -105,7 +106,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
         setUsedAi(false);
       }
     } catch (err: any) {
-      setError("Analysis failed. Please try again.");
+      setError(err.message || "Failed to analyze emails.");
     } finally {
       setLoading(false);
     }
@@ -309,17 +310,30 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
             </p>
           </div>
         </div>
-        {onReload && (
-          <button 
-            onClick={onReload}
-            disabled={loading || isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-            title="Scan inbox again for new outliers"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", (loading || isFetching) && "animate-spin")} />
-            <span className="hidden sm:inline">Scan Again</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!usedAi && !!aiSettings?.apiKey && (
+            <button 
+              onClick={() => runAnalysis(true)}
+              disabled={loading || isFetching}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+              title="Enhance scan with AI for deeper clustering"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Deep AI Scan</span>
+            </button>
+          )}
+          {onReload && (
+            <button 
+              onClick={onReload}
+              disabled={loading || isFetching}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+              title="Scan inbox again for new outliers"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", (loading || isFetching) && "animate-spin")} />
+              <span className="hidden sm:inline">Scan Again</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-4 sm:p-6 bg-slate-50/30">
