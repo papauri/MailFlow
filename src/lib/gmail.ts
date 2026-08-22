@@ -127,9 +127,11 @@ export async function searchEmails(query: string, maxResults = 500, onProgress?:
   return totalDetailed;
 }
 
-export async function searchEmailsPaginated(query: string, maxResults = 50, pageToken = ""): Promise<{ emails: EmailData[], nextPageToken?: string }> {
-  let url = `/threads?q=${encodeURIComponent(query)}&maxResults=${maxResults}`;
-  if (pageToken) url += `&pageToken=${pageToken}`;
+export async function searchEmailsPaginated(query: string, maxResults = 50, pageToken = "", labelId?: string): Promise<{ emails: EmailData[], nextPageToken?: string }> {
+  let url = `/threads?maxResults=${maxResults}`;
+  if (query) url += `&q=${encodeURIComponent(query)}`;
+  if (labelId) url += `&labelIds=${encodeURIComponent(labelId)}`;
+  if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
 
   const listResult = await fetchGmailAPI(url);
   if (!listResult || !listResult.threads) return { emails: [] };

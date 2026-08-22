@@ -77,12 +77,8 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     const fetchFirstPage = async () => {
       setLoadingEmails(true);
       try {
-        const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
-        let query = `label:${formattedName}`;
-        if (debouncedQuery.trim()) {
-           query += ` (${debouncedQuery})`;
-        }
-        const res = await searchEmailsPaginated(query, 50, "");
+        const query = debouncedQuery.trim() ? debouncedQuery.trim() : "";
+        const res = await searchEmailsPaginated(query, 50, "", activeLabel.id);
         setLabelEmails(res.emails);
         setPageToken(res.nextPageToken);
       } catch (e) {
@@ -98,12 +94,8 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     if (!activeLabel || !pageToken || loadingMore) return;
     setLoadingMore(true);
     try {
-      const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
-      let query = `label:${formattedName}`;
-      if (debouncedQuery.trim()) {
-         query += ` (${debouncedQuery})`;
-      }
-      const res = await searchEmailsPaginated(query, 50, pageToken);
+      const query = debouncedQuery.trim() ? debouncedQuery.trim() : "";
+      const res = await searchEmailsPaginated(query, 50, pageToken, activeLabel.id);
       setLabelEmails(prev => [...prev, ...res.emails]);
       setPageToken(res.nextPageToken);
     } catch (e) {
