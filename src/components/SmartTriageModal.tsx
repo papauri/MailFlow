@@ -202,6 +202,23 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 const isCompleted = completedIds.has(suggestion.emailId);
                 const isProcessing = processingId === suggestion.emailId;
                 
+                // Retrieve original email to see current state
+                const originalEmail = fetchedEmails.find(e => e.id === suggestion.emailId);
+                const currentLabels = originalEmail?.labelIds || [];
+                
+                const standardMap: Record<string, string> = {
+                  'INBOX': 'Inbox',
+                  'CATEGORY_PERSONAL': 'Primary',
+                  'CATEGORY_UPDATES': 'Updates',
+                  'CATEGORY_PROMOTIONS': 'Promotions',
+                  'CATEGORY_SOCIAL': 'Social',
+                  'STARRED': 'Starred'
+                };
+                
+                const resolvedLabels = currentLabels
+                  .filter((id: string) => id !== 'UNREAD' && id !== 'IMPORTANT')
+                  .map((id: string) => standardMap[id] || userLabels?.find(l => l.id === id)?.name || id);
+
                 // Calculate batch impact
                 const matchingCount = fetchedEmails.filter(e => e.sender === suggestion.sender).length;
                 
@@ -212,17 +229,27 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                   <div key={idx} className={`bg-white border rounded-xl p-3 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
                     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</p>
+                          {resolvedLabels.length > 0 && (
+                            <div className="flex flex-wrap gap-1 items-center">
+                              <span className="text-[10px] text-slate-400 font-medium">in:</span>
+                              {resolvedLabels.map((lbl: string, i: number) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-500 text-[10px] rounded font-medium truncate max-w-[100px]">
+                                  {lbl}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {matchingCount > 1 && (
-                            <span className="shrink-0 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-blue-100">
-                              Affects {matchingCount} recent emails
+                            <span className="shrink-0 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-200">
+                              Affects {matchingCount} emails
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600 truncate mt-0.5">{suggestion.subject}</p>
+                        <p className="text-xs text-slate-600 truncate mt-1">{suggestion.subject}</p>
                         
-                        <div className="flex items-center gap-1.5 mt-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 inline-flex">
+                        <div className="flex items-center gap-1.5 mt-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 inline-flex">
                           <p className="text-xs text-slate-600 font-medium flex items-center gap-1">
                             <CornerDownRight className="w-3 h-3 text-slate-400" /> {suggestion.reason}
                           </p>
@@ -230,8 +257,8 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                         
                         {suggestion.applyToAllFuture && (
                           <div className="mt-2 flex">
-                            <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-amber-100">
-                              <Zap className="w-3 h-3" /> Applies to all future emails
+                            <div className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-slate-200">
+                              <Zap className="w-3 h-3 text-slate-400" /> Applies to all future emails
                             </div>
                           </div>
                         )}
