@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { countEmails, searchEmails } from '../lib/gmail';
+import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
@@ -38,6 +38,7 @@ const GENERIC_EMAIL_DOMAINS = new Set([
 
 export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[] }) {
   const [stats, setStats] = useState<any>(null);
+  const [sizes, setSizes] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
@@ -64,6 +65,21 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           countEmails("(is:starred OR label:personal) -in:trash") // Learner
         ]);
         setStats({ unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner });
+        
+        // Fetch estimated sizes in background
+        Promise.all([
+          estimateQuerySize("category:promotions older_than:6m -in:trash", oldPromo),
+          estimateQuerySize("larger:5M -in:trash", large),
+          estimateQuerySize("in:spam OR in:trash", spamAndTrash),
+          estimateQuerySize("has:attachment -in:trash", content)
+        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, contentSize]) => {
+          setSizes({ 
+            oldPromo: oldPromoSize, 
+            large: largeSize, 
+            spamAndTrash: spamAndTrashSize,
+            content: contentSize 
+          });
+        });
       } catch (e) {
         console.error(e);
       } finally {
@@ -185,6 +201,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           icon={<HardDrive className="w-6 h-6 text-orange-500" />}
           title="Storage Hogs"
           count={stats?.large}
+          sizeEstimate={sizes?.large}
           desc="Emails larger than 5MB taking up valuable Google Drive space."
           color="border-orange-200 bg-orange-50/50 hover:bg-orange-50"
           actionText="Review Large Emails"
@@ -194,6 +211,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           icon={<Trash2 className="w-6 h-6 text-purple-500" />}
           title="Stale Promotions"
           count={stats?.oldPromo}
+          sizeEstimate={sizes?.oldPromo}
           desc="Marketing emails and newsletters older than 6 months."
           color="border-slate-300 bg-slate-100/50 hover:bg-slate-100"
           actionText="Clean Up Promotions"
@@ -203,6 +221,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           icon={<ShieldAlert className="w-6 h-6 text-red-500" />}
           title="Spam & Trash"
           count={stats?.spamAndTrash}
+          sizeEstimate={sizes?.spamAndTrash}
           desc="Junk accumulating in your Spam and Trash folders."
           color="border-slate-200 bg-slate-100/50 hover:bg-slate-100"
           actionText="Review Junk"
@@ -271,14 +290,17 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
             <span>Important & Trusted</span>
             <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.trust || 0}</span>
           </button>
-
+          
           <button 
             onClick={() => onApplyQuery("has:attachment", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
             <FileSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span>With Attachments</span>
-            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.content || 0}</span>
+            <div className="flex items-center gap-1 ml-1 shrink-0">
+              <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.content || 0}</span>
+              {sizes?.content > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.content)}</span>}
+            </div>
           </button>
 
           <button 
@@ -406,25 +428,42 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
   );
 }
 
-function HealthCard({ icon, title, count, desc, color, actionText, onAction }: any) {
+function formatSize(bytes: number) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function HealthCard({ icon, title, count, desc, color, actionText, onAction, sizeEstimate }: any) {
   const displayCount = typeof count === 'string' ? count : (count || 0).toLocaleString();
   return (
     <button 
       onClick={onAction}
-      className={cn("rounded-xl sm:rounded-2xl border p-3 sm:p-6 flex flex-row sm:flex-col gap-3 sm:gap-4 shadow-sm transition-all text-left group hover:shadow-md hover:scale-[1.02] items-center sm:items-start", color)}
+      className={cn("rounded-xl sm:rounded-2xl border p-3 sm:p-6 flex flex-row sm:flex-col gap-3 sm:gap-4 shadow-sm transition-all text-left group hover:shadow-md hover:scale-[1.02] items-center sm:items-start relative overflow-hidden", color)}
     >
       <div className="p-2 sm:p-3 bg-white/80 sm:bg-white rounded-lg sm:rounded-xl shadow-sm shrink-0 flex items-center justify-center">
         {icon}
       </div>
       
       <div className="flex-1 flex flex-col sm:block min-w-0">
-        <h3 className="font-bold text-slate-900 text-[15px] sm:text-lg sm:mb-1 truncate">{title}</h3>
+        <h3 className="font-bold text-slate-900 text-[15px] sm:text-lg sm:mb-1 truncate flex items-center gap-2">
+          {title}
+        </h3>
         <p className="text-xs sm:text-sm text-slate-600 leading-snug hidden sm:block">{desc}</p>
         <p className="text-[11px] text-slate-500 truncate sm:hidden">{actionText}</p>
       </div>
       
       <div className="flex flex-col items-end sm:w-full sm:flex-row sm:items-center sm:justify-between sm:pt-4 sm:mt-auto shrink-0">
-        <span className="text-lg sm:text-3xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
+        <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+           <span className="text-lg sm:text-3xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
+           {sizeEstimate > 0 && (
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 bg-white/50 px-1.5 py-0.5 rounded border border-slate-200/50 mt-1 sm:mt-0">
+                ~{formatSize(sizeEstimate)}
+              </span>
+           )}
+        </div>
         <div className="hidden sm:flex items-center text-sm font-bold text-slate-800 group-hover:text-black">
           {actionText}
           <ArrowRight className="w-4 h-4 sm:group-hover:translate-x-1 transition-transform ml-1" />

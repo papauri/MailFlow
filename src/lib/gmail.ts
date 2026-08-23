@@ -300,6 +300,39 @@ export async function countEmails(query: string): Promise<number | string> {
   }
 }
 
+export async function estimateQuerySize(query: string, countStr: number | string): Promise<number> {
+  const count = typeof countStr === 'string' ? parseInt(countStr.replace(/\D/g, '')) || 0 : countStr;
+  if (count === 0) return 0;
+
+  try {
+    // 1. Fetch a single small page of results
+    const res = await fetchGmailAPI(`/threads?q=${encodeURIComponent(query)}&maxResults=10`);
+    if (!res || !res.threads || res.threads.length === 0) return 0;
+    
+    // 2. Fetch details for this sample
+    const sampleDetails = await processInChunks(res.threads, 5, async (thread: any) => {
+      try {
+        const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata`);
+        if (!detail.messages || detail.messages.length === 0) return 0;
+        return detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0);
+      } catch (e) {
+        return 0;
+      }
+    });
+    
+    // 3. Average the sizes
+    const validSizes = sampleDetails.filter(s => s > 0);
+    if (validSizes.length === 0) return 0;
+    
+    const avgSize = validSizes.reduce((a, b) => a + b, 0) / validSizes.length;
+    
+    // 4. Multiply by total count
+    return avgSize * count;
+  } catch (err) {
+    return 0;
+  }
+}
+
 
 export async function createLabel(name: string) {
   return await fetchGmailAPI('/labels', {
