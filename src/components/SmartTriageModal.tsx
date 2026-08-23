@@ -5,6 +5,7 @@ import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, creat
 export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { isOpen: boolean, onClose: () => void, aiSettings: any, userLabels?: any[] }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [fetchedEmails, setFetchedEmails] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
@@ -29,6 +30,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
         labelIds: e.labelIds,
         messageIds: e.messageIds
       }));
+      setFetchedEmails(payload);
 
       const res = await fetch("/api/smart-triage", {
         method: "POST",
@@ -55,10 +57,13 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
     }
   };
 
-  const executeAction = async (suggestion: any) => {
+  const executeAction = async (suggestion: any, createFolder: boolean = false) => {
     setProcessingId(suggestion.emailId);
     try {
-      const msgIds = suggestion.messageIds;
+      // Find all matching emails from this sender to process in one click
+      const matchingEmails = fetchedEmails.filter(e => e.sender === suggestion.sender);
+      const msgIds = matchingEmails.flatMap(e => e.messageIds);
+      
       let addLabels: string[] = [];
       let removeLabels: string[] = [];
 
@@ -83,7 +88,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
         const existing = userLabels?.find(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
         if (existing) {
           addLabels.push(existing.id);
-        } else {
+        } else if (createFolder) {
           const lbl = await createLabel(suggestion.suggestedLabel);
           if (lbl && lbl.id) {
             addLabels.push(lbl.id);
@@ -102,7 +107,10 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
          }
       }
       
-      setCompletedIds(prev => new Set(prev).add(suggestion.emailId));
+      // Mark all matching emails as completed
+      const newCompleted = new Set(completedIds);
+      matchingEmails.forEach(e => newCompleted.add(e.id));
+      setCompletedIds(newCompleted);
     } catch (err) {
       console.error(err);
       alert("Failed to execute action.");
@@ -190,15 +198,28 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
           ) : suggestions.length > 0 ? (
             <div className="space-y-2">
               {suggestions.map((suggestion, idx) => {
-                const actionUi = getActionLabel(suggestion.suggestedAction, suggestion.suggestedLabel);
+                const actionUi = getActionLabel(suggestion.suggestedAction);
                 const isCompleted = completedIds.has(suggestion.emailId);
                 const isProcessing = processingId === suggestion.emailId;
+                
+                // Calculate batch impact
+                const matchingCount = fetchedEmails.filter(e => e.sender === suggestion.sender).length;
+                
+                // Check if suggested label requires creation
+                const labelExists = !suggestion.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
 
                 return (
                   <div key={idx} className={`bg-white border rounded-xl p-3 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
                     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</p>
+                          {matchingCount > 1 && (
+                            <span className="shrink-0 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-blue-100">
+                              Affects {matchingCount} recent emails
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-600 truncate mt-0.5">{suggestion.subject}</p>
                         
                         <div className="flex items-center gap-1.5 mt-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 inline-flex">
@@ -216,21 +237,40 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                         )}
                       </div>
                       
-                      <div className="shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                      <div className="shrink-0 w-full sm:w-auto mt-2 sm:mt-0 flex flex-col gap-1.5">
                         {isCompleted ? (
                           <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-bold text-xs">
                             <CheckCircle2 className="w-3 h-3" />
                             Done
                           </div>
+                        ) : labelExists ? (
+                           <button 
+                             onClick={() => executeAction(suggestion, false)}
+                             disabled={isProcessing}
+                             className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${actionUi.color}`}
+                           >
+                             {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
+                             {suggestion.suggestedLabel ? `${actionUi.text} + Label: ${suggestion.suggestedLabel}` : actionUi.text}
+                           </button>
                         ) : (
-                          <button 
-                            onClick={() => executeAction(suggestion)}
-                            disabled={isProcessing}
-                            className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${actionUi.color}`}
-                          >
-                            {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
-                            {actionUi.text}
-                          </button>
+                           <div className="flex flex-col sm:flex-row gap-1.5">
+                             <button 
+                               onClick={() => executeAction(suggestion, false)}
+                               disabled={isProcessing}
+                               className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${actionUi.color}`}
+                             >
+                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
+                               {actionUi.text} Only
+                             </button>
+                             <button 
+                               onClick={() => executeAction(suggestion, true)}
+                               disabled={isProcessing}
+                               className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50"
+                             >
+                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Tag className="w-3 h-3" />}
+                               Create '{suggestion.suggestedLabel}' & {actionUi.text}
+                             </button>
+                           </div>
                         )}
                       </div>
                     </div>
