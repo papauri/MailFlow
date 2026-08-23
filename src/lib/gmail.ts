@@ -33,7 +33,13 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
   }
   
   if (response.status === 204) return null;
-  return response.json();
+  const text = await response.text();
+  if (!text || text.trim() === '') return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
 }
 
 export interface EmailData {
@@ -341,6 +347,21 @@ export async function createLabel(name: string) {
       name: name,
       labelListVisibility: 'labelShow',
       messageListVisibility: 'show'
+    })
+  });
+}
+
+export async function deleteLabel(id: string) {
+  return await fetchGmailAPI(`/labels/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function renameLabel(id: string, name: string) {
+  return await fetchGmailAPI(`/labels/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      name: name
     })
   });
 }

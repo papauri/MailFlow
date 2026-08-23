@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, FolderPlus, Tag, Check, Loader2, X, AlertCircle, BarChart2, Trash2, Archive } from 'lucide-react';
+import { Layers, FolderPlus, Tag, Check, Loader2, X, AlertCircle, BarChart2, Trash2, Archive, SlidersHorizontal } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { batchModifyEmails, createLabel, batchTrashEmails, batchArchiveEmails } from '../lib/gmail';
 
@@ -236,19 +236,19 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
           
           <button
             onClick={handleSmartOrganize}
-            className="flex items-center gap-3 w-full px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded-md transition-colors text-left font-medium"
+            className="flex items-center gap-3 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors text-left font-medium"
           >
-            <BarChart2 className="w-4 h-4 text-blue-500" />
-            <span>Smart Organize (Analytics)</span>
+            <BarChart2 className="w-4 h-4 text-slate-500" />
+            <span>Group by Senders (Analytics)</span>
           </button>
           
           {aiAvailable && (
             <button
               onClick={handleAIOrganize}
-              className="flex items-center gap-3 w-full px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors text-left font-medium"
+              className="flex items-center gap-3 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors text-left font-medium"
             >
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-              <span>AI Deep Organize</span>
+              <Layers className="w-4 h-4 text-slate-500" />
+              <span>Deep Pattern Categorization</span>
             </button>
           )}
         </div>
@@ -280,8 +280,8 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
         <div className="p-3">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-              {mode === 'ai' ? <Sparkles className="w-4 h-4 text-indigo-500" /> : <BarChart2 className="w-4 h-4 text-blue-500" />}
-              {mode === 'ai' ? 'AI Suggestions' : 'Smart Analytics'}
+              {mode === 'ai' ? <Layers className="w-4 h-4 text-slate-600" /> : <BarChart2 className="w-4 h-4 text-slate-600" />}
+              {mode === 'ai' ? 'Categorization Suggestions' : 'Sender Groups'}
             </span>
             <button onClick={() => setMode('menu')} className="text-slate-400 hover:text-slate-600">
               <X className="w-4 h-4" />
@@ -290,7 +290,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-6 gap-3">
-              <Loader2 className={cn("w-6 h-6 animate-spin", mode === 'ai' ? "text-indigo-500" : "text-blue-500")} />
+              <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
               <span className="text-xs text-slate-500">Analyzing selected emails...</span>
             </div>
           ) : error ? (
@@ -312,23 +312,20 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
                   <div className="flex flex-col gap-2 mt-2">
                     <button
                       onClick={() => executeAction('label', rec.emailIds, rec.suggestedLabel)}
-                      className={cn(
-                        "w-full flex justify-center items-center gap-1.5 px-3 py-2 text-xs font-medium text-white border rounded shadow-sm transition-colors",
-                        mode === 'ai' ? "bg-indigo-600 hover:bg-indigo-700 border-indigo-700" : "bg-blue-600 hover:bg-blue-700 border-blue-700"
-                      )}
+                      className="w-full flex justify-center items-center gap-1.5 px-3 py-2 text-xs font-medium text-white border border-slate-800 bg-slate-800 hover:bg-slate-900 rounded shadow-xs transition-colors"
                     >
                       <Tag className="w-3.5 h-3.5 shrink-0" /> Label as "{rec.suggestedLabel}"
                     </button>
                     <div className="flex gap-2">
                       <button
                         onClick={() => executeAction('trash', rec.emailIds)}
-                        className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded shadow-sm transition-colors"
+                        className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded shadow-2xs transition-colors"
                       >
                         <Trash2 className="w-3 h-3" /> Trash
                       </button>
                       <button
                         onClick={() => executeAction('archive', rec.emailIds)}
-                        className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded shadow-sm transition-colors"
+                        className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded shadow-2xs transition-colors"
                       >
                         <Archive className="w-3 h-3" /> Archive
                       </button>
@@ -346,7 +343,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
 
       {mode === 'applying' && (
          <div className="flex flex-col items-center justify-center py-8 gap-3">
-           <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+           <Loader2 className="w-6 h-6 text-slate-600 animate-spin" />
            <span className="text-sm text-slate-600 font-medium">Applying labels...</span>
          </div>
       )}
@@ -359,13 +356,14 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled || loading}
         className={cn(
-          "flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors w-full h-full",
-          "text-slate-700 hover:bg-slate-100",
+          "flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-colors w-full h-full cursor-pointer",
+          "text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 shadow-2xs",
           (disabled || loading) && "opacity-50 cursor-not-allowed"
         )}
+        title="Organize selected emails"
       >
-        <FolderPlus className="w-4 h-4" />
-        <span className="hidden sm:inline">Organize</span>
+        <FolderPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600" />
+        <span>Organize</span>
       </button>
 
       {isOpen && (

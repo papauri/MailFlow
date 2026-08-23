@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
-import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity } from "lucide-react";
+import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive } from "lucide-react";
 import { AdminPanel } from "./AdminPanel";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
@@ -7,6 +7,9 @@ import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
 import { WalkthroughTip } from "./WalkthroughTip";
 import { HealthScoreWidget } from "./HealthScoreWidget";
+import { LabelManagerModal } from "./LabelManagerModal";
+import { CleanupPresetsBar, CleanupPreset } from "./CleanupPresetsBar";
+import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { cn } from "../lib/utils";
 
 function formatSize(bytes: number) {
@@ -19,8 +22,12 @@ function formatSize(bytes: number) {
 
 export default function Dashboard({ user }: { user: any }) {
   const [walkthroughKey, setWalkthroughKey] = useState(0);
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
   const queryRef = useRef(query);
+  const setQuery = (newQuery: string) => {
+    queryRef.current = newQuery;
+    setQueryState(newQuery);
+  };
   useEffect(() => { queryRef.current = query; }, [query]);
 
   const [startDate, setStartDate] = useState("");
@@ -59,9 +66,52 @@ export default function Dashboard({ user }: { user: any }) {
 
   const [useAI, setUseAI] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLabelManager, setShowLabelManager] = useState(false);
   const [showOptimizer, setShowOptimizer] = useState(false);
   const [showContextHelp, setShowContextHelp] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const [viewDensity, setViewDensity] = useState<"comfortable" | "compact">(() => {
+    try {
+      return (localStorage.getItem("ais_email_view_density") as "comfortable" | "compact") || "comfortable";
+    } catch {
+      return "comfortable";
+    }
+  });
+
+  const toggleDensity = () => {
+    setViewDensity(prev => {
+      const next = prev === "comfortable" ? "compact" : "comfortable";
+      try {
+        localStorage.setItem("ais_email_view_density", next);
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleApplyPreset = (preset: CleanupPreset) => {
+    setQuery(preset.query);
+    setFolderFilters(preset.folderFilters || ['anywhere']);
+    if (preset.sortBy) setSortBy(preset.sortBy);
+    if (preset.sortDesc !== undefined) setSortDesc(preset.sortDesc);
+    
+    setTimeout(() => {
+      handleSearch(undefined, preset.query, preset.folderFilters, true);
+    }, 20);
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      // When scrolled past the top search box (~180px), show folder dropdown in sticky bar
+      if (window.scrollY > 180) {
+        setIsScrolledDown(true);
+      } else {
+        setIsScrolledDown(false);
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
   const [adminConfig, setAdminConfig] = useState({
     enablePermanentDelete: false,
     useGlobalAiKey: false,
@@ -776,25 +826,54 @@ export default function Dashboard({ user }: { user: any }) {
     if (!shouldCategorize) {
       return [{ title: null, emails: filteredEmails }];
     }
-    const groups: any = {};
+    const groups: Record<string, any[]> = {};
     
     const getPrimaryFolder = (email: any) => {
       const labels = email.labelIds || [];
-      const customLabel = labels.find((l: string) => !l.startsWith('CATEGORY_') && l !== 'UNREAD' && l !== 'STARRED' && l !== 'IMPORTANT' && l !== 'INBOX' && l !== 'SENT' && l !== 'SPAM' && l !== 'TRASH');
       
+      // 1. If active folder filters are set (and not 'anywhere'), match against active filters first
+      if (folderFilters && folderFilters.length > 0 && !folderFilters.includes('anywhere')) {
+        for (const f of folderFilters) {
+          if (f === 'trash' && labels.includes('TRASH')) return 'Trash';
+          if (f === 'spam' && labels.includes('SPAM')) return 'Spam';
+          if (f === 'inbox' && labels.includes('INBOX')) return 'Primary Inbox';
+          if (f === 'category:promotions' && labels.includes('CATEGORY_PROMOTIONS')) return 'Promotions';
+          if (f === 'category:updates' && labels.includes('CATEGORY_UPDATES')) return 'Updates';
+          if (f === 'category:social' && labels.includes('CATEGORY_SOCIAL')) return 'Social';
+          if (f === 'category:forums' && labels.includes('CATEGORY_FORUMS')) return 'Forums';
+          if (f === 'category:primary' && (labels.includes('CATEGORY_PERSONAL') || labels.includes('INBOX'))) return 'Primary Inbox';
+          
+          const userLabel = userLabels.find((ul: any) => ul.name === f || ul.id === f);
+          if (userLabel && labels.includes(userLabel.id)) {
+            return userLabel.name;
+          }
+        }
+      }
+
+      // 2. Trash & Spam ALWAYS take precedence over generic Google categories
+      if (labels.includes('TRASH')) return 'Trash';
+      if (labels.includes('SPAM')) return 'Spam';
+
+      // 3. User-created Custom Labels
+      const customLabel = labels.find((l: string) => 
+        !l.startsWith('CATEGORY_') && 
+        !['UNREAD', 'STARRED', 'IMPORTANT', 'INBOX', 'SENT', 'SPAM', 'TRASH', 'DRAFT', 'CHAT'].includes(l)
+      );
       if (customLabel) {
         const userLabel = userLabels.find((ul: any) => ul.id === customLabel);
         return userLabel ? userLabel.name : customLabel.replace('Label_', 'Folder ');
       }
       
+      // 4. Standard Categories
+      if (labels.includes('CATEGORY_PERSONAL')) return 'Primary Inbox';
       if (labels.includes('CATEGORY_PROMOTIONS')) return 'Promotions';
-      if (labels.includes('CATEGORY_SOCIAL')) return 'Social';
       if (labels.includes('CATEGORY_UPDATES')) return 'Updates';
+      if (labels.includes('CATEGORY_SOCIAL')) return 'Social';
       if (labels.includes('CATEGORY_FORUMS')) return 'Forums';
-      if (labels.includes('SPAM')) return 'Spam';
-      if (labels.includes('TRASH')) return 'Trash';
+      if (labels.includes('INBOX')) return 'Primary Inbox';
+      if (labels.includes('SENT')) return 'Sent';
       
-      return 'Primary Inbox';
+      return 'Other';
     };
 
     filteredEmails.forEach((email: any) => {
@@ -803,68 +882,108 @@ export default function Dashboard({ user }: { user: any }) {
       groups[folder].push(email);
     });
 
-    // Sort groups alphabetically, but keep Primary Inbox first
+    const orderPriority: Record<string, number> = {
+      'Primary Inbox': 1,
+      'Inbox': 2,
+      'Promotions': 3,
+      'Updates': 4,
+      'Social': 5,
+      'Forums': 6,
+      'Spam': 7,
+      'Trash': 8,
+      'Other': 99
+    };
+
+    // Sort groups with priority and alphabetical order
     return Object.entries(groups)
       .map(([title, emails]) => ({ title, emails: emails as any[] }))
       .sort((a, b) => {
-        if (a.title === 'Primary Inbox') return -1;
-        if (b.title === 'Primary Inbox') return 1;
+        const pA = orderPriority[a.title] ?? 50;
+        const pB = orderPriority[b.title] ?? 50;
+        if (pA !== pB) return pA - pB;
         return a.title.localeCompare(b.title);
       });
-  }, [filteredEmails, shouldCategorize, userLabels]);
+  }, [filteredEmails, shouldCategorize, userLabels, folderFilters]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
       <OnboardingWalkthrough key={walkthroughKey} onComplete={() => {}} />
       
-      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
-            <Mail className="w-5 h-5" />
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs">
+            <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <h1 onDoubleClick={() => setShowAdminPanel(true)} className="text-lg sm:text-xl font-bold tracking-tight text-slate-800 cursor-default select-none">MailFlow</h1>
-          <div className="hidden sm:block ml-4 border-l border-slate-200 pl-4">
-            <HealthScoreWidget />
+          <h1 onDoubleClick={() => setShowAdminPanel(true)} className="text-base sm:text-xl font-bold tracking-tight text-slate-800 cursor-default select-none">MailFlow</h1>
+          <div className="hidden md:block ml-2 border-l border-slate-200 pl-3">
+            <HealthScoreWidget 
+              onApplyQuery={(q, filter, sortOption) => {
+                setQuery(q);
+                if (sortOption) {
+                  setSortBy(sortOption);
+                  setSortDesc(true);
+                }
+                let newFilters = ['anywhere'];
+                if (filter) {
+                  if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                  else if (filter === 'inbox') newFilters = ['inbox'];
+                  else if (filter.startsWith('category:')) newFilters = [filter];
+                  else newFilters = [filter];
+                }
+                setFolderFilters(newFilters);
+                const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                  ? `#folders=${newFilters.join(',')}` 
+                  : '#dashboard';
+                if (window.location.hash !== newHash) {
+                  window.location.hash = newHash;
+                } else {
+                  setShowHealth(false);
+                }
+                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+              }}
+              onOpenUnsubscribe={() => {
+                window.location.hash = '#health';
+                setShowHealth(true);
+              }}
+            />
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <button 
+            onClick={() => { window.location.hash = showHealth ? '#dashboard' : '#health'; }}
+            className={cn(
+              "px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer",
+              showHealth ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            )}
+            title="Inbox Health & Storage Visualizer"
+          >
+            <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" /> 
+            <span>{showHealth ? "Dashboard" : "Health"}</span>
+          </button>
+
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+            title="Settings & Display Options"
+          >
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
+
           <button 
             onClick={() => setShowContextHelp(true)}
-            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
             title="Help / Walkthrough"
           >
             <HelpCircle className="w-4 h-4 shrink-0" />
           </button>
+
           <button 
-            onClick={() => window.location.reload()}
-            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-            title="Refresh Page"
+            onClick={() => window.location.reload()} 
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer" 
+            title="Log out"
           >
-            <RefreshCw className={cn("w-4 h-4 shrink-0", isSearching && "animate-spin")} />
-          </button>
-          <button 
-            onClick={() => { window.location.hash = showHealth ? '#dashboard' : '#health'; }}
-            className={cn("p-2 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 sm:gap-2", showHealth ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")}
-            title="Inbox Health"
-          >
-            <Activity className="w-4 h-4 shrink-0" /> 
-            <span className="hidden sm:inline">Inbox Health</span>
-          </button>
-          <button 
-            onClick={() => setShowSettings(true)}
-            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-            title="Model Configuration"
-          >
-            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-          {user.photoURL ? (
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-100 p-1 sm:px-3 sm:py-1.5 rounded-full font-medium" title={user.email}>
-              <img src={user.photoURL} alt="Profile" className="w-6 h-6 rounded-full" />
-              <span className="hidden md:inline text-xs">{user.email}</span>
-            </div>
-          ) : null}
-          <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-slate-700 transition-colors" title="Log out">
-            <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+            <LogOut className="w-4 h-4 shrink-0" />
           </button>
         </div>
       </header>
@@ -1007,10 +1126,11 @@ export default function Dashboard({ user }: { user: any }) {
                 setFolderFilters(newFilters);
               }} 
               userLabels={userLabels} 
+              onOpenLabelManager={() => setShowLabelManager(true)}
             />
             <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-slate-700 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
             </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
@@ -1018,144 +1138,249 @@ export default function Dashboard({ user }: { user: any }) {
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Include Sent</span>
             </label>
           </div>
+
+          <CleanupPresetsBar 
+            currentQuery={query}
+            currentFolders={folderFilters}
+            currentSortBy={sortBy}
+            currentSortDesc={sortDesc}
+            onApplyPreset={handleApplyPreset}
+            className="pt-2 border-t border-slate-100"
+          />
         </div>
 
         {parsedQuery && (
           <div className="bg-slate-100 border border-slate-200 rounded-xl p-4 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
-            <Sparkles className="w-5 h-5 text-slate-600 shrink-0" />
+            <Filter className="w-5 h-5 text-slate-600 shrink-0" />
             <div>
-              <p className="font-medium text-slate-800">Smart Query Interpretation</p>
+              <p className="font-medium text-slate-800">Query Interpretation</p>
               <p className="text-slate-600 mt-1">{parsedQuery.explanation}</p>
               <p className="mt-2 text-xs font-mono bg-slate-200 inline-block px-2 py-1 rounded text-slate-700">Gmail Search: {parsedQuery.query}</p>
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1">
-          <div className="sticky top-[57px] sm:top-[65px] z-10 bg-slate-50 flex flex-col border-b border-slate-200 rounded-t-2xl">
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 flex flex-col flex-1">
+          <div className="sticky top-[57px] sm:top-[65px] z-20 bg-white flex flex-col border-b border-slate-200 rounded-t-2xl shadow-2xs">
             <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
-              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <button 
-                    onClick={() => setSelectedIds(selectedIds.size === emails.length ? new Set() : new Set(emails.map(e => e.id)))}
-                    className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
-                    disabled={emails.length === 0}
-                  >
-                    <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", selectedIds.size > 0 ? "bg-slate-800 border-slate-800" : "border-slate-300")}>
-                      {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
-                    </div>
-                  </button>
-                  <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
-                    {selectedIds.size > 0 ? (
-                      `${selectedIds.size} selected`
-                    ) : emails.length === 0 ? (
-                      `0 emails`
-                    ) : totalCount !== null ? (
-                      typeof totalCount === "number" ? (
-                        emails.length < totalCount ? (
-                          `Showing ${emails.length} of ${totalCount.toLocaleString()} emails`
-                        ) : (
-                          `${emails.length} emails`
-                        )
-                      ) : (
-                        `Showing ${emails.length} of ${totalCount} emails`
-                      )
-                    ) : isCounting && nextPageToken ? (
-                      `Showing ${emails.length} emails...`
-                    ) : (
-                      `${emails.length} emails`
-                    )}
-                  </span>
-                </div>
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                <button 
+                  onClick={() => setSelectedIds(selectedIds.size === emails.length ? new Set() : new Set(emails.map(e => e.id)))}
+                  className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors shrink-0 cursor-pointer"
+                  disabled={emails.length === 0}
+                  title={selectedIds.size === emails.length ? "Deselect all" : "Select all"}
+                >
+                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs", selectedIds.size > 0 ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}>
+                    {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
+                  </div>
+                </button>
 
-                {/* Mobile-only sort & filter */}
-                <div className="flex sm:hidden items-center bg-slate-100 rounded-lg p-0.5 shrink-0 flex-1">
-                   <div className="relative border-r border-slate-200 mr-1 pr-1 flex-1">
-                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                     <input
-                       type="text"
-                       placeholder="Filter..."
-                       value={localKeyword}
-                       onChange={e => setLocalKeyword(e.target.value)}
-                       className="bg-transparent text-xs font-medium text-slate-700 outline-none pl-6 pr-1 py-1 w-full"
-                     />
-                   </div>
-                   <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-xs font-medium text-slate-700 outline-none px-1.5 py-1 cursor-pointer">
-                     <option value="date">Date</option>
-                     <option value="size">Size</option>
-                     <option value="sender">Sender</option>
-                   </select>
-                   <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
-                      <Filter className={cn("w-3.5 h-3.5 transition-transform", !sortDesc && "rotate-180")} />
-                   </button>
-                </div>
+                {isScrolledDown && (
+                  <div className="animate-in fade-in zoom-in-95 duration-150">
+                    <FolderMultiSelect 
+                      selected={folderFilters} 
+                      onChange={(newFilters) => {
+                        const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                          ? `#folders=${newFilters.join(',')}` 
+                          : '#dashboard';
+                        
+                        if (window.location.hash !== newHash) {
+                          window.location.hash = newHash;
+                        }
+                        setFolderFilters(newFilters);
+                      }} 
+                      userLabels={userLabels} 
+                      onOpenLabelManager={() => setShowLabelManager(true)}
+                    />
+                  </div>
+                )}
+
+                <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
+                  {selectedIds.size > 0 ? (
+                    <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-bold flex items-center gap-1.5">
+                      <span>{selectedIds.size} selected</span>
+                      <button 
+                        onClick={() => setSelectedIds(new Set())}
+                        className="text-[10px] text-indigo-500 hover:text-indigo-800 underline font-semibold ml-0.5 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </span>
+                  ) : emails.length === 0 ? (
+                    `0 emails`
+                  ) : totalCount !== null ? (
+                    typeof totalCount === "number" ? (
+                      emails.length < totalCount ? (
+                        `Showing ${emails.length} of ${totalCount.toLocaleString()} emails`
+                      ) : (
+                        `${emails.length} emails`
+                      )
+                    ) : (
+                      `Showing ${emails.length} of ${totalCount} emails`
+                    )
+                  ) : isCounting && nextPageToken ? (
+                    `Showing ${emails.length} emails...`
+                  ) : (
+                    `${emails.length} emails`
+                  )}
+                </span>
               </div>
               
-              <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                 <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-1 mr-1 shrink-0">
-                   <div className="relative border-r border-slate-200 mr-1 pr-1">
-                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                     <input
-                       type="text"
-                       placeholder="Filter view..."
-                       value={localKeyword}
-                       onChange={e => setLocalKeyword(e.target.value)}
-                       className="bg-transparent text-sm font-medium text-slate-700 outline-none pl-7 pr-2 py-0.5 w-32 focus:w-48 transition-all"
-                     />
-                   </div>
-                   <select value={sortBy} onChange={(e: any) => setSortBy(e.target.value)} className="bg-transparent text-sm font-medium text-slate-700 outline-none px-2 cursor-pointer">
-                     <option value="date">Date</option>
-                     <option value="size">Size</option>
-                     <option value="sender">Sender</option>
-                   </select>
-                   <button onClick={() => setSortDesc(!sortDesc)} className="p-1 hover:bg-slate-200 rounded text-slate-500" title="Toggle sort direction">
-                      <Filter className={cn("w-4 h-4 transition-transform", !sortDesc && "rotate-180")} />
-                   </button>
-                </div>
-                {folderFilters.includes('trash') ? (
-                  adminConfig.enablePermanentDelete ? (
-                    <>
-                      <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-                      <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
-                    </>
-                  ) : (
-                    <div className="text-xs sm:text-sm text-slate-500 flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                      <Trash2 className="w-4 h-4 shrink-0 text-slate-400" />
-                      <span className="hidden sm:inline">Emails in Trash auto-delete after 30 days. To empty immediately, please use the official Gmail app.</span>
-                      <span className="sm:hidden">Auto-deletes after 30 days.</span>
-                    </div>
-                  )
-                ) : (
+              <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap sm:flex-nowrap">
+                {selectedIds.size === 0 ? (
                   <>
-                    <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-                    <ActionButton icon={<Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Archive" onClick={() => handleBulkAction("archive")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "archive"} className="flex-1 sm:flex-initial justify-center" />
+                    {/* Search & Sort Capsule */}
+                    <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-0.5 shrink-0">
+                      <div className="relative border-r border-slate-200 pr-1 flex items-center">
+                        <Search className="absolute left-2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Filter view..."
+                          value={localKeyword}
+                          onChange={e => setLocalKeyword(e.target.value)}
+                          className="bg-transparent text-xs sm:text-sm font-medium text-slate-700 outline-none pl-7 pr-2 py-1 w-20 sm:w-32 focus:w-40 transition-all"
+                        />
+                      </div>
+                      <select 
+                        value={sortBy} 
+                        onChange={(e: any) => setSortBy(e.target.value)} 
+                        className="bg-transparent text-xs sm:text-sm font-medium text-slate-700 outline-none px-1.5 py-1 cursor-pointer"
+                      >
+                        <option value="date">Date</option>
+                        <option value="size">Size</option>
+                        <option value="sender">Sender</option>
+                      </select>
+                      <button 
+                        onClick={() => setSortDesc(!sortDesc)} 
+                        className="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors cursor-pointer" 
+                        title="Toggle sort direction"
+                      >
+                        <Filter className={cn("w-3.5 h-3.5 transition-transform", !sortDesc && "rotate-180")} />
+                      </button>
+                    </div>
+
+                    {/* Prominent View Density Segmented Switcher */}
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/90 shrink-0" title="Switch layout density">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewDensity("comfortable");
+                          try { localStorage.setItem("ais_email_view_density", "comfortable"); } catch {}
+                        }}
+                        className={cn(
+                          "px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer",
+                          viewDensity === "comfortable"
+                            ? "bg-white text-slate-900 shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                        title="Comfortable view with snippets"
+                      >
+                        <LayoutList className="w-3.5 h-3.5" />
+                        <span>Comfortable</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewDensity("compact");
+                          try { localStorage.setItem("ais_email_view_density", "compact"); } catch {}
+                        }}
+                        className={cn(
+                          "px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer",
+                          viewDensity === "compact"
+                            ? "bg-white text-slate-900 shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                        title="Compact single-line dense view"
+                      >
+                        <AlignJustify className="w-3.5 h-3.5" />
+                        <span>Compact</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Mark All Read button */}
+                    <ActionButton 
+                      icon={<CheckCircle className="w-3.5 h-3.5" />} 
+                      label="Mark All Read" 
+                      onClick={executeMarkAllRead} 
+                      disabled={emails.length === 0 || actionLoading !== null} 
+                      loading={actionLoading === "read"} 
+                      className="bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 shrink-0 shadow-2xs" 
+                      title="Mark all unread emails in this view as read" 
+                    />
                   </>
-                )}
-                
-                <BulkOrganizeDropdown 
-                  className="flex-1 sm:flex-initial"
-                  selectedIds={selectedIds} 
-                  emails={emails} 
-                  userLabels={userLabels || []}
-                  aiSettings={aiSettings}
-                  onComplete={() => {
-                    setSelectedIds(new Set());
-                    setIsSearching(true);
-                    setTimeout(() => handleSearch(), 500);
-                  }} 
-                  disabled={selectedIds.size === 0 || actionLoading !== null} 
-                />
-                
-                {selectedIds.size > 0 ? (
-                   <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark Read" onClick={() => handleBulkAction("read")} disabled={actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100" />
                 ) : (
-                   <ActionButton icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Mark All Read" onClick={executeMarkAllRead} disabled={emails.length === 0 || actionLoading !== null} loading={actionLoading === "read"} className="flex-1 sm:flex-initial justify-center bg-slate-100 text-slate-700 hover:bg-slate-200" title="Mark all unread emails in this view as read" />
+                  /* Action Bar when emails are selected */
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0">
+                    {folderFilters.includes('trash') ? (
+                      adminConfig.enablePermanentDelete && (
+                        <>
+                          <ActionButton 
+                            icon={<Trash2 className="w-3.5 h-3.5" />} 
+                            label="Delete Forever" 
+                            onClick={handleDeleteSelected} 
+                            disabled={actionLoading !== null} 
+                            loading={actionLoading === "delete"} 
+                            className="text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200" 
+                          />
+                          <ActionButton 
+                            icon={<Flame className="w-3.5 h-3.5" />} 
+                            label="Empty Trash" 
+                            onClick={handleEmptyTrash} 
+                            disabled={actionLoading !== null || emails.length === 0} 
+                            loading={actionLoading === "empty_trash"} 
+                            className="text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200" 
+                          />
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <ActionButton 
+                          icon={<Trash2 className="w-3.5 h-3.5" />} 
+                          label="Trash" 
+                          onClick={() => handleBulkAction("trash")} 
+                          disabled={actionLoading !== null} 
+                          loading={actionLoading === "trash"} 
+                          className="text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200" 
+                        />
+                        <ActionButton 
+                          icon={<Archive className="w-3.5 h-3.5" />} 
+                          label="Archive" 
+                          onClick={() => handleBulkAction("archive")} 
+                          disabled={actionLoading !== null} 
+                          loading={actionLoading === "archive"} 
+                          className="text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200" 
+                        />
+                      </>
+                    )}
+                    
+                    <BulkOrganizeDropdown 
+                      selectedIds={selectedIds} 
+                      emails={emails} 
+                      userLabels={userLabels || []}
+                      aiSettings={aiSettings}
+                      onComplete={() => {
+                        setSelectedIds(new Set());
+                        setIsSearching(true);
+                        setTimeout(() => handleSearch(), 500);
+                      }} 
+                      disabled={actionLoading !== null} 
+                    />
+                    
+                    <ActionButton 
+                      icon={<CheckCircle className="w-3.5 h-3.5" />} 
+                      label="Mark Read" 
+                      onClick={() => handleBulkAction("read")} 
+                      disabled={actionLoading !== null} 
+                      loading={actionLoading === "read"} 
+                      className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200" 
+                    />
+                  </div>
                 )}
               </div>
             </div>
 
             {isActuallyUnreadOnly && (
-              <div className="flex items-center px-2 sm:px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/50 bg-slate-50/50 pt-2 gap-1 sm:gap-2">
+              <div className="flex items-center px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/60 bg-slate-50/50 pt-2 gap-1.5 sm:gap-2">
                 {(() => {
                   const unreadTabs = [{ id: 'anywhere', label: 'All Unread' }];
                   const sysMap: Record<string, string> = {
@@ -1184,7 +1409,7 @@ export default function Dashboard({ user }: { user: any }) {
                         setTimeout(() => handleSearch(undefined, query, newFilters), 0);
                       }}
                       className={cn(
-                        "px-3 sm:px-4 py-1.5 sm:py-2 rounded-t-lg text-xs sm:text-sm font-semibold transition-all shrink-0 border-b-2",
+                        "px-3 sm:px-4 py-1.5 rounded-t-lg text-xs sm:text-sm font-semibold transition-all shrink-0 border-b-2",
                         isActive 
                           ? "text-indigo-600 border-indigo-600 bg-indigo-50/50"
                           : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-100/50"
@@ -1199,10 +1424,15 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
 
           {folderFilters.includes('trash') && (
-            <div className="bg-amber-50 border-b border-amber-200 px-3 sm:px-4 py-2 flex items-center gap-2 text-amber-800 text-xs sm:text-sm">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span className="font-medium">You are viewing Trash.</span>
-              <span className="text-amber-700">Emails here will be automatically deleted by Gmail after 30 days. Use "Delete Forever" to permanently remove them — this cannot be undone.</span>
+            <div className="bg-amber-50/90 border-b border-amber-200 px-3 sm:px-4 py-2.5 flex items-center gap-2.5 text-amber-900 text-xs sm:text-sm">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-amber-700" />
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="font-semibold text-amber-950">You are viewing Trash.</span>
+                <span className="text-amber-800">Emails here will be automatically deleted by Gmail after 30 days.</span>
+                {!adminConfig.enablePermanentDelete && (
+                  <span className="text-amber-700/90">To empty immediately, please use the official Gmail app.</span>
+                )}
+              </div>
             </div>
           )}
 
@@ -1260,11 +1490,11 @@ export default function Dashboard({ user }: { user: any }) {
                         {group.title && (
                           <div 
                             onClick={toggleGroup}
-                            className="bg-slate-100/80 px-4 py-2 border-y border-slate-200 font-semibold text-slate-800 text-sm flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-slate-200/80 transition-colors"
+                            className="bg-slate-50/90 px-4 py-2.5 border-y border-slate-200/90 font-semibold text-slate-800 text-xs sm:text-sm flex items-center justify-between shadow-2xs cursor-pointer hover:bg-slate-100/90 transition-colors"
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2.5 sm:gap-3">
                               <div 
-                                className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-sm", group.emails.length > 0 && group.emails.every(e => selectedIds.has(e.id)) ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}
+                                className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs", group.emails.length > 0 && group.emails.every(e => selectedIds.has(e.id)) ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const allSelected = group.emails.every(e => selectedIds.has(e.id));
@@ -1282,11 +1512,20 @@ export default function Dashboard({ user }: { user: any }) {
                                 {group.emails.length > 0 && group.emails.every(e => selectedIds.has(e.id)) && <CheckCircle className="w-3 h-3 text-white" />}
                               </div>
                               <div className="flex items-center gap-2">
-                                <ChevronDown className={cn("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
+                                <ChevronDown className={cn("w-4 h-4 text-slate-500 transition-transform", isCollapsed && "-rotate-90")} />
+                                {(() => {
+                                  if (group.title === 'Trash') return <Trash2 className="w-4 h-4 text-rose-500" />;
+                                  if (group.title === 'Spam') return <ShieldAlert className="w-4 h-4 text-amber-500" />;
+                                  if (group.title === 'Promotions') return <Tag className="w-4 h-4 text-amber-600" />;
+                                  if (group.title === 'Updates') return <Activity className="w-4 h-4 text-emerald-600" />;
+                                  if (group.title === 'Social') return <Mail className="w-4 h-4 text-purple-600" />;
+                                  if (group.title === 'Primary Inbox' || group.title === 'Inbox' || group.title === 'Primary') return <Inbox className="w-4 h-4 text-blue-600" />;
+                                  return <Folder className="w-4 h-4 text-indigo-500" />;
+                                })()}
                                 <span>{group.title}</span>
                               </div>
                             </div>
-                            <span className="text-xs bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-medium shadow-xs">{group.emails.length}</span>
+                            <span className="text-[11px] sm:text-xs bg-white px-2.5 py-0.5 rounded-full border border-slate-200 text-slate-600 font-bold shadow-2xs">{group.emails.length}</span>
                           </div>
                         )}
                         {!isCollapsed && (
@@ -1296,6 +1535,194 @@ export default function Dashboard({ user }: { user: any }) {
                     const isProcessing = processingIds.has(email.id);
                     const isExpanded = expandedIds.has(email.id);
                     const isUnread = email.labelIds?.includes('UNREAD');
+
+                    if (viewDensity === 'compact') {
+                      return (
+                        <li 
+                          key={email.id} 
+                          id={`email-row-${email.id}`}
+                          className={cn(
+                            "px-3 sm:px-4 py-2 hover:bg-slate-50 active:bg-slate-100/70 transition-colors group cursor-pointer border-b border-slate-100 last:border-b-0",
+                            isSelected ? "bg-slate-50/80" : "",
+                            isProcessing ? "opacity-50 grayscale" : ""
+                          )}
+                          onClick={() => !isProcessing && toggleSelect(email.id)}
+                        >
+                          <div className="flex items-center gap-2.5 sm:gap-3.5">
+                            <div className="shrink-0">
+                              <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", isSelected ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}>
+                                {isSelected && <CheckCircle className="w-3 h-3 text-white" />}
+                              </div>
+                            </div>
+
+                            <span 
+                              className={cn("w-28 sm:w-44 shrink-0 text-xs sm:text-sm truncate", isUnread ? "font-bold text-slate-900" : "font-medium text-slate-700")} 
+                              title={email.sender}
+                            >
+                              {email.sender.replace(/<.*>/, "").trim() || email.sender}
+                            </span>
+
+                            <div className="flex-1 min-w-0 flex items-center gap-1.5 sm:gap-2">
+                              {(() => {
+                                const labels = email.labelIds || [];
+                                if (shouldCategorize) return null;
+                                let firstBadge: { text: string; color: string } | null = null;
+                                if (labels.includes('SPAM')) firstBadge = { text: 'Spam', color: 'bg-red-50 text-red-700 border-red-100' };
+                                else if (labels.includes('TRASH')) firstBadge = { text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' };
+                                else if (labels.includes('CATEGORY_PROMOTIONS')) firstBadge = { text: 'Promotions', color: 'bg-amber-50 text-amber-700 border-amber-100' };
+                                else if (labels.includes('CATEGORY_UPDATES')) firstBadge = { text: 'Updates', color: 'bg-green-50 text-green-700 border-green-100' };
+                                else if (labels.includes('CATEGORY_SOCIAL')) firstBadge = { text: 'Social', color: 'bg-purple-50 text-purple-700 border-purple-100' };
+                                
+                                if (!firstBadge) return null;
+                                return (
+                                  <span className={cn("hidden md:inline-block text-[9px] font-bold border px-1.5 py-0.5 rounded shrink-0", firstBadge.color)}>
+                                    {firstBadge.text}
+                                  </span>
+                                );
+                              })()}
+
+                              <span className={cn("text-xs sm:text-sm truncate shrink-0 max-w-[45%]", isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800")}>
+                                {email.subject}
+                              </span>
+                              <span className="text-xs text-slate-400 font-normal truncate hidden sm:inline">
+                                - {email.snippet}
+                              </span>
+                            </div>
+
+                            {showSize && (email.sizeEstimate || 0) > 102400 && (
+                              <span className={cn(
+                                "hidden lg:inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-xs border shrink-0",
+                                (email.sizeEstimate || 0) > 5242880 ? "bg-red-50 text-red-700 border-red-200" : 
+                                (email.sizeEstimate || 0) > 1048576 ? "bg-amber-50 text-amber-700 border-amber-200" : 
+                                "bg-slate-50 text-slate-600 border-slate-200"
+                              )}>
+                                {formatSize(email.sizeEstimate || 0)}
+                              </span>
+                            )}
+
+                            <span className={cn("text-[11px] sm:text-xs tabular-nums shrink-0 whitespace-nowrap", isUnread ? "font-bold text-slate-700" : "font-medium text-slate-500")}>
+                              {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </span>
+
+                            <button
+                              type="button"
+                              id={`preview-btn-${email.id}`}
+                              onClick={(e) => toggleExpand(email.id, e)}
+                              className={cn(
+                                "p-1 sm:px-2 sm:py-0.5 rounded-md border text-[11px] font-semibold transition-all shrink-0 cursor-pointer",
+                                isExpanded
+                                  ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                              )}
+                              title={isExpanded ? "Collapse thread" : "Preview email"}
+                            >
+                              {isExpanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 text-slate-600" />}
+                              <span className="hidden sm:inline ml-1">{isExpanded ? "Hide" : "Preview"}</span>
+                            </button>
+                          </div>
+
+                          {isExpanded && (
+                            <div 
+                              id={`email-preview-card-${email.id}`}
+                              className="mt-2.5 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-col shadow-inner select-text cursor-default overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="max-h-[60vh] overflow-y-auto p-3 sm:p-4 flex flex-col gap-4">
+                                {(email.messages && email.messages.length > 0 ? email.messages : [email as any]).map((msg, idx, arr) => (
+                                  <div key={msg.id} className={cn("flex flex-col gap-2.5", idx !== arr.length - 1 && "pb-4 border-b border-slate-200/80")}>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-semibold text-slate-900 break-all">{msg.sender.replace(/<.*>/, "").trim() || msg.sender}</span>
+                                        <span className="text-slate-500 hidden sm:inline">&lt;{msg.sender.match(/<(.*)>/)?.[1] || msg.sender}&gt;</span>
+                                      </div>
+                                      <div className="text-slate-500 font-medium text-[11px] sm:text-xs shrink-0">
+                                        {(msg.date instanceof Date && !isNaN(msg.date.getTime()) ? msg.date : new Date(msg.date)).toLocaleString(undefined, { 
+                                          weekday: 'short', 
+                                          year: 'numeric', 
+                                          month: 'short', 
+                                          day: 'numeric', 
+                                          hour: 'numeric', 
+                                          minute: '2-digit' 
+                                        })}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      {idx === 0 && <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2 leading-snug">{msg.subject || '(No Subject)'}</h4>}
+                                      <div className="bg-white p-3 sm:p-3.5 rounded-lg border border-slate-200 text-slate-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-normal">
+                                        {msg.snippet ? msg.snippet : <span className="italic text-slate-400">No snippet preview available for this message.</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between p-3 sm:p-4 gap-2 border-t border-slate-200/60 bg-slate-50">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {folderFilters.includes('trash') ? (
+                                    <button
+                                      type="button"
+                                      id={`single-del-${email.id}`}
+                                      onClick={(e) => handleSingleAction(email.id, "delete", e)}
+                                      disabled={actionLoading !== null || isProcessing}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Delete Forever</span>
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        id={`single-trash-${email.id}`}
+                                        onClick={(e) => handleSingleAction(email.id, "trash", e)}
+                                        disabled={actionLoading !== null || isProcessing}
+                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Trash</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        id={`single-archive-${email.id}`}
+                                        onClick={(e) => handleSingleAction(email.id, "archive", e)}
+                                        disabled={actionLoading !== null || isProcessing}
+                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                      >
+                                        <Archive className="w-3.5 h-3.5" />
+                                        <span>Archive</span>
+                                      </button>
+                                    </>
+                                  )}
+                                  {email.labelIds?.includes('UNREAD') && (
+                                    <button
+                                      type="button"
+                                      id={`single-read-${email.id}`}
+                                      onClick={(e) => handleSingleAction(email.id, "read", e)}
+                                      disabled={actionLoading !== null || isProcessing}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      <span>Mark Read</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  id={`single-collapse-${email.id}`}
+                                  onClick={(e) => toggleExpand(email.id, e)}
+                                  className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2 py-1 hover:bg-slate-200 rounded-lg transition-colors ml-auto cursor-pointer"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                  <span>Hide Preview</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    }
+
                     return (
                       <li 
                         key={email.id} 
@@ -1797,9 +2224,60 @@ export default function Dashboard({ user }: { user: any }) {
                   </div>
                 )}
               </div>
+              {/* Display Density Preference */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 sm:p-4 text-sm text-slate-700">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-bold text-xs sm:text-sm text-slate-900">3. Email Layout Density</span>
+                  <span className="text-[11px] font-semibold text-slate-500 capitalize">{viewDensity} View</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                  Choose how much content to display per email row. You can also toggle this instantly above the email list on the dashboard.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewDensity("comfortable");
+                      try { localStorage.setItem("ais_email_view_density", "comfortable"); } catch {}
+                    }}
+                    className={cn(
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1.5",
+                      viewDensity === "comfortable"
+                        ? "bg-white border-slate-900 shadow-xs ring-2 ring-slate-900/10"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <LayoutList className="w-4 h-4 text-slate-800 shrink-0" />
+                      <span className="font-bold text-xs sm:text-sm text-slate-900">Comfortable</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 leading-tight">Multiline preview with subject & snippet</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewDensity("compact");
+                      try { localStorage.setItem("ais_email_view_density", "compact"); } catch {}
+                    }}
+                    className={cn(
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1.5",
+                      viewDensity === "compact"
+                        ? "bg-white border-slate-900 shadow-xs ring-2 ring-slate-900/10"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <AlignJustify className="w-4 h-4 text-slate-800 shrink-0" />
+                      <span className="font-bold text-xs sm:text-sm text-slate-900">Compact</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 leading-tight">Dense single-line rows for fast scanning</span>
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="p-3.5 sm:p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2 sm:gap-3 shrink-0">
-              <button onClick={() => setShowSettings(false)} className="px-3 sm:px-4 py-1.5 sm:py-2 text-slate-600 hover:bg-slate-200 font-medium rounded-lg text-xs sm:text-sm transition-colors">
+              <button onClick={() => setShowSettings(false)} className="px-3 sm:px-4 py-1.5 sm:py-2 text-slate-600 hover:bg-slate-200 font-medium rounded-lg text-xs sm:text-sm transition-colors cursor-pointer">
                 Cancel
               </button>
               <button onClick={() => {
@@ -1811,37 +2289,54 @@ export default function Dashboard({ user }: { user: any }) {
                      window.location.reload();
                    }
                 }
-              }} className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg text-xs sm:text-sm transition-colors shadow-sm">
-                Save & Retry
+              }} className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer">
+                Save Preferences
               </button>
             </div>
           </div>
         </div>
       )}
+      <LabelManagerModal
+        isOpen={showLabelManager}
+        onClose={() => setShowLabelManager(false)}
+        userLabels={userLabels}
+        onLabelsUpdated={() => {
+          fetchGmailAPI('/labels').then(data => {
+            if (data && data.labels) setUserLabels(data.labels);
+          });
+        }}
+        onApplyQuery={(q, filter) => {
+          setShowLabelManager(false);
+          setQuery(q);
+          const f = filter ? [filter] : ['anywhere'];
+          setFolderFilters(f);
+          handleSearch(undefined, q, f, true);
+        }}
+      />
       <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
     </div>
   );
 }
 
-function ActionButton({ icon, label, onClick, disabled, loading, className }: any) {
+function ActionButton({ icon, label, onClick, disabled, loading, className, title }: any) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors",
-        disabled ? "opacity-60 cursor-not-allowed grayscale" : "",
-        className || (disabled ? "text-slate-400" : "text-slate-700 hover:bg-slate-100 hover:text-slate-900")
+        "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap",
+        disabled ? "opacity-50 cursor-not-allowed grayscale" : "",
+        className || (disabled ? "text-slate-400" : "text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 shadow-2xs")
       )}
-      title={label}
+      title={title || label}
     >
-      {loading ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : icon}
-      <span className="hidden sm:inline">{label}</span>
+      {loading ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin shrink-0" /> : icon}
+      <span>{label}</span>
     </button>
   );
 }
 
-function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { selected: string[], onChange: (s: string[]) => void, onClose?: () => void, userLabels: any[] }) {
+function FolderMultiSelect({ selected, onChange, onClose, userLabels, onOpenLabelManager }: { selected: string[], onChange: (s: string[]) => void, onClose?: () => void, userLabels: any[], onOpenLabelManager?: () => void }) {
   const [open, setOpen] = useState(false);
   
   const handleClose = () => {
@@ -1929,6 +2424,21 @@ function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { select
                 <span className="text-slate-700 truncate">{opt.label}</span>
               </label>
             ))}
+            {onOpenLabelManager && (
+              <div className="border-t border-slate-100 mt-1 pt-1 px-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleClose();
+                    onOpenLabelManager();
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-slate-100 text-xs font-semibold text-slate-800 flex items-center gap-2"
+                >
+                  <Folder className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Manage Folders & Labels...</span>
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

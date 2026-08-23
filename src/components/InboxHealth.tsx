@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -9,33 +9,9 @@ import { LabelManagerModal } from "./LabelManagerModal";
 import { FolderOptimizer } from "./FolderOptimizer";
 import { RuleSuggester } from './RuleSuggester';
 import { SmartTriageModal } from './SmartTriageModal';
-
-const GENERIC_EMAIL_DOMAINS = new Set([
-  'gmail.com',
-  'googlemail.com',
-  'yahoo.com',
-  'yahoo.co.uk',
-  'yahoo.ca',
-  'ymail.com',
-  'hotmail.com',
-  'hotmail.co.uk',
-  'outlook.com',
-  'live.com',
-  'msn.com',
-  'icloud.com',
-  'me.com',
-  'mac.com',
-  'aol.com',
-  'protonmail.com',
-  'proton.me',
-  'zoho.com',
-  'yandex.com',
-  'yandex.ru',
-  'mail.com',
-  'gmx.com',
-  'gmx.net',
-  'fastmail.com'
-]);
+import { HealthScoreModal } from './HealthScoreModal';
+import { StorageBreakdownBar } from './StorageBreakdownBar';
+import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
 
 export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
   const [stats, setStats] = useState<any>(null);
@@ -45,6 +21,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
+  const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
@@ -107,24 +84,23 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         const domainCounts = new Map();
         
         recentEmails.forEach(e => {
-          // Extract plain email address
-          const emailMatch = e.sender.match(/<([^>]+)>/);
-          const email = emailMatch ? emailMatch[1].toLowerCase() : e.sender.toLowerCase();
-          const domain = email.includes('@') ? email.split('@')[1] : 'unknown';
+          const details = extractSenderDetails(e.sender);
+          const email = details.emailAddr;
+          const rootDomain = details.rootDomain;
           
           if (!senderCounts.has(email)) {
             senderCounts.set(email, { 
               email, 
-              name: e.sender.replace(/<[^>]+>/, '').trim() || email, 
+              name: details.displayName, 
               count: 0 
             });
           }
           senderCounts.get(email).count++;
           
           // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers and self)
-          if (domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(domain) && domain !== userDomain) {
-            if (!domainCounts.has(domain)) domainCounts.set(domain, { domain, count: 0 });
-            domainCounts.get(domain).count++;
+          if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
+            if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0 });
+            domainCounts.get(rootDomain).count++;
           }
         });
         
@@ -138,7 +114,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         setTopSenders(exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
 
         const rawDomains = Array.from(domainCounts.values())
-          .filter(d => d.domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(d.domain))
+          .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
           .sort((a, b) => b.count - a.count).slice(0, 8);
         const exactDomains = await Promise.all(rawDomains.map(async (d) => {
            const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
@@ -194,7 +170,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       <div className="p-16 flex flex-col items-center justify-center text-slate-500 gap-4 mt-8">
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
         <h2 className="text-xl font-semibold text-slate-800">Analyzing Inbox Health</h2>
-        <p className="text-sm">Scanning folders, calculating sizes, and running NLP analysis...</p>
+        <p className="text-sm">Scanning folders, calculating sizes, and running email distribution analysis...</p>
       </div>
     );
   }
@@ -203,18 +179,19 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     <div className="flex flex-col gap-6">
       <WalkthroughTip 
         storageKey="tip_health" 
-        title="Inbox Health & AI Optimization" 
-        description="Check out the Folder Optimizer below! It uses strict statistical anomalies (or Deep AI) to find massive clusters of noise. When you clean them up, the Rule Suggester will offer to automate it for you!"
+        title="Inbox Health & Cleaners" 
+        description="Check out Category Breakdown and top sender clusters to quickly identify large volumes of messages. You can archive, delete, or create filters with one click."
       />
-      <div className="bg-gradient-to-br from-indigo-50/50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
+
+      <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
         <div className="flex items-center gap-3 sm:gap-5">
-          <div className="p-2.5 sm:p-3.5 bg-white border border-slate-100 text-indigo-600 rounded-xl shadow-sm shrink-0">
-            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
+          <div className="p-2.5 sm:p-3.5 bg-white border border-slate-100 text-slate-700 rounded-xl shadow-2xs shrink-0">
+            <SlidersHorizontal className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 mb-0.5">Smart Cleanup</h2>
+            <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 mb-0.5">Inbox Health & Tools</h2>
             <p className="text-slate-500 text-xs sm:text-sm font-medium">
-              Smart insights to help organize your inbox and free up space.
+              Automated insights to help organize your inbox and free up space.
             </p>
           </div>
         </div>
@@ -222,7 +199,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={exportHealthReport}
-            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all shrink-0 hover:shadow"
+            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-2xs transition-all shrink-0 hover:shadow-xs"
             title="Export health data to CSV"
           >
             <Download className="w-4 h-4 text-slate-400" />
@@ -231,94 +208,85 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           
           <button
             onClick={() => setIsChartModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all shrink-0 hover:shadow"
+            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-2xs transition-all shrink-0 hover:shadow-xs"
             title="View email distribution by category"
           >
-            <PieChart className="w-4 h-4 text-indigo-300" />
+            <PieChart className="w-4 h-4 text-slate-300" />
             <span>Category Breakdown</span>
           </button>
         </div>
       </div>
 
+      <StorageBreakdownBar onApplyQuery={onApplyQuery} className="mb-4 sm:mb-6" />
+
       <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         <HealthCard 
-          icon={<HardDrive className="w-6 h-6 text-orange-500" />}
+          icon={<HardDrive className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />}
+          iconBg="bg-orange-50"
           title="Storage Hogs"
           count={stats?.large}
           sizeEstimate={sizes?.large}
           desc="Emails larger than 5MB taking up valuable Google Drive space."
-          color="border-orange-200 bg-orange-50/50 hover:bg-orange-50"
           actionText="Review Large Emails"
           onAction={() => onApplyQuery("larger:5M", "anywhere", "size")}
         />
         <HealthCard 
-          icon={<Trash2 className="w-6 h-6 text-purple-500" />}
+          icon={<Trash2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700" />}
+          iconBg="bg-slate-100"
           title="Stale Promotions"
           count={stats?.oldPromo}
           sizeEstimate={sizes?.oldPromo}
           desc="Marketing emails and newsletters older than 6 months."
-          color="border-slate-300 bg-slate-100/50 hover:bg-slate-100"
           actionText="Clean Up Promotions"
           onAction={() => onApplyQuery("older_than:6m -in:trash", "category:promotions")}
         />
         <HealthCard 
-          icon={<ShieldAlert className="w-6 h-6 text-red-500" />}
+          icon={<ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />}
+          iconBg="bg-red-50"
           title="Spam & Trash"
           count={stats?.spamAndTrash}
           sizeEstimate={sizes?.spamAndTrash}
           desc="Junk accumulating in your Spam and Trash folders."
-          color="border-slate-200 bg-slate-100/50 hover:bg-slate-100"
           actionText="Review Junk"
           onAction={() => onApplyQuery("", "spam+trash")}
         />
         <HealthCard 
-          icon={<ShieldCheck className="w-6 h-6 text-indigo-500" />}
+          icon={<ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700" />}
+          iconBg="bg-slate-100"
           title="Subscriptions"
           count="Manage"
-          desc="Manage newsletters & promos"
-          color="border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50"
+          desc="Manage newsletters & promo senders in bulk."
           actionText="Open Manager"
           onAction={() => setIsUnsubscribeModalOpen(true)}
         />
         <HealthCard 
-          icon={<MailOpen className="w-6 h-6 text-slate-500" />}
+          icon={<MailOpen className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />}
+          iconBg="bg-indigo-50"
           title="Inbox Overload"
           count={stats?.unread}
           desc="Unread emails sitting around demanding your attention."
-          color="border-slate-300 bg-slate-100/50 hover:bg-slate-100"
           actionText="Triage Unread"
           onAction={() => onApplyQuery("is:unread", "inbox")}
         />
         <HealthCard 
-          icon={<Tag className="w-6 h-6 text-teal-500" />}
-          title="Label Manager"
+          icon={<Folder className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />}
+          iconBg="bg-blue-50"
+          title="Folders & Labels"
           count="Manage"
-          desc="Explore and manage your custom labels"
-          color="border-teal-200 bg-teal-50/50 hover:bg-teal-50"
-          actionText="Open Labels"
+          desc="Create, rename, delete custom labels, and organize emails into folders."
+          actionText="Manage Folders"
           onAction={() => setIsLabelManagerOpen(true)}
         />
-        {isAiWorking && aiSettings?.apiKey && (
-          <HealthCard 
-            icon={<Layers className="w-6 h-6 text-blue-500" />}
-            title="Smart Organizer"
-            count="Analyze"
-            desc="Intelligently organize your inbox."
-            color="border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-            actionText="Run Organizer"
-            onAction={() => setIsSmartTriageOpen(true)}
-          />
-        )}
-      </div>
-
-      {isLabelManagerOpen && (
-        <LabelManagerModal 
-          isOpen={isLabelManagerOpen}
-          onClose={() => setIsLabelManagerOpen(false)}
-          userLabels={userLabels}
-          aiSettings={aiSettings}
+        <HealthCard 
+          icon={<Layers className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />}
+          iconBg="bg-purple-50"
+          title="Batch Organizer"
+          count="Group"
+          desc="Cluster recurring senders and organize inbox in bulk."
+          actionText="Run Organizer"
+          onAction={() => setIsSmartTriageOpen(true)}
         />
-      )}
+      </div>
 
       {isSmartTriageOpen && (
         <SmartTriageModal
@@ -329,6 +297,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           }}
           aiSettings={aiSettings}
           userLabels={userLabels}
+          userEmail={userEmail}
+          onRefresh={onRefresh}
         />
       )}
 
@@ -365,7 +335,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
             onClick={() => onApplyQuery("has:attachment -in:trash", "anywhere", "size")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <FileSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-blue-500" />
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-500" />
             <span>With Attachments</span>
             <div className="flex items-center gap-1 ml-1 shrink-0">
               <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.withAttachments || 0}</span>
@@ -438,7 +408,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           <div className="flex flex-col gap-3 sm:gap-4">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-slate-200 rounded-lg shrink-0">
-                <Network className="w-4 h-4 text-slate-700" />
+                <Layers className="w-4 h-4 text-slate-700" />
               </div>
               <div className="flex flex-col">
                   <h3 className="text-base sm:text-lg font-bold text-slate-800">Domain Clusters</h3>
@@ -470,7 +440,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
                     </div>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1">
-                    <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
+                    <div className="bg-slate-700 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
                   </div>
                 </div>
               )
@@ -485,17 +455,52 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         userLabels={userLabels || []}
         aiSettings={aiSettings}
         isFetching={isLoadingEmails}
+        isAiWorking={isAiWorking}
         onReload={() => setReloadTrigger(prev => prev + 1)}
       />
 
-      <RuleSuggester userLabels={userLabels || []} />
+      <RuleSuggester 
+        userLabels={userLabels || []} 
+        recentEmails={recentEmailsState}
+        onApplyQuery={onApplyQuery}
+        aiSettings={aiSettings}
+        isAiWorking={isAiWorking}
+      />
 
       <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
+
+      <LabelManagerModal
+        isOpen={isLabelManagerOpen}
+        onClose={() => setIsLabelManagerOpen(false)}
+        userLabels={userLabels || []}
+        onLabelsUpdated={() => {
+          setReloadTrigger(prev => prev + 1);
+          if (onRefresh) onRefresh();
+        }}
+        onApplyQuery={onApplyQuery}
+      />
 
       <CategoryDistributionModal
         isOpen={isChartModalOpen}
         onClose={() => setIsChartModalOpen(false)}
         onApplyCategory={onApplyQuery}
+        userLabels={userLabels || []}
+        aiSettings={aiSettings}
+        userEmail={userEmail}
+        onRefresh={() => {
+          setReloadTrigger(prev => prev + 1);
+          if (onRefresh) onRefresh();
+        }}
+      />
+
+      <HealthScoreModal
+        isOpen={isHealthScoreModalOpen}
+        onClose={() => setIsHealthScoreModalOpen(false)}
+        onApplyQuery={onApplyQuery}
+        onOpenUnsubscribe={() => {
+          setIsHealthScoreModalOpen(false);
+          setIsUnsubscribeModalOpen(true);
+        }}
       />
     </div>
   );
@@ -509,37 +514,37 @@ function formatSize(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function HealthCard({ icon, title, count, desc, color, actionText, onAction, sizeEstimate }: any) {
+function HealthCard({ icon, iconBg = "bg-slate-100", title, count, desc, actionText, onAction, sizeEstimate }: any) {
   const displayCount = typeof count === 'string' ? count : (count || 0).toLocaleString();
   return (
     <button 
       onClick={onAction}
-      className={cn("rounded-xl sm:rounded-2xl border p-3 sm:p-6 flex flex-row sm:flex-col gap-3 sm:gap-4 shadow-sm transition-all text-left group hover:shadow-md hover:scale-[1.02] items-center sm:items-start relative overflow-hidden", color)}
+      className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 p-4 sm:p-5 flex flex-row sm:flex-col gap-3.5 sm:gap-4 shadow-sm transition-all text-left group hover:shadow-md hover:-translate-y-0.5 items-center sm:items-start relative overflow-hidden"
     >
-      <div className="p-2 sm:p-3 bg-white/80 sm:bg-white rounded-lg sm:rounded-xl shadow-sm shrink-0 flex items-center justify-center">
+      <div className={cn("p-2.5 sm:p-3 rounded-xl shadow-2xs shrink-0 flex items-center justify-center border border-slate-100/80", iconBg)}>
         {icon}
       </div>
       
       <div className="flex-1 flex flex-col sm:block min-w-0">
-        <h3 className="font-bold text-slate-900 text-[15px] sm:text-lg sm:mb-1 truncate flex items-center gap-2">
+        <h3 className="font-bold text-slate-900 text-sm sm:text-base sm:mb-1 truncate flex items-center gap-2">
           {title}
         </h3>
-        <p className="text-xs sm:text-sm text-slate-600 leading-snug hidden sm:block">{desc}</p>
+        <p className="text-xs text-slate-500 leading-snug hidden sm:block line-clamp-2">{desc}</p>
         <p className="text-[11px] text-slate-500 truncate sm:hidden">{actionText}</p>
       </div>
       
-      <div className="flex flex-col items-end sm:w-full sm:flex-row sm:items-center sm:justify-between sm:pt-4 sm:mt-auto shrink-0">
+      <div className="flex flex-col items-end sm:w-full sm:flex-row sm:items-center sm:justify-between sm:pt-3 sm:mt-auto shrink-0 border-t sm:border-slate-100/80 w-full">
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-           <span className="text-lg sm:text-3xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
+           <span className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
            {sizeEstimate > 0 && (
-              <span className="text-[10px] sm:text-xs font-bold text-slate-500 bg-white/50 px-1.5 py-0.5 rounded border border-slate-200/50 mt-1 sm:mt-0">
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 mt-1 sm:mt-0">
                 ~{formatSize(sizeEstimate)}
               </span>
            )}
         </div>
-        <div className="hidden sm:flex items-center text-sm font-bold text-slate-800 group-hover:text-black">
+        <div className="hidden sm:flex items-center text-xs font-semibold text-slate-700 group-hover:text-slate-950 transition-colors">
           {actionText}
-          <ArrowRight className="w-4 h-4 sm:group-hover:translate-x-1 transition-transform ml-1" />
+          <ArrowRight className="w-3.5 h-3.5 sm:group-hover:translate-x-1 transition-transform ml-1" />
         </div>
       </div>
     </button>
@@ -570,7 +575,7 @@ function PipelineLayer({ step, title, modelName, icon, description, count, actio
          </div>
          <button 
             onClick={onAction}
-            className="text-sm font-bold text-slate-800 hover:text-indigo-800 flex items-center gap-1 group-hover:underline"
+            className="text-sm font-bold text-slate-800 hover:text-slate-950 flex items-center gap-1 group-hover:underline"
           >
             {actionText}
             <ArrowRight className="w-4 h-4" />

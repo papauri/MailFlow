@@ -62,7 +62,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
       <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-indigo-600" />
+            <Shield className="w-5 h-5 text-slate-700" />
             <h2 className="font-bold text-slate-800">Admin Control Panel</h2>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
@@ -72,7 +72,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
         
         <div className="p-6 overflow-y-auto">
           {loading ? (
-            <div className="flex justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+            <div className="flex justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-700"></div></div>
           ) : (
             <div className="space-y-6">
               <div className="space-y-3">
@@ -85,7 +85,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                     type="checkbox" 
                     checked={settings.enablePermanentDelete}
                     onChange={(e) => setSettings({...settings, enablePermanentDelete: e.target.checked})}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-600"
+                    className="w-4 h-4 text-slate-700 rounded border-slate-300 focus:ring-slate-700"
                   />
                   <div className="flex flex-col">
                     <span className="font-medium text-sm text-slate-700">Enable Permanent Delete</span>
@@ -97,7 +97,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
               <div className="space-y-3">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                   <Key className="w-4 h-4 text-amber-500" />
-                  Global AI Override
+                  Global API Override
                 </h3>
                 
                 <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100">
@@ -105,10 +105,10 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                     type="checkbox" 
                     checked={settings.useGlobalAiKey}
                     onChange={(e) => setSettings({...settings, useGlobalAiKey: e.target.checked})}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-600"
+                    className="w-4 h-4 text-slate-700 rounded border-slate-300 focus:ring-slate-700"
                   />
                   <div className="flex flex-col">
-                    <span className="font-medium text-sm text-slate-700">Use Global AI Key</span>
+                    <span className="font-medium text-sm text-slate-700">Use Global API Key</span>
                     <span className="text-xs text-slate-500">Overrides individual user keys. You pay the API costs.</span>
                   </div>
                 </label>
@@ -120,7 +120,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                       <select 
                         value={settings.globalProvider}
                         onChange={(e) => setSettings({...settings, globalProvider: e.target.value})}
-                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
                       >
                         <option value="gemini">Google Gemini</option>
                         <option value="openai">OpenAI</option>
@@ -134,7 +134,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                         value={settings.globalAiKey}
                         onChange={(e) => setSettings({...settings, globalAiKey: e.target.value})}
                         placeholder={"Enter key..."}
-                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono"
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 font-mono"
                       />
                     </div>
                   </div>
@@ -151,7 +151,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
           <button 
             onClick={saveSettings} 
             disabled={saving || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
           >
             {saving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Save className="w-4 h-4" />}
             Save & Apply
