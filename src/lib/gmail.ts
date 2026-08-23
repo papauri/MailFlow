@@ -23,7 +23,7 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     const errMsg = err.error?.message || '';
-    if (response.status === 401 || errMsg.includes('invalid authentication credentials') || errMsg.includes('expired') || (response.status === 403 && errMsg.includes('Insufficient Permission'))) {
+    if (response.status === 401 || errMsg.toLowerCase().includes('invalid authentication credentials') || errMsg.toLowerCase().includes('expired') || (response.status === 403 && (errMsg.toLowerCase().includes('insufficient permission') || errMsg.toLowerCase().includes('insufficient authentication scopes') || errMsg.toLowerCase().includes('insufficient')))) {
       logout().then(() => {
         window.location.reload();
       });

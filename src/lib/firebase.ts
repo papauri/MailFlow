@@ -9,6 +9,7 @@ export const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://mail.google.com/');
+provider.addScope('https://www.googleapis.com/auth/gmail.settings.basic');
 provider.setCustomParameters({ prompt: 'consent' });
 
 let isSigningIn = false;
