@@ -197,9 +197,8 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
             </div>
           ) : suggestions.length > 0 ? (
             <div className="space-y-2">
-              {suggestions.map((suggestion, idx) => {
+              {suggestions.filter(s => !completedIds.has(s.emailId)).map((suggestion, idx) => {
                 const actionUi = getActionLabel(suggestion.suggestedAction);
-                const isCompleted = completedIds.has(suggestion.emailId);
                 const isProcessing = processingId === suggestion.emailId;
                 
                 // Retrieve original email to see current state
@@ -226,7 +225,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 const labelExists = !suggestion.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
 
                 return (
-                  <div key={idx} className={`bg-white border rounded-xl p-3 sm:p-4 transition-all flex flex-col gap-3 ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <div key={idx} className="bg-white border rounded-xl p-3 sm:p-4 transition-all flex flex-col gap-3 border-slate-200 hover:border-slate-300 animate-in slide-in-from-bottom-2 fade-in duration-200">
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                       
                       {/* Left: Info */}
@@ -263,11 +262,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
 
                       {/* Right: Actions */}
                       <div className="shrink-0 flex gap-2 w-full sm:w-auto">
-                        {isCompleted ? (
-                          <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-1.5 bg-green-100 text-green-700 rounded-lg font-bold text-xs">
-                            <CheckCircle2 className="w-4 h-4" /> Done
-                          </div>
-                        ) : labelExists ? (
+                        {labelExists ? (
                           <button 
                             onClick={() => executeAction(suggestion, false)}
                             disabled={isProcessing}
