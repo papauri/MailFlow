@@ -150,27 +150,38 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       }
     });
 
+    // Real Data Analytics: Statistical Significance Thresholding
+    const senderCounts = Array.from(senderMap.values()).map(arr => arr.length);
+    const meanCount = senderCounts.length ? senderCounts.reduce((a, b) => a + b, 0) / senderCounts.length : 0;
+    const stdDevCount = senderCounts.length ? Math.sqrt(senderCounts.reduce((a, b) => a + Math.pow(b - meanCount, 2), 0) / senderCounts.length) : 0;
+    
+    // A true anomaly must be > (Mean + 1 Standard Deviation), and represent at least 5% of the data (min 3 emails)
+    const minSamplePercent = Math.max(3, Math.ceil(sample.length * 0.05));
+    const anomalyThreshold = Math.max(minSamplePercent, Math.ceil(meanCount + stdDevCount));
+
     senderMap.forEach((emails, addr) => {
-      if (emails.length > 3) {
+      if (emails.length >= anomalyThreshold) {
         const domain = addr.split('@')[1] || addr;
         const brand = domain.split('.')[0];
         const title = brand.charAt(0).toUpperCase() + brand.slice(1);
         recs.push({
           suggestedLabel: title,
           emailIds: emails.map(e => e.id),
-          reason: `Significant volume detected: ${emails.length} emails from ${addr}. Group them together or bulk clear them.`
+          reason: `Statistical anomaly: ${emails.length} emails from ${addr} exceeds the normal distribution (+1σ) of your inbox data.`
         });
       }
     });
 
     keywordMap.forEach((emails, category) => {
-      if (emails.length > 3) {
+      if (emails.length >= minSamplePercent) {
         const uniqueIds = [...new Set(emails.map(e => e.id))];
-        recs.push({
-          suggestedLabel: category,
-          emailIds: uniqueIds,
-          reason: `Strong pattern found: ${uniqueIds.length} emails matching common "${category}" attributes.`
-        });
+        if (uniqueIds.length >= minSamplePercent) {
+          recs.push({
+            suggestedLabel: category,
+            emailIds: uniqueIds,
+            reason: `Data density: ${uniqueIds.length} emails matching "${category}" form a statistically significant density cluster (>${Math.round((uniqueIds.length/sample.length)*100)}% of dataset).`
+          });
+        }
       }
     });
 

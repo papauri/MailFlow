@@ -137,15 +137,24 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
           senderMap.get(name)!.push(e.id);
         });
         
+        // Real Data Analytics: Statistical Distribution
+        const senderCounts = Array.from(senderMap.values()).map(arr => arr.length);
+        const meanCount = senderCounts.length ? senderCounts.reduce((a, b) => a + b, 0) / senderCounts.length : 0;
+        const stdDevCount = senderCounts.length ? Math.sqrt(senderCounts.reduce((a, b) => a + Math.pow(b - meanCount, 2), 0) / senderCounts.length) : 0;
+        
+        // Minimum threshold is 3, or the mathematical outlier limit (+1 std dev)
+        const minSamplePercent = Math.max(3, Math.ceil(selectedEmailsData.length * 0.05));
+        const anomalyThreshold = Math.max(minSamplePercent, Math.ceil(meanCount + stdDevCount));
+
         const recs: any[] = [];
         
         senderMap.forEach((ids, name) => {
-          if (ids.length >= 3 && name.toLowerCase() !== 'unknown') {
+          if (ids.length >= anomalyThreshold && name.toLowerCase() !== 'unknown') {
              recs.push({
                title: name,
                suggestedLabel: name,
                emailIds: ids,
-               reason: `Analytics grouped ${ids.length} emails from ${name}`
+               reason: `Data Anomaly: ${ids.length} emails from ${name} exceeds the statistical mean distribution (+1σ) in this selection.`
              });
           } else {
              outliers.push(...ids);
