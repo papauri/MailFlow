@@ -9,19 +9,36 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [selectedFolder, setSelectedFolder] = useState<string>("anywhere");
 
   useEffect(() => {
     if (isOpen && suggestions.length === 0 && !loading && !error) {
-      analyzeInbox();
+      analyzeInbox(selectedFolder);
     }
   }, [isOpen]);
 
-  const analyzeInbox = async () => {
+  const handleFolderChange = (folder: string) => {
+    setSelectedFolder(folder);
+    setSuggestions([]);
+    setCompletedIds(new Set());
+    analyzeInbox(folder);
+  };
+
+  const analyzeInbox = async (folderQuery: string) => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch recent emails from across the mailbox (excluding junk) for thorough analysis
-      const recentEmails = await searchEmails("-in:trash -in:spam", 100);
+      let q = "-in:trash -in:spam";
+      if (folderQuery !== "anywhere") {
+        if (folderQuery.startsWith("label:")) {
+           const labelName = folderQuery.split(":")[1];
+           q = `label:"${labelName}" -in:trash -in:spam`;
+        } else {
+           q = `${folderQuery} -in:trash -in:spam`;
+        }
+      }
+      
+      const recentEmails = await searchEmails(q, 100);
       
       const payload = recentEmails.map(e => ({
         id: e.id,
@@ -149,10 +166,28 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
               <Layers className="w-4 h-4 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                Smart Organizer
-              </h2>
-              <p className="text-xs text-slate-500">Intelligently analyze your inbox and suggest actions.</p>
+              <div className="flex items-center flex-wrap gap-2">
+                <h2 className="text-base font-bold text-slate-800">
+                  Smart Organizer
+                </h2>
+                <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
+                <select
+                  value={selectedFolder}
+                  onChange={(e) => handleFolderChange(e.target.value)}
+                  disabled={loading}
+                  className="bg-slate-50 border border-slate-200 rounded-md py-0.5 px-2 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
+                >
+                  <option value="anywhere">Everywhere</option>
+                  <option value="in:inbox">Inbox Only</option>
+                  <option value="category:promotions">Promotions</option>
+                  <option value="category:updates">Updates</option>
+                  <option value="category:social">Social</option>
+                  {userLabels?.map(l => (
+                    <option key={l.id} value={`label:${l.name}`}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">Triage and organize emails by folder.</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
