@@ -1,61 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { X, Tag, Loader2, Sparkles, Folder, Inbox, Trash2, CheckCircle, ChevronDown, MoveRight, Search } from 'lucide-react';
-import { fetchGmailAPI, searchEmails, searchEmailsPaginated, batchModifyEmails } from '../lib/gmail';
+import { X, Loader2, Folder, Inbox, Trash2, Plus, LayoutList } from 'lucide-react';
+import { fetchGmailAPI } from '../lib/gmail';
 import { cn } from '../lib/utils';
 
-export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: any) {
+export function LabelManagerModal({ isOpen, onClose }: any) {
   const [labels, setLabels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeLabel, setActiveLabel] = useState<any>(null);
-  const [labelEmails, setLabelEmails] = useState<any[]>([]);
-  const [loadingEmails, setLoadingEmails] = useState(false);
   
-  // AI State
-  const [aiAnalysis, setAiAnalysis] = useState<string>('');
-  const [analyzing, setAnalyzing] = useState(false);
-
-  // Selection & Drag/Drop
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [moving, setMoving] = useState(false);
-  const [dragOverLabelId, setDragOverLabelId] = useState<string | null>(null);
-  const [showMoveMenu, setShowMoveMenu] = useState(false);
-
-  // Pagination & Search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [pageToken, setPageToken] = useState<string | undefined>(undefined);
-  const [loadingMore, setLoadingMore] = useState(false);
-
   // Create Label
   const [isCreating, setIsCreating] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const [creatingLabel, setCreatingLabel] = useState(false);
+  
+  // Delete Label
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       loadLabels();
     }
-  }, [isOpen, userLabels]);
+  }, [isOpen]);
 
   const loadLabels = async () => {
     setLoading(true);
     try {
-      // Filter out system labels
-      const userOnly = (userLabels || []).filter((l: any) => l.type === 'user');
+      // Fetch all labels freshly
+      const data = await fetchGmailAPI('/labels');
+      if (!data || !data.labels) return;
+      
+      const allLabels = data.labels;
       
       // Fetch details for each label to get counts (messagesTotal, messagesUnread)
+      // Cap at 40 labels to avoid spamming the API too hard if they have tons
+      const toFetch = allLabels.slice(0, 40);
       const detailed = await Promise.all(
-        userOnly.map((l: any) => fetchGmailAPI(`/labels/${l.id}`).catch(() => l))
+        toFetch.map((l: any) => fetchGmailAPI(`/labels/${l.id}`).catch(() => l))
       );
       
       setLabels(detailed);
-      if (detailed.length > 0 && !activeLabel) {
-        handleLabelClick(detailed[0]);
-      }
     } catch (e) {
       console.error("Failed to load detailed labels", e);
     } finally {
@@ -63,90 +45,12 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
     }
   };
 
-  const handleLabelClick = (label: any) => {
-    setActiveLabel(label);
-    setSearchQuery('');
-    setDebouncedQuery('');
-    setAiAnalysis('');
-    setSelectedIds(new Set());
-    setShowMoveMenu(false);
-  };
-
-  useEffect(() => {
-    if (!activeLabel) return;
-    const fetchFirstPage = async () => {
-      setLoadingEmails(true);
-      try {
-        const query = debouncedQuery.trim() ? debouncedQuery.trim() : "";
-        const res = await searchEmailsPaginated(query, 50, "", activeLabel.id);
-        setLabelEmails(res.emails);
-        setPageToken(res.nextPageToken);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoadingEmails(false);
-      }
-    };
-    fetchFirstPage();
-  }, [activeLabel, debouncedQuery]);
-
-  const handleLoadMore = async () => {
-    if (!activeLabel || !pageToken || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const query = debouncedQuery.trim() ? debouncedQuery.trim() : "";
-      const res = await searchEmailsPaginated(query, 50, pageToken, activeLabel.id);
-      setLabelEmails(prev => [...prev, ...res.emails]);
-      setPageToken(res.nextPageToken);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  const handleDeleteLabel = async () => {
-    if (!activeLabel) return;
-    const confirm = window.confirm(`Are you sure you want to delete the label "${activeLabel.name}"?\n\nThis will permanently delete the label and move all its emails back to your main Inbox.`);
-    if (!confirm) return;
-    
-    try {
-      setLoadingEmails(true);
-      
-      // Force emails back to inbox
-      let pageToken = "";
-      do {
-        const formattedName = activeLabel.name.includes(' ') ? `"${activeLabel.name}"` : activeLabel.name;
-        const url = `/messages?q=${encodeURIComponent(`label:${formattedName}`)}&maxResults=1000` + (pageToken ? `&pageToken=${pageToken}` : "");
-        const res = await fetchGmailAPI(url);
-        if (res?.messages?.length > 0) {
-          const ids = res.messages.map((m: any) => m.id);
-          await fetchGmailAPI('/messages/batchModify', {
-            method: 'POST',
-            body: JSON.stringify({ ids, addLabelIds: ['INBOX'], removeLabelIds: [activeLabel.id] })
-          });
-        }
-        pageToken = res?.nextPageToken;
-      } while (pageToken);
-
-      // Delete the label
-      await fetchGmailAPI(`/labels/${activeLabel.id}`, { method: 'DELETE' });
-      setLabels(prev => prev.filter(l => l.id !== activeLabel.id));
-      setActiveLabel(null);
-      setLabelEmails([]);
-    } catch (e: any) {
-      alert(`Failed to delete label: ${e.message}`);
-      console.error(e);
-    } finally {
-      setLoadingEmails(false);
-    }
-  };
-
   const handleCreateLabel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLabelName.trim()) return;
+    
+    setCreatingLabel(true);
     try {
-      setLoading(true);
       const res = await fetchGmailAPI('/labels', {
         method: 'POST',
         body: JSON.stringify({
@@ -155,405 +59,176 @@ export function LabelManagerModal({ isOpen, onClose, userLabels, aiSettings }: a
           messageListVisibility: 'show'
         })
       });
-      setLabels(prev => [...prev, { ...res, type: 'user', messagesTotal: 0, messagesUnread: 0 }]);
-      setNewLabelName('');
-      setIsCreating(false);
-      handleLabelClick(res);
-    } catch (e: any) {
-      alert(`Failed to create label: ${e.message}`);
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!aiSettings?.apiKey) {
-       alert("AI is not configured. Please add an API key in settings.");
-       return;
-    }
-    setAnalyzing(true);
-    try {
-      const emailContext = labelEmails.slice(0, 10).map(e => `Subject: ${e.subject}\nSnippet: ${e.snippet}`).join('\n\n');
-      const prompt = `Analyze these recent emails from the label "${activeLabel.name}". Provide a very short 2-3 sentence summary of what kind of emails are stored here, and suggest if this label could be reorganized or if rules could be better optimized. Emails:\n${emailContext}`;
-      
-      const res = await fetch("/api/parse-query", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, settings: aiSettings, bypassJson: true })
-      });
-      
-      const text = await res.text();
-      setAiAnalysis(text);
-    } catch (e) {
-      setAiAnalysis("Failed to analyze label with AI.");
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const handleMoveToLabel = async (targetLabelId: string, emailIds: string[]) => {
-    if (!activeLabel || emailIds.length === 0) return;
-    setMoving(true);
-    try {
-      await batchModifyEmails(emailIds, [targetLabelId], [activeLabel.id]);
-      
-      // Update UI optimistically
-      setLabelEmails(prev => prev.filter(e => !emailIds.includes(e.id)));
-      setSelectedIds(new Set());
-      setShowMoveMenu(false);
-      
-      // Calculate how many of the moved emails were unread
-      const unreadMovedCount = emailIds.filter(id => {
-        const e = labelEmails.find(em => em.id === id);
-        return e && e.labelIds && e.labelIds.includes('UNREAD');
-      }).length;
-
-      // Update counts in sidebar (approximate)
-      setLabels(prev => prev.map(l => {
-        if (l.id === activeLabel.id) {
-           return { 
-             ...l, 
-             messagesTotal: Math.max(0, (l.messagesTotal || 0) - emailIds.length),
-             messagesUnread: Math.max(0, (l.messagesUnread || 0) - unreadMovedCount)
-           };
-        }
-        if (l.id === targetLabelId) {
-           return { 
-             ...l, 
-             messagesTotal: (l.messagesTotal || 0) + emailIds.length,
-             messagesUnread: (l.messagesUnread || 0) + unreadMovedCount
-           };
-        }
-        return l;
-      }));
-      
-      setActiveLabel((prev: any) => {
-        if (!prev) return prev;
-        return {
-           ...prev,
-           messagesTotal: Math.max(0, (prev.messagesTotal || 0) - emailIds.length),
-           messagesUnread: Math.max(0, (prev.messagesUnread || 0) - unreadMovedCount)
-        };
-      });
-    } catch (e) {
-      alert("Failed to move emails.");
-      console.error(e);
-    } finally {
-      setMoving(false);
-    }
-  };
-
-  const handleDragStart = (e: React.DragEvent, emailId: string) => {
-    // If dragging an unselected item, select it first (or just drag it alone)
-    const idsToMove = selectedIds.has(emailId) ? Array.from(selectedIds) : [emailId];
-    e.dataTransfer.setData("text/plain", JSON.stringify(idsToMove));
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDrop = (e: React.DragEvent, targetLabelId: string) => {
-    e.preventDefault();
-    setDragOverLabelId(null);
-    if (targetLabelId === activeLabel?.id) return;
-    
-    try {
-      const data = e.dataTransfer.getData("text/plain");
-      const idsToMove = JSON.parse(data);
-      if (Array.isArray(idsToMove) && idsToMove.length > 0) {
-        handleMoveToLabel(targetLabelId, idsToMove);
+      if (res && res.id) {
+        setLabels(prev => [...prev, { ...res, type: 'user', messagesTotal: 0, messagesUnread: 0 }]);
+        setNewLabelName('');
+        setIsCreating(false);
       }
     } catch (err) {
-      console.error("Invalid drop data");
+      console.error(err);
+      alert('Failed to create label. It might already exist.');
+    } finally {
+      setCreatingLabel(false);
     }
   };
 
+  const handleDeleteLabel = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this folder? Emails inside will NOT be deleted, but they will lose this label.')) {
+      return;
+    }
+    
+    setDeletingId(id);
+    try {
+      await fetchGmailAPI(`/labels/${id}`, { method: 'DELETE' });
+      setLabels(prev => prev.filter(l => l.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete label.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (!isOpen) return null;
 
+  const systemMap: Record<string, string> = {
+    'INBOX': 'Inbox',
+    'CATEGORY_PERSONAL': 'Primary',
+    'CATEGORY_PROMOTIONS': 'Promotions',
+    'CATEGORY_UPDATES': 'Updates',
+    'CATEGORY_SOCIAL': 'Social',
+    'CATEGORY_FORUMS': 'Forums',
+    'SPAM': 'Spam',
+    'TRASH': 'Trash',
+    'SENT': 'Sent',
+    'DRAFT': 'Drafts',
+    'STARRED': 'Starred'
+  };
+
+  // Group labels
+  const systemLabels = labels.filter(l => l.type === 'system' && systemMap[l.id]);
+  const userLabelsList = labels.filter(l => l.type === 'user');
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
-        className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden ring-1 ring-slate-200">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-              <Tag className="w-5 h-5" />
+              <LayoutList className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Label Manager</h2>
-              <p className="text-xs text-slate-500 font-medium">Fully manage and explore your custom labels</p>
+              <h2 className="text-lg font-bold text-slate-800 tracking-tight leading-tight">Folder & Label Manager</h2>
+              <p className="text-sm text-slate-500">View and manage all your Gmail folders</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
-          {/* Sidebar */}
-          <div className="w-full sm:w-64 border-r border-slate-100 bg-slate-50/30 overflow-y-auto flex-shrink-0 flex flex-col">
-            <div className="p-3 border-b border-slate-100">
-              {isCreating ? (
-                <form onSubmit={handleCreateLabel} className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="New label name..."
-                    value={newLabelName}
-                    onChange={e => setNewLabelName(e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button type="submit" disabled={!newLabelName.trim()} className="flex-1 bg-indigo-600 text-white py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">Create</button>
-                    <button type="button" onClick={() => {setIsCreating(false); setNewLabelName('');}} className="flex-1 bg-slate-200 text-slate-700 py-1.5 rounded-lg text-xs font-semibold">Cancel</button>
-                  </div>
-                </form>
-              ) : (
-                <button
-                  onClick={() => setIsCreating(true)}
-                  className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm"
-                >
-                  <Tag className="w-4 h-4" />
-                  Create Label
-                </button>
-              )}
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30">
+          {loading ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+              <p className="text-sm font-medium">Loading all folders...</p>
             </div>
-            {loading ? (
-              <div className="p-8 flex justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-              </div>
-            ) : labels.length === 0 ? (
-              <div className="p-6 text-center text-slate-500 text-sm">
-                No custom labels found.
-              </div>
-            ) : (
-              <div className="p-3 flex flex-col gap-1">
-                {labels.map(label => (
-                  <button
-                    key={label.id}
-                    onClick={() => handleLabelClick(label)}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                    onDragEnter={() => setDragOverLabelId(label.id)}
-                    onDragLeave={() => setDragOverLabelId(null)}
-                    onDrop={(e) => handleDrop(e, label.id)}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all text-left w-full border border-transparent",
-                      activeLabel?.id === label.id 
-                        ? "bg-indigo-50 text-indigo-700 font-semibold shadow-sm ring-1 ring-indigo-200/50" 
-                        : "text-slate-600 hover:bg-slate-100 font-medium",
-                      dragOverLabelId === label.id && activeLabel?.id !== label.id && "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-300 scale-[1.02]"
-                    )}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <Folder className={cn("w-4 h-4 shrink-0", activeLabel?.id === label.id ? "text-indigo-500" : "text-slate-400")} />
-                      <span className="truncate">{label.name}</span>
-                    </div>
-                    {label.messagesTotal !== undefined && (
-                      <span className="text-[10px] font-bold bg-white/60 px-1.5 py-0.5 rounded text-slate-500 ml-2">
-                        {label.messagesTotal}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Main Content */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-white">
-            {activeLabel ? (
-              <>
-                <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-800">{activeLabel.name}</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      {activeLabel.messagesTotal || 0} total messages {activeLabel.messagesUnread ? `(${activeLabel.messagesUnread} unread)` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleDeleteLabel}
-                      className="flex items-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-                      title="Delete this label entirely"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete Label
-                    </button>
-                    {aiSettings?.apiKey && (
-                      <button
-                        onClick={handleAnalyze}
-                        disabled={analyzing || labelEmails.length === 0}
-                        className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
-                      >
-                        {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                        AI Analysis
-                      </button>
-                    )}
-                  </div>
+          ) : (
+            <div className="max-w-2xl mx-auto space-y-8">
+              
+              {/* Create New Folder */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-3 text-slate-800 font-bold">
+                  <Plus className="w-4 h-4 text-indigo-600" />
+                  <h3>Create New Folder</h3>
                 </div>
-
-                <div className="px-4 sm:px-5 py-3 border-b border-slate-100 bg-slate-50/50">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                {!isCreating ? (
+                  <button 
+                    onClick={() => setIsCreating(true)}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 border-dashed text-slate-600 py-3 rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    + Add Custom Folder
+                  </button>
+                ) : (
+                  <form onSubmit={handleCreateLabel} className="flex flex-col gap-3">
                     <input
                       type="text"
-                      placeholder="Filter by sender, subject, or keywords..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                      autoFocus
+                      placeholder="e.g. Invoices, Newsletters, Travel"
+                      value={newLabelName}
+                      onChange={e => setNewLabelName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                  </div>
-                </div>
-
-                {aiAnalysis && (
-                   <div className="mx-4 sm:mx-5 mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl relative">
-                     <button onClick={() => setAiAnalysis('')} className="absolute top-3 right-3 text-indigo-400 hover:text-indigo-600"><X className="w-4 h-4" /></button>
-                     <div className="flex items-start gap-3">
-                       <Sparkles className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                       <div className="text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap">
-                         <span className="font-semibold block mb-1">AI Label Insights</span>
-                         {aiAnalysis}
-                       </div>
-                     </div>
-                   </div>
+                    <div className="flex items-center gap-2">
+                      <button type="submit" disabled={!newLabelName.trim() || creatingLabel} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {creatingLabel && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Create Folder
+                      </button>
+                      <button type="button" onClick={() => {setIsCreating(false); setNewLabelName('');}} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-sm font-semibold transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
                 )}
-
-                <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-                  {loadingEmails ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                      <Loader2 className="w-8 h-8 animate-spin mb-4" />
-                      <p className="text-sm font-medium">Loading emails in {activeLabel.name}...</p>
-                    </div>
-                  ) : labelEmails.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                      <Inbox className="w-12 h-12 mb-4 text-slate-300" />
-                      <p className="text-sm font-medium">No emails found in this label.</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3 relative">
-                      <div className="flex items-center justify-between mb-1 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-sm cursor-pointer", labelEmails.length > 0 && selectedIds.size === labelEmails.length ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white hover:border-slate-400")}
-                            onClick={() => {
-                              if (selectedIds.size === labelEmails.length) {
-                                setSelectedIds(new Set());
-                              } else {
-                                setSelectedIds(new Set(labelEmails.map(e => e.id)));
-                              }
-                            }}
-                          >
-                            {selectedIds.size === labelEmails.length && labelEmails.length > 0 && <CheckCircle className="w-3 h-3 text-white" />}
-                          </div>
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Emails</h4>
-                          {selectedIds.size > 0 && (
-                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
-                              {selectedIds.size} selected
-                            </span>
-                          )}
-                        </div>
-                        {selectedIds.size > 0 && (
-                          <div className="relative">
-                            <button 
-                              onClick={() => setShowMoveMenu(!showMoveMenu)}
-                              className="flex items-center gap-1.5 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg shadow-sm transition-all"
-                            >
-                              <MoveRight className="w-3.5 h-3.5" />
-                              Move to...
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            </button>
-                            {showMoveMenu && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setShowMoveMenu(false)} />
-                                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20 max-h-64 overflow-y-auto">
-                                  {labels.filter(l => l.id !== activeLabel.id).map(l => (
-                                    <button
-                                      key={l.id}
-                                      onClick={() => handleMoveToLabel(l.id, Array.from(selectedIds))}
-                                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors flex items-center gap-2 truncate"
-                                    >
-                                      <Folder className="w-4 h-4 shrink-0 opacity-50" />
-                                      <span className="truncate">{l.name}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {labelEmails.map((email: any) => {
-                        const isSelected = selectedIds.has(email.id);
-                        return (
-                          <div 
-                            key={email.id} 
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, email.id)}
-                            onClick={() => {
-                              setSelectedIds(prev => {
-                                const next = new Set(prev);
-                                if (next.has(email.id)) next.delete(email.id);
-                                else next.add(email.id);
-                                return next;
-                              });
-                            }}
-                            className={cn(
-                              "p-3 border rounded-xl transition-colors group cursor-pointer flex gap-3",
-                              isSelected ? "bg-slate-50 border-slate-300 shadow-sm" : "border-slate-100 hover:border-slate-200 hover:bg-slate-50",
-                              moving ? "opacity-50 pointer-events-none" : ""
-                            )}
-                          >
-                            <div className="pt-0.5 shrink-0">
-                              <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors", isSelected ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}>
-                                {isSelected && <CheckCircle className="w-3 h-3 text-white" />}
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-4 mb-1">
-                                <span className="font-semibold text-slate-800 text-sm truncate">{email.sender.replace(/<.*>/, "").trim() || email.sender}</span>
-                                <span className="text-xs text-slate-400 whitespace-nowrap">
-                                  {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                </span>
-                              </div>
-                              <p className="text-sm font-medium text-slate-700 truncate">{email.subject}</p>
-                              <p className="text-xs text-slate-500 truncate mt-1">{email.snippet}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      
-                      {pageToken && (
-                        <div className="pt-2 flex justify-center">
-                          <button
-                            onClick={handleLoadMore}
-                            disabled={loadingMore}
-                            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
-                          >
-                            {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
-                            Load More
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 p-6 text-center">
-                <div>
-                  <Tag className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                  <p className="font-medium text-slate-600">Select a label</p>
-                  <p className="text-sm mt-1">Choose a label from the sidebar to view and manage its contents.</p>
-                </div>
               </div>
-            )}
-          </div>
+
+              {/* Custom Folders */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">Custom Folders</h3>
+                {userLabelsList.length === 0 ? (
+                  <p className="text-sm text-slate-500 italic ml-1">No custom folders created yet.</p>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    {userLabelsList.map((l, i) => (
+                      <div key={l.id} className={cn("flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors", i !== userLabelsList.length - 1 && "border-b border-slate-100")}>
+                        <div className="flex items-center gap-3 truncate min-w-0">
+                          <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span className="font-medium text-slate-700 truncate">{l.name}</span>
+                          <span className="text-xs text-slate-400 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">
+                            {l.messagesTotal || 0} emails
+                          </span>
+                        </div>
+                        <button 
+                          onClick={(e) => handleDeleteLabel(l.id, e)}
+                          disabled={deletingId === l.id}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                          title="Delete Folder"
+                        >
+                          {deletingId === l.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* System Folders */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">System Folders</h3>
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm grid grid-cols-1 sm:grid-cols-2">
+                  {systemLabels.map((l, i) => (
+                    <div key={l.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors border-b border-slate-100">
+                      <div className="flex items-center gap-3 truncate min-w-0">
+                        <Inbox className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className="font-medium text-slate-700 truncate">{systemMap[l.id]}</span>
+                      </div>
+                      <span className="text-xs text-slate-400 font-semibold bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                        {l.messagesTotal || 0} emails
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-2 ml-1">System folders cannot be deleted or renamed.</p>
+              </div>
+
+            </div>
+          )}
         </div>
+
       </div>
     </div>
   );
