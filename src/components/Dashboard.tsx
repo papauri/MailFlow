@@ -1157,7 +1157,7 @@ export default function Dashboard({ user }: { user: any }) {
               <div className="flex items-center px-2 sm:px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/50 bg-slate-50/50 pt-2 gap-1 sm:gap-2">
                 {[
                   { id: 'anywhere', label: 'All Unread' },
-                  { id: 'category:personal', label: 'Primary' },
+                  { id: 'category:primary', label: 'Primary' },
                   { id: 'category:promotions', label: 'Promotions' },
                   { id: 'category:updates', label: 'Updates' },
                   { id: 'category:social', label: 'Social' },

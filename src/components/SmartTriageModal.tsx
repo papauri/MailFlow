@@ -192,6 +192,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 >
                   <option value="anywhere">Everywhere</option>
                   <option value="in:inbox">Inbox Only</option>
+                  <option value="category:primary">Primary</option>
                   <option value="category:promotions">Promotions</option>
                   <option value="category:updates">Updates</option>
                   <option value="category:social">Social</option>
