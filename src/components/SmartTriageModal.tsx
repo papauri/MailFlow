@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Tag, CornerDownRight, Zap, Layers, Filter, ArrowRight } from 'lucide-react';
-import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
+import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, createFilter, fetchGmailAPI } from '../lib/gmail';
 
 export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { isOpen: boolean, onClose: () => void, aiSettings: any, userLabels?: any[] }) {
   const [loading, setLoading] = useState(false);
@@ -30,13 +30,13 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
     setLoading(true);
     setError(null);
     try {
-      let q = "-in:trash -in:spam";
+      let q = "-in:trash -in:spam -in:sent";
       if (folderQuery !== "anywhere") {
         if (folderQuery.startsWith("label:")) {
            const labelName = folderQuery.split(":")[1];
-           q = `label:"${labelName}" -in:trash -in:spam`;
+           q = `label:"${labelName}" -in:trash -in:spam -in:sent`;
         } else {
-           q = `${folderQuery} -in:trash -in:spam`;
+           q = `${folderQuery} -in:trash -in:spam -in:sent`;
         }
       }
       
@@ -51,10 +51,20 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       }));
       setFetchedEmails(payload);
 
+      let freshLabels = userLabels;
+      try {
+        const labelsData = await fetchGmailAPI('/labels');
+        if (labelsData && labelsData.labels) {
+          freshLabels = labelsData.labels;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch fresh labels, falling back to cached.');
+      }
+
       const res = await fetch("/api/smart-triage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: payload, settings: aiSettings, existingLabels: userLabels })
+        body: JSON.stringify({ emails: payload, settings: aiSettings, existingLabels: freshLabels })
       });
 
       if (!res.ok) {
