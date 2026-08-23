@@ -167,19 +167,19 @@ async function startServer() {
         required: ["suggestions"]
       };
 
-      const aiPrompt = `You are a meticulous, highly-thorough Inbox Organizer.
+      const aiPrompt = `You are a meticulous, highly intelligent Inbox Organizer.
         I am giving you a deep sample of recent emails across my entire mailbox.
         My current custom folders (labels) are: [${labelsText}].
         
-        Your job is to provide comprehensive, actionable organization insights. Decide what is important and what should be triaged.
-        You can combine actions! For example, you can Archive an email AND apply a 'Receipts' label. 
-        For example:
-        - If you see multiple receipts, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (new or existing) with applyToAllFuture = true.
-        - If you see scattered project emails, suggest 'move_to_primary' AND suggestedLabel 'Project X'.
-        - Move automated alerts to Updates, or apply a specific 'Alerts' label.
-        - Clean up inbox clutter.
+        CRITICAL GOAL: Your primary job is to PROTECT important emails and ORGANIZE clutter. Be incredibly smart.
+        1. If an email is HIGHLY IMPORTANT (e.g., an upcoming exam, a flight ticket, legal documents, a message from a boss/real human) and it is currently hiding in Updates or Promotions, you MUST suggest 'move_to_primary' (and optionally star it) so the user does not miss it! DO NOT archive important upcoming events.
+        2. If an email is useful but not urgent (e.g., receipts, project logs), apply a logical label (new or existing) and 'archive' it out of the inbox. 
+        3. Only suggest 'archive' for items that are truly dealt with, useless clutter, or non-actionable logs.
         
-        Provide up to 15 of the highest-value, most thorough organization suggestions. Focus on helping the user triage effectively.
+        You can combine actions! For example, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (with applyToAllFuture = true).
+        Or suggest 'move_to_primary' AND suggestedLabel 'University'.
+        
+        Provide up to 15 of the highest-value, smartest organization suggestions.
         
         Emails:
         ${emailText}
