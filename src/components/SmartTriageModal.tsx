@@ -9,6 +9,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
   const [selectedFolder, setSelectedFolder] = useState<string>("anywhere");
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
     setSelectedFolder(folder);
     setSuggestions([]);
     setCompletedIds(new Set());
+    setIgnoredIds(new Set());
     analyzeInbox(folder);
   };
 
@@ -156,7 +158,8 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
     return base;
   };
 
-  const hasCompletedAll = suggestions.length > 0 && completedIds.size === suggestions.length;
+  const processedCount = completedIds.size + ignoredIds.size;
+  const hasCompletedAll = suggestions.length > 0 && processedCount === suggestions.length;
   const timeSaved = completedIds.size * 2 + suggestions.filter(s => s.applyToAllFuture && completedIds.has(s.emailId)).length * 5;
 
   if (!isOpen) return null;
@@ -236,7 +239,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
             </div>
           ) : suggestions.length > 0 ? (
             <div className="space-y-2">
-              {suggestions.filter(s => !completedIds.has(s.emailId)).map((suggestion, idx) => {
+              {suggestions.filter(s => !completedIds.has(s.emailId) && !ignoredIds.has(s.emailId)).map((suggestion, idx) => {
                 const actionUi = getActionLabel(suggestion.suggestedAction);
                 const isProcessing = processingId === suggestion.emailId;
                 
@@ -331,6 +334,13 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                             </button>
                           </>
                         )}
+                        <button
+                          onClick={() => setIgnoredIds(new Set(ignoredIds).add(suggestion.emailId))}
+                          disabled={isProcessing}
+                          className="w-full text-center py-1 mt-0.5 text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider disabled:opacity-50"
+                        >
+                          Dismiss
+                        </button>
                       </div>
                     </div>
 
