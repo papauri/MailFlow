@@ -37,7 +37,7 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   'fastmail.com'
 ]);
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void }) {
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
   const [stats, setStats] = useState<any>(null);
   const [sizes, setSizes] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -260,7 +260,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           actionText="Open Labels"
           onAction={() => setIsLabelManagerOpen(true)}
         />
-        {aiSettings?.apiKey && (
+        {isAiWorking && aiSettings?.apiKey && (
           <HealthCard 
             icon={<Layers className="w-6 h-6 text-blue-500" />}
             title="Smart Organizer"

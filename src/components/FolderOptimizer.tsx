@@ -75,7 +75,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       
       let localRecs = runLocalHeuristics(sample);
       
-      if ((forceAi || localRecs.length === 0) && hasAiKey) {
+      if (hasAiKey || forceAi) {
         try {
           const payload = {
             emails: sample.map(e => ({ id: e.id, sender: e.sender, subject: e.subject })),

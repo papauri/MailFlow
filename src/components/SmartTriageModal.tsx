@@ -90,16 +90,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       let removeLabels: string[] = [];
 
       // 1. Base Action
-      if (suggestion.suggestedAction === 'move_to_primary') {
-        addLabels.push('INBOX', 'CATEGORY_PERSONAL');
-        removeLabels.push('CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
-      } else if (suggestion.suggestedAction === 'move_to_updates') {
-        addLabels.push('INBOX', 'CATEGORY_UPDATES');
-        removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL');
-      } else if (suggestion.suggestedAction === 'move_to_promotions') {
-        addLabels.push('INBOX', 'CATEGORY_PROMOTIONS');
-        removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
-      } else if (suggestion.suggestedAction === 'archive') {
+      if (suggestion.suggestedAction === 'archive') {
         removeLabels.push('INBOX');
       } else if (suggestion.suggestedAction === 'star') {
         addLabels.push('STARRED');
@@ -151,9 +142,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   const getActionLabel = (action: string, labelName?: string) => {
     let base = { icon: <CheckCircle2 className="w-4 h-4" />, text: "Organize", color: "bg-blue-600 hover:bg-blue-700" };
     switch (action) {
-      case 'move_to_primary': base = { icon: <Inbox className="w-4 h-4" />, text: "Primary", color: "bg-blue-600 hover:bg-blue-700" }; break;
-      case 'move_to_updates': base = { icon: <FolderDown className="w-4 h-4" />, text: "Updates", color: "bg-blue-600 hover:bg-blue-700" }; break;
-      case 'move_to_promotions': base = { icon: <FolderDown className="w-4 h-4" />, text: "Promos", color: "bg-blue-600 hover:bg-blue-700" }; break;
+      case 'keep_in_inbox': base = { icon: <Inbox className="w-4 h-4" />, text: "Keep in Inbox", color: "bg-blue-600 hover:bg-blue-700" }; break;
       case 'archive': base = { icon: <Archive className="w-4 h-4" />, text: "Archive", color: "bg-slate-700 hover:bg-slate-800" }; break;
       case 'star': base = { icon: <Star className="w-4 h-4" />, text: "Star", color: "bg-amber-500 hover:bg-amber-600" }; break;
     }

@@ -346,7 +346,7 @@ export interface SubscriptionAuditItem {
     "prompt": "receipts from amazon larger than 2mb from last year",
     "settings": {
       "provider": "gemini",
-      "model": "gemini-2.5-flash",
+      "model": "gemini-3.6-flash",
       "apiKey": "optional_user_byok_key"
     }
   }
@@ -361,7 +361,7 @@ export interface SubscriptionAuditItem {
       { "id": "18e...", "sender": "promo@store.com", "subject": "50% Off Today", "labelIds": ["UNREAD", "CATEGORY_PROMOTIONS"] }
     ],
     "userEmail": "user@gmail.com",
-    "settings": { "provider": "gemini", "model": "gemini-2.5-flash" }
+    "settings": { "provider": "gemini", "model": "gemini-3.6-flash" }
   }
   ```
 - **Response Body**: Returns array of behavioral clusters with titles, descriptions, suggested actions, and precise Gmail search queries.
@@ -373,7 +373,7 @@ export interface SubscriptionAuditItem {
     "subscriptions": [
       { "name": "Newsletter Weekly", "email": "news@daily.com", "count": 42, "exampleSubject": "This week in tech" }
     ],
-    "settings": { "provider": "gemini", "model": "gemini-2.5-flash" }
+    "settings": { "provider": "gemini", "model": "gemini-3.6-flash" }
   }
   ```
 - **Response Body**: Returns `analysis` array matching `SubscriptionAuditItem[]`.
@@ -384,7 +384,7 @@ export interface SubscriptionAuditItem {
   {
     "emails": [{ "id": "18e...", "sender": "billing@stripe.com", "subject": "Invoice #1024" }],
     "userLabels": [{ "id": "Label_1", "name": "Finance" }],
-    "settings": { "provider": "gemini", "model": "gemini-2.5-flash" }
+    "settings": { "provider": "gemini", "model": "gemini-3.6-flash" }
   }
   ```
 - **Response Body**: Returns `recommendations` array mapping email IDs to suggested labels with reasons.

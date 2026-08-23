@@ -64,7 +64,7 @@ dash = dash.replace(
             setDynamicModels(data.models);
           } else {
             // Fallbacks
-            if (aiSettings.provider === 'gemini') setDynamicModels(['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash']);
+            if (aiSettings.provider === 'gemini') setDynamicModels(['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-3.6-flash']);
             if (aiSettings.provider === 'openai') setDynamicModels(['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini']);
             if (aiSettings.provider === 'anthropic') setDynamicModels(['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest']);
             if (aiSettings.provider === 'groq') setDynamicModels(['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']);

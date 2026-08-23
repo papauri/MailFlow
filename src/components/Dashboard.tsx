@@ -25,7 +25,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [excludeSent, setExcludeSent] = useState(false);
+  const [includeSent, setIncludeSent] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [folderFilters, setFolderFilters] = useState<string[]>(["anywhere"]);
   const [userLabels, setUserLabels] = useState<any[]>([]);
@@ -69,7 +69,7 @@ export default function Dashboard({ user }: { user: any }) {
     globalProvider: 'gemini'
   });
 
-  const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' });
+  const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-3.6-flash', apiKey: '' });
 
   const effectiveAiSettings = useMemo(() => {
     if (adminConfig.useGlobalAiKey && adminConfig.globalAiKey) {
@@ -77,8 +77,8 @@ export default function Dashboard({ user }: { user: any }) {
         provider: adminConfig.globalProvider,
         apiKey: adminConfig.globalAiKey,
         model: adminConfig.globalProvider === 'openai' ? 'gpt-4o-mini' : 
-               adminConfig.globalProvider === 'gemini' ? 'gemini-2.5-flash' : 
-               adminConfig.globalProvider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gemini-2.5-flash'
+               adminConfig.globalProvider === 'gemini' ? 'gemini-3.6-flash' : 
+               adminConfig.globalProvider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gemini-3.6-flash'
       };
     }
     return aiSettings;
@@ -157,7 +157,7 @@ export default function Dashboard({ user }: { user: any }) {
           
           if (!modelList || modelList.length === 0) {
             // Fallbacks
-            if (effectiveAiSettings.provider === 'gemini') modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+            if (effectiveAiSettings.provider === 'gemini') modelList = ['gemini-3.6-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
             if (effectiveAiSettings.provider === 'openai') modelList = ['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini'];
             if (effectiveAiSettings.provider === 'anthropic') modelList = ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'];
             if (effectiveAiSettings.provider === 'groq') modelList = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
@@ -169,7 +169,7 @@ export default function Dashboard({ user }: { user: any }) {
           setDynamicModels(modelList);
           
           const cheapestMap: Record<string, string> = {
-            'gemini': 'gemini-2.5-flash',
+            'gemini': 'gemini-3.6-flash',
             'openai': 'gpt-4o-mini',
             'anthropic': 'claude-3-5-haiku-20241022',
             'groq': 'llama-3.1-8b-instant',
@@ -203,7 +203,7 @@ export default function Dashboard({ user }: { user: any }) {
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        setAiSettings({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '', ...parsed });
+        setAiSettings({ provider: 'gemini', model: 'gemini-3.6-flash', apiKey: '', ...parsed });
         if (parsed.apiKey) setUseAI(true);
       } catch (e) {}
     }
@@ -220,7 +220,7 @@ export default function Dashboard({ user }: { user: any }) {
       const timer = setTimeout(() => handleSearch(undefined, undefined, undefined, true), 100);
       return () => clearTimeout(timer);
     }
-  }, [onlyUnread, excludeSent, startDate, endDate]);
+  }, [onlyUnread, includeSent, startDate, endDate]);
 
   const saveSettings = (s: any) => {
     setAiSettings(s);
@@ -300,7 +300,7 @@ export default function Dashboard({ user }: { user: any }) {
 
     if (startDate) parts.push(`after:${startDate.replace(/-/g, '/')}`);
     if (endDate) parts.push(`before:${endDate.replace(/-/g, '/')}`);
-    if (excludeSent) parts.push(`-in:sent`);
+    if (!includeSent) parts.push(`-in:sent`);
     if (onlyUnread) parts.push(`is:unread`);
 
     const q = parts.filter(Boolean).join(" ");
@@ -465,7 +465,7 @@ export default function Dashboard({ user }: { user: any }) {
       handleSearch();
     }, 100);
     return () => clearTimeout(timer);
-  }, [startDate, endDate, excludeSent, onlyUnread]);
+  }, [startDate, endDate, includeSent, onlyUnread]);
 
   useEffect(() => {
     fetchGmailAPI('/labels').then(data => {
@@ -912,6 +912,7 @@ export default function Dashboard({ user }: { user: any }) {
              userEmail={user?.email}
              aiSettings={aiSettings} 
              userLabels={userLabels}
+             isAiWorking={connectionStatus === 'success'}
              onRefresh={() => handleSearch()}
              onApplyQuery={(q, filter, sortOption) => {
                setQuery(q);
@@ -1013,8 +1014,8 @@ export default function Dashboard({ user }: { user: any }) {
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
             </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Exclude Sent</span>
+              <input type="checkbox" checked={includeSent} onChange={e => setIncludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Include Sent</span>
             </label>
           </div>
         </div>
@@ -1294,6 +1295,7 @@ export default function Dashboard({ user }: { user: any }) {
                     const isSelected = selectedIds.has(email.id);
                     const isProcessing = processingIds.has(email.id);
                     const isExpanded = expandedIds.has(email.id);
+                    const isUnread = email.labelIds?.includes('UNREAD');
                     return (
                       <li 
                         key={email.id} 
@@ -1312,7 +1314,7 @@ export default function Dashboard({ user }: { user: any }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 sm:gap-4 mb-0.5 sm:mb-1">
-                            <span className="font-semibold text-slate-900 text-sm sm:text-base truncate" title={email.sender}>
+                            <span className={cn("text-sm sm:text-base truncate", isUnread ? "font-bold text-slate-900" : "font-semibold text-slate-700")} title={email.sender}>
                               {email.sender.replace(/<.*>/, "").trim() || email.sender}
                             </span>
                             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -1326,7 +1328,7 @@ export default function Dashboard({ user }: { user: any }) {
                                    {formatSize(email.sizeEstimate || 0)}
                                  </span>
                               )}
-                              <span className="text-[11px] sm:text-xs font-medium text-slate-500 tabular-nums">
+                              <span className={cn("text-[11px] sm:text-xs tabular-nums", isUnread ? "font-bold text-slate-700" : "font-medium text-slate-500")}>
                                 {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 <span className="hidden sm:inline">, {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
                               </span>
@@ -1385,22 +1387,26 @@ export default function Dashboard({ user }: { user: any }) {
                                return (
                                  <div className="flex gap-1.5 flex-wrap shrink-0">
                                    {uniqueBadges.slice(0, 3).map((b, i) => (
-                                     <span key={i} className={`inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded truncate max-w-[100px] ${b.color}`}>
+                                     <span key={i} className={cn(
+                                       "inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded truncate max-w-[80px] sm:max-w-[100px]",
+                                       b.color,
+                                       i > 0 ? "hidden sm:inline-block" : ""
+                                     )}>
                                        {b.text}
                                      </span>
                                    ))}
                                    {uniqueBadges.length > 3 && (
-                                     <span className="inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded bg-slate-50 text-slate-500 border-slate-200">
+                                     <span className="hidden sm:inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded bg-slate-50 text-slate-500 border-slate-200">
                                        +{uniqueBadges.length - 3}
                                      </span>
                                    )}
                                  </div>
                                );
                             })()}
-                            <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{email.subject}</p>
+                            <p className={cn("text-xs sm:text-sm truncate", isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800")}>{email.subject}</p>
                           </div>
                           {!isExpanded && (
-                            <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5">{email.snippet}</p>
+                            <p className={cn("text-xs sm:text-sm truncate mt-0.5", isUnread ? "font-medium text-slate-700" : "text-slate-500")}>{email.snippet}</p>
                           )}
 
                           {isExpanded && (
@@ -1636,7 +1642,7 @@ export default function Dashboard({ user }: { user: any }) {
                   <>
                     <p>You are viewing your <strong>Inbox</strong> (or a custom filter). From here, you can manage your messages efficiently:</p>
                     <ul className="list-disc pl-5 space-y-2">
-                      <li><strong>Advanced Filtering:</strong> Use the filter bar to select multiple folders, set a date range, or toggle <strong>Unread Only / Exclude Sent</strong> to focus purely on new incoming messages.</li>
+                      <li><strong>Advanced Filtering:</strong> Use the filter bar to select multiple folders, set a date range, or toggle <strong>Unread Only / Include Sent</strong> to focus purely on new incoming messages.</li>
                       <li><strong>AI Natural Language Search:</strong> Use the search bar to find emails conversationally (e.g., <em>"show me receipts from last week"</em> or <em>"newsletters about ai"</em>).</li>
                       <li><strong>Smart Organize:</strong> Select multiple emails and use Organize to have AI categorize them or bulk apply labels.</li>
                       <li><strong>Archive:</strong> Removes the email from your Inbox but keeps it safe for future reference.</li>
@@ -1691,7 +1697,7 @@ export default function Dashboard({ user }: { user: any }) {
                   <button 
                     onClick={() => {
                        const p = aiSettings.provider;
-                       if (p === 'gemini') saveSettings({...aiSettings, model: 'gemini-2.5-flash'});
+                       if (p === 'gemini') saveSettings({...aiSettings, model: 'gemini-3.6-flash'});
                        if (p === 'openai') saveSettings({...aiSettings, model: 'gpt-4o-mini'});
                        if (p === 'anthropic') saveSettings({...aiSettings, model: 'claude-3-5-haiku-20241022'});
                        if (p === 'groq') saveSettings({...aiSettings, model: 'llama-3.1-8b-instant'});
@@ -1711,7 +1717,7 @@ export default function Dashboard({ user }: { user: any }) {
                     <button
                       key={p}
                       onClick={() => saveSettings({...aiSettings, provider: p, model: (
-    p === 'gemini' ? 'gemini-2.5-flash' :
+    p === 'gemini' ? 'gemini-3.6-flash' :
     p === 'openai' ? 'gpt-4o-mini' :
     p === 'anthropic' ? 'claude-3-5-haiku-20241022' :
     p === 'groq' ? 'llama-3.1-8b-instant' :
@@ -1734,7 +1740,7 @@ export default function Dashboard({ user }: { user: any }) {
                     list="model-suggestions"
                     value={aiSettings.model}
                     onChange={e => saveSettings({...aiSettings, model: e.target.value})}
-                    placeholder={aiSettings.provider === 'zhipu' ? 'e.g. glm-4' : 'e.g. gemini-2.5-flash'}
+                    placeholder={aiSettings.provider === 'zhipu' ? 'e.g. glm-4' : 'e.g. gemini-3.6-flash'}
                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs sm:text-sm focus:ring-slate-500 focus:border-slate-500 outline-none"
                   />
                   <datalist id="model-suggestions">

@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 async function generateAIContent(prompt, schema, settings) {
   const provider = settings?.provider || 'gemini';
-  const model = settings?.model || 'gemini-2.5-flash';
+  const model = settings?.model || 'gemini-3.6-flash';
   const apiKey = settings?.apiKey || process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -175,8 +175,8 @@ async function startServer() {
                 emailId: { type: Type.STRING },
                 sender: { type: Type.STRING },
                 subject: { type: Type.STRING },
-                suggestedAction: { type: Type.STRING, description: "Base action: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'keep_in_inbox'" },
-                suggestedLabel: { type: Type.STRING, description: "(Optional) A label to apply IN ADDITION to the base action. Recommend an existing folder or propose a NEW folder (e.g., 'Invoices')." },
+                suggestedAction: { type: Type.STRING, description: "Base action: 'archive', 'star', or 'keep_in_inbox'" },
+                suggestedLabel: { type: Type.STRING, description: "(Optional) The exact name of an EXISTING folder/label from the provided list. Do NOT invent new folder names. If no existing folder matches, leave this empty." },
                 applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this combination should automatically apply to all future emails from this exact sender." },
                 reason: { type: Type.STRING, description: "Brief reason (e.g., 'Moving to Updates. Based on your pattern of ignoring automated Jira alerts, this bundles 6 similar emails out of your way.')" }
               },
@@ -192,18 +192,17 @@ async function startServer() {
         My current custom folders (labels) are: [${labelsText}].
         
         CRITICAL GOAL: Your primary job is to PROTECT important emails and ORGANIZE clutter. Be incredibly smart.
-        1. If an email is HIGHLY IMPORTANT (e.g., an upcoming exam, a flight ticket, legal documents, a message from a boss/real human) and it is currently hiding in Updates or Promotions, you MUST suggest 'move_to_primary' (and optionally star it) so the user does not miss it! DO NOT archive important upcoming events.
-        2. If an email is useful but not urgent (e.g., receipts, project logs), apply a logical label (new or existing) and 'archive' it out of the inbox. 
+        1. If an email is HIGHLY IMPORTANT (e.g., an upcoming exam, a flight ticket, legal documents, a message from a boss/real human), you MUST suggest 'keep_in_inbox' (and optionally star it) so the user does not miss it! DO NOT archive important upcoming events.
+        2. If an email is useful but not urgent (e.g., receipts, project logs), apply a logical EXISTING label from the provided list and 'archive' it out of the inbox. Do NOT invent new labels.
         3. Only suggest 'archive' for items that are truly dealt with, useless clutter, or non-actionable logs.
         4. CRITICAL: I have provided the 'Current Location' for each email (e.g., [Inbox, Receipts]). If an email is ALREADY correctly categorized in its current location, do NOT suggest applying that exact same label again!
         
         ADVANCED DATA REVIEW & PATTERN LEARNING:
         - Identify patterns in the data: if you see multiple emails from the exact same sender or domain (e.g., automated tools, newsletters), assume historical behavior means they should ALL be bundled into the exact same rule. 
         - Provide EXACTLY ONE suggestion per sender, ensuring that rule perfectly addresses ALL their emails.
-        - Anticipate typical user engagement (e.g., Jira updates belong in 'Dev', Uber receipts belong in 'Travel/Expenses') based on common historical organization habits.
         
         You can combine actions! For example, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (with applyToAllFuture = true).
-        Or suggest 'move_to_primary' AND suggestedLabel 'University'.
+        Or suggest 'keep_in_inbox' AND suggestedLabel 'University'.
         
         Provide up to 15 of the highest-value, smartest organization suggestions.
         
