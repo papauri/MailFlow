@@ -810,7 +810,7 @@ export default function Dashboard({ user }: { user: any }) {
   }, [filteredEmails, shouldCategorize, userLabels]);
 
   return (
-    <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
       <OnboardingWalkthrough key={walkthroughKey} onComplete={() => {}} />
       
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
@@ -865,7 +865,7 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 min-h-0">
+      <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6">
         
         {/* Breadcrumbs Navigation */}
         <div className="flex items-center gap-2 text-sm text-slate-500 mb-[-12px]">
@@ -1041,8 +1041,8 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden min-h-0">
-          <div className="sticky top-0 z-10 bg-slate-50 flex flex-col border-b border-slate-200">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1">
+          <div className="sticky top-[57px] sm:top-[65px] z-10 bg-slate-50 flex flex-col border-b border-slate-200 rounded-t-2xl">
             <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
               <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -1206,7 +1206,7 @@ export default function Dashboard({ user }: { user: any }) {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 flex flex-col">
             {emails.length === 0 ? (
               (isSearching || isLoadingMore) ? (
                 <div className="flex flex-col items-center justify-center h-96 text-slate-400 px-4 text-center">
