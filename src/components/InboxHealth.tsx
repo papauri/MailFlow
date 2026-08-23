@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -54,17 +54,17 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
       // Only show full page loader on initial mount
       if (!stats) setLoading(true);
       try {
-        const [unread, oldPromo, large, spamAndTrash, importantUnread, directToMe, withAttachments, oldMail] = await Promise.all([
+        const [unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
           countEmails("is:unread in:inbox"),
           countEmails("category:promotions older_than:6m -in:trash"),
           countEmails("larger:5M -in:trash"),
           countEmails("in:spam OR in:trash"),
           countEmails("is:unread is:important -category:promotions -in:trash"),
-          countEmails("to:me -cc:me -category:promotions -in:trash"),
+          countEmails("category:updates OR category:social -in:trash"),
           countEmails("has:attachment -in:trash"),
           countEmails("older_than:1y -in:trash")
         ]);
-        setStats({ unread, oldPromo, large, spamAndTrash, importantUnread, directToMe, withAttachments, oldMail });
+        setStats({ unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail });
         
         // Fetch estimated sizes in background
         Promise.all([
@@ -72,14 +72,16 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           estimateQuerySize("larger:5M -in:trash", large),
           estimateQuerySize("in:spam OR in:trash", spamAndTrash),
           estimateQuerySize("has:attachment -in:trash", withAttachments),
-          estimateQuerySize("older_than:1y -in:trash", oldMail)
-        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize]) => {
+          estimateQuerySize("older_than:1y -in:trash", oldMail),
+          estimateQuerySize("category:updates OR category:social -in:trash", updatesAndSocial)
+        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize]) => {
           setSizes({ 
             oldPromo: oldPromoSize, 
             large: largeSize, 
             spamAndTrash: spamAndTrashSize,
             withAttachments: attachmentsSize,
-            oldMail: oldMailSize
+            oldMail: oldMailSize,
+            updatesAndSocial: updatesAndSocialSize
           });
         });
       } catch (e) {
@@ -285,12 +287,15 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           </button>
           
           <button 
-            onClick={() => onApplyQuery("to:me -cc:me -category:promotions -in:trash", "anywhere")}
+            onClick={() => onApplyQuery("category:updates OR category:social -in:trash", "anywhere", "size")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-indigo-500" />
-            <span>Directly To Me</span>
-            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.directToMe || 0}</span>
+            <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-indigo-500" />
+            <span>Updates & Social</span>
+            <div className="flex items-center gap-1 ml-1 shrink-0">
+              <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.updatesAndSocial || 0}</span>
+              {sizes?.updatesAndSocial > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.updatesAndSocial)}</span>}
+            </div>
           </button>
           
           <button 
