@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -96,6 +96,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     async function fetchClusters() {
       setIsLoadingEmails(true);
       const normalizedUser = (userEmail || '').toLowerCase().trim();
+      const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
 
       try {
         const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam", 250);
@@ -106,16 +107,10 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         const domainCounts = new Map();
         
         recentEmails.forEach(e => {
-          let email = e.sender;
-          const match = e.sender.match(/<([^>]+)>/);
-          if (match) email = match[1];
-          email = email.toLowerCase().trim();
-          
-          if (!email || !email.includes('@')) return;
-          // Filter out the user's own email from top senders
-          if (normalizedUser && (email === normalizedUser || email.includes(normalizedUser))) return;
-
-          const domain = email.split('@')[1] || 'unknown';
+          // Extract plain email address
+          const emailMatch = e.sender.match(/<([^>]+)>/);
+          const email = emailMatch ? emailMatch[1].toLowerCase() : e.sender.toLowerCase();
+          const domain = email.includes('@') ? email.split('@')[1] : 'unknown';
           
           if (!senderCounts.has(email)) {
             senderCounts.set(email, { 
@@ -126,8 +121,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           }
           senderCounts.get(email).count++;
           
-          // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers)
-          if (domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(domain)) {
+          // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers and self)
+          if (domain !== 'unknown' && !GENERIC_EMAIL_DOMAINS.has(domain) && domain !== userDomain) {
             if (!domainCounts.has(domain)) domainCounts.set(domain, { domain, count: 0 });
             domainCounts.get(domain).count++;
           }
@@ -162,7 +157,39 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     fetchClusters();
   }, [userEmail, reloadTrigger]);
 
-  if (loading) {
+  const exportHealthReport = () => {
+    let csv = "Section,Metric,Value\n";
+    
+    // Stats
+    if (stats) {
+      csv += `Overview,Important Unread,${stats.importantUnread || 0}\n`;
+      csv += `Overview,Updates & Social,${stats.updatesAndSocial || 0}\n`;
+      csv += `Overview,With Attachments,${stats.withAttachments || 0}\n`;
+      csv += `Overview,Older Than 1 Year,${stats.oldMail || 0}\n`;
+    }
+    
+    // Top Senders
+    topSenders.forEach(s => {
+      csv += `Top Sender,${s.email},${s.count}\n`;
+    });
+    
+    // Top Domains
+    topDomains.forEach(d => {
+      csv += `Top Domain,${d.domain},${d.count}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mailflow_health_report_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading || isLoadingEmails) {
     return (
       <div className="p-16 flex flex-col items-center justify-center text-slate-500 gap-4 mt-8">
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
@@ -192,14 +219,25 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           </div>
         </div>
 
-        <button
-          onClick={() => setIsChartModalOpen(true)}
-          className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all shrink-0 hover:shadow"
-          title="View email distribution by category"
-        >
-          <PieChart className="w-4 h-4 text-indigo-300" />
-          <span>Category Breakdown</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={exportHealthReport}
+            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all shrink-0 hover:shadow"
+            title="Export health data to CSV"
+          >
+            <Download className="w-4 h-4 text-slate-400" />
+            <span>Export CSV</span>
+          </button>
+          
+          <button
+            onClick={() => setIsChartModalOpen(true)}
+            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all shrink-0 hover:shadow"
+            title="View email distribution by category"
+          >
+            <PieChart className="w-4 h-4 text-indigo-300" />
+            <span>Category Breakdown</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
