@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Tag, CornerDownRight, Zap, Layers, Filter } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Tag, CornerDownRight, Zap, Layers, Filter, ArrowRight } from 'lucide-react';
 import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
 
 export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { isOpen: boolean, onClose: () => void, aiSettings: any, userLabels?: any[] }) {
@@ -226,80 +226,97 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 const labelExists = !suggestion.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
 
                 return (
-                  <div key={idx} className={`bg-white border rounded-xl p-3 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
-                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                  <div key={idx} className={`bg-white border rounded-xl p-3 sm:p-4 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'}`}>
+                    {/* Top Row: Email Context & Buttons */}
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</p>
-                          {resolvedLabels.length > 0 && (
-                            <div className="flex flex-wrap gap-1 items-center">
-                              <span className="text-[10px] text-slate-400 font-medium">in:</span>
-                              {resolvedLabels.map((lbl: string, i: number) => (
-                                <span key={i} className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-500 text-[10px] rounded font-medium truncate max-w-[100px]">
-                                  {lbl}
-                                </span>
-                              ))}
-                            </div>
+                        <h4 className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</h4>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{suggestion.subject}</p>
+                      </div>
+                      
+                      <div className="shrink-0 w-full sm:w-auto flex gap-1.5">
+                        {isCompleted ? (
+                          <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-1.5 bg-green-100 text-green-700 rounded-lg font-bold text-xs">
+                            <CheckCircle2 className="w-4 h-4" /> Done
+                          </div>
+                        ) : (
+                          <>
+                            {!labelExists && suggestion.suggestedLabel && (
+                              <button 
+                                onClick={() => executeAction(suggestion, true)}
+                                disabled={isProcessing}
+                                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50"
+                              >
+                                {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Tag className="w-3 h-3" />}
+                                Create & Approve
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => executeAction(suggestion, false)}
+                              disabled={isProcessing}
+                              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${labelExists ? actionUi.color : 'bg-slate-700 hover:bg-slate-800'}`}
+                            >
+                              {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              {labelExists ? "Approve" : "Approve Only"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Middle Row: The Logic */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                      {/* Before -> After visual */}
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-medium text-slate-600 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400">Current:</span>
+                          {resolvedLabels.length > 0 ? (
+                            resolvedLabels.map((lbl: string, i: number) => (
+                              <span key={i} className="px-1.5 py-0.5 bg-white border border-slate-200 text-slate-600 rounded">
+                                {lbl}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-white border border-slate-200 text-slate-400 rounded">None</span>
                           )}
-                          {matchingCount > 1 && (
-                            <span className="shrink-0 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-200">
-                              Affects {matchingCount} emails
+                        </div>
+                        
+                        <ArrowRight className="w-3 h-3 text-slate-300" />
+                        
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400">Proposed:</span>
+                          <span className="px-1.5 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded flex items-center gap-1">
+                            {actionUi.icon} {actionUi.text}
+                          </span>
+                          {suggestion.suggestedLabel && (
+                            <span className="px-1.5 py-0.5 bg-teal-50 border border-teal-100 text-teal-700 rounded flex items-center gap-1">
+                              <Tag className="w-3 h-3" /> {suggestion.suggestedLabel} {!labelExists && '(New)'}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600 truncate mt-1">{suggestion.subject}</p>
-                        
-                        <div className="flex items-center gap-1.5 mt-2 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 inline-flex">
-                          <p className="text-xs text-slate-600 font-medium flex items-center gap-1">
-                            <CornerDownRight className="w-3 h-3 text-slate-400" /> {suggestion.reason}
-                          </p>
-                        </div>
-                        
-                        {suggestion.applyToAllFuture && (
-                          <div className="mt-2 flex">
-                            <div className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-slate-200">
-                              <Zap className="w-3 h-3 text-slate-400" /> Applies to all future emails
-                            </div>
-                          </div>
-                        )}
                       </div>
                       
-                      <div className="shrink-0 w-full sm:w-auto mt-2 sm:mt-0 flex flex-col gap-1.5">
-                        {isCompleted ? (
-                          <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-bold text-xs">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Done
-                          </div>
-                        ) : labelExists ? (
-                           <button 
-                             onClick={() => executeAction(suggestion, false)}
-                             disabled={isProcessing}
-                             className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${actionUi.color}`}
-                           >
-                             {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
-                             {suggestion.suggestedLabel ? `${actionUi.text} + Label: ${suggestion.suggestedLabel}` : actionUi.text}
-                           </button>
-                        ) : (
-                           <div className="flex flex-col sm:flex-row gap-1.5">
-                             <button 
-                               onClick={() => executeAction(suggestion, false)}
-                               disabled={isProcessing}
-                               className={`w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50 ${actionUi.color}`}
-                             >
-                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
-                               {actionUi.text} Only
-                             </button>
-                             <button 
-                               onClick={() => executeAction(suggestion, true)}
-                               disabled={isProcessing}
-                               className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-all shadow-sm disabled:opacity-50"
-                             >
-                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Tag className="w-3 h-3" />}
-                               Create '{suggestion.suggestedLabel}' & {actionUi.text}
-                             </button>
-                           </div>
-                        )}
-                      </div>
+                      {/* Reason */}
+                      <p className="text-xs text-slate-500 flex items-start gap-1.5 mt-2">
+                        <CornerDownRight className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
+                        {suggestion.reason}
+                      </p>
+                      
+                      {/* Impact Badges */}
+                      {(matchingCount > 1 || suggestion.applyToAllFuture) && (
+                        <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-slate-100">
+                          {matchingCount > 1 && (
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-200">
+                              Affects {matchingCount} recent emails
+                            </span>
+                          )}
+                          {suggestion.applyToAllFuture && (
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-slate-200">
+                              <Zap className="w-3 h-3 text-slate-400" /> Auto-apply to future emails
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
