@@ -28,14 +28,25 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleLogin = async () => {
+    if (isLoggingIn) return; // Prevent double clicks
+    setIsLoggingIn(true);
+    setLoginError(null);
     try {
       const result = await googleSignIn();
       if (result) {
         setUser(result.user);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+        setLoginError(error.message || "Failed to log in.");
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -48,7 +59,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} isLoggingIn={isLoggingIn} error={loginError} />;
   }
 
   return <Dashboard user={user} />;
