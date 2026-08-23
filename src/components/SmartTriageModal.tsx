@@ -125,7 +125,13 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       if (suggestion.applyToAllFuture && suggestion.sender) {
          const senderEmail = suggestion.sender.match(/<([^>]+)>/)?.[1] || suggestion.sender;
          if (senderEmail && senderEmail.includes('@')) {
-           await createFilter(`from:${senderEmail}`, addLabels, removeLabels);
+           try {
+             // Gmail API only supports specific system labels for filter removal
+             const validFilterRemoveLabels = removeLabels.filter(l => ['INBOX', 'SPAM', 'TRASH', 'UNREAD'].includes(l));
+             await createFilter(`from:${senderEmail}`, addLabels, validFilterRemoveLabels);
+           } catch (filterErr) {
+             console.error("Non-fatal: Failed to create future filter for", senderEmail, filterErr);
+           }
          }
       }
       
@@ -239,7 +245,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
             </div>
           ) : suggestions.length > 0 ? (
             <div className="space-y-2">
-              {suggestions.filter(s => !completedIds.has(s.emailId) && !ignoredIds.has(s.emailId)).map((suggestion, idx) => {
+              {suggestions.filter(s => !completedIds.has(s.emailId) && !ignoredIds.has(s.emailId)).map((suggestion) => {
                 const actionUi = getActionLabel(suggestion.suggestedAction);
                 const isProcessing = processingId === suggestion.emailId;
                 
@@ -268,7 +274,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 const labelExists = !suggestion.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
 
                 return (
-                  <div key={idx} className="bg-white border rounded-xl p-3 sm:p-4 transition-all flex flex-col gap-3 border-slate-200 hover:border-slate-300 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                  <div key={suggestion.emailId} className="bg-white border rounded-xl p-3 sm:p-4 transition-all flex flex-col gap-3 border-slate-200 hover:border-slate-300 animate-in slide-in-from-bottom-2 fade-in duration-200">
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                       
                       {/* Left: Info */}
