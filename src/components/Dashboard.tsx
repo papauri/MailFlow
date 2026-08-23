@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
 import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Sparkles, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity } from "lucide-react";
+import { AdminPanel } from "./AdminPanel";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
@@ -60,12 +61,55 @@ export default function Dashboard({ user }: { user: any }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showOptimizer, setShowOptimizer] = useState(false);
   const [showContextHelp, setShowContextHelp] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminConfig, setAdminConfig] = useState({
+    enablePermanentDelete: false,
+    useGlobalAiKey: false,
+    globalAiKey: '',
+    globalProvider: 'gemini'
+  });
+
   const [aiSettings, setAiSettings] = useState({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' });
+
+  const effectiveAiSettings = useMemo(() => {
+    if (adminConfig.useGlobalAiKey && adminConfig.globalAiKey) {
+      return {
+        provider: adminConfig.globalProvider,
+        apiKey: adminConfig.globalAiKey,
+        model: adminConfig.globalProvider === 'openai' ? 'gpt-4o-mini' : 
+               adminConfig.globalProvider === 'gemini' ? 'gemini-2.5-flash' : 
+               adminConfig.globalProvider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gemini-2.5-flash'
+      };
+    }
+    return aiSettings;
+  }, [adminConfig, aiSettings]);
+
+  useEffect(() => {
+    const loadGlobalConfig = async () => {
+      try {
+        const { db } = await import('../lib/firebase');
+        const { doc, getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'appConfig', 'global');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setAdminConfig(prev => ({ ...prev, ...docSnap.data() }));
+        } else {
+          const local = localStorage.getItem('globalAdminSettings');
+          if (local) setAdminConfig(JSON.parse(local));
+        }
+      } catch (e) {
+        const local = localStorage.getItem('globalAdminSettings');
+        if (local) setAdminConfig(JSON.parse(local));
+      }
+    };
+    loadGlobalConfig();
+  }, []);
+  
   const [connectionStatus, setConnectionStatus] = useState<'idle'|'testing'|'success'|'error'>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
   
   useEffect(() => {
-    if (!aiSettings.apiKey) {
+    if (!effectiveAiSettings.apiKey) {
       setConnectionStatus('idle');
       return;
     }
@@ -76,7 +120,7 @@ export default function Dashboard({ user }: { user: any }) {
         const res = await fetch('/api/check-quota', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settings: aiSettings })
+          body: JSON.stringify({ settings: effectiveAiSettings })
         });
         if (res.ok) {
           setConnectionStatus('success');
@@ -84,61 +128,59 @@ export default function Dashboard({ user }: { user: any }) {
           setUseAI(true);
           setAiError(null);
         } else {
-          const err = await res.json().catch(() => ({}));
           setConnectionStatus('error');
-          setConnectionMessage(err.error || 'Connection failed.');
+          setConnectionMessage('Invalid API key or quota exceeded.');
         }
       } catch (e) {
         setConnectionStatus('error');
-        setConnectionMessage('Network error during test.');
+        setConnectionMessage('Network error checking key.');
       }
-    }, 800);
+    }, 1000);
     return () => clearTimeout(timer);
-  }, [aiSettings.apiKey, aiSettings.provider]);
+  }, [effectiveAiSettings.apiKey, effectiveAiSettings.provider]);
   const [dynamicModels, setDynamicModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
     async function fetchModels() {
-      if (!aiSettings.provider) return;
+      if (!effectiveAiSettings.provider) return;
       setLoadingModels(true);
       try {
         const res = await fetch('/api/models', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settings: aiSettings })
+          body: JSON.stringify({ settings: effectiveAiSettings })
         });
         if (res.ok) {
           const data = await res.json();
-          let modelList = [];
-          if (data.models && data.models.length > 0) {
-            modelList = data.models;
-          } else {
-            // Fallbacks
-            if (aiSettings.provider === 'gemini') modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
-            if (aiSettings.provider === 'openai') modelList = ['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini'];
-            if (aiSettings.provider === 'anthropic') modelList = ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'];
-            if (aiSettings.provider === 'groq') modelList = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
-            if (aiSettings.provider === 'deepseek') modelList = ['deepseek-chat', 'deepseek-reasoner'];
-            if (aiSettings.provider === 'mistral') modelList = ['mistral-small-latest', 'mistral-large-latest'];
-            if (aiSettings.provider === 'zhipu') modelList = ['glm-4-flash', 'glm-4-plus'];
-            if (aiSettings.provider === 'grok') modelList = ['grok-2-latest', 'grok-beta'];
-          }
+          let modelList = data.models;
           
+          if (!modelList || modelList.length === 0) {
+            // Fallbacks
+            if (effectiveAiSettings.provider === 'gemini') modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+            if (effectiveAiSettings.provider === 'openai') modelList = ['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini'];
+            if (effectiveAiSettings.provider === 'anthropic') modelList = ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'];
+            if (effectiveAiSettings.provider === 'groq') modelList = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+            if (effectiveAiSettings.provider === 'deepseek') modelList = ['deepseek-chat', 'deepseek-reasoner'];
+            if (effectiveAiSettings.provider === 'mistral') modelList = ['mistral-small-latest', 'mistral-large-latest'];
+            if (effectiveAiSettings.provider === 'zhipu') modelList = ['glm-4-flash', 'glm-4-plus'];
+            if (effectiveAiSettings.provider === 'grok') modelList = ['grok-2-latest', 'grok-beta'];
+          }
           setDynamicModels(modelList);
           
-          // Automatically default to the cheapest model available today
-          const cheapKeywords = ['flash', 'mini', 'haiku', '8b', 'small', 'chat'];
-          let cheapest = modelList[0];
-          for (const keyword of cheapKeywords) {
-            const found = modelList.find((m: string) => m.toLowerCase().includes(keyword));
-            if (found) {
-              cheapest = found;
-              break;
-            }
-          }
+          const cheapestMap: Record<string, string> = {
+            'gemini': 'gemini-2.5-flash',
+            'openai': 'gpt-4o-mini',
+            'anthropic': 'claude-3-5-haiku-20241022',
+            'groq': 'llama-3.1-8b-instant',
+            'deepseek': 'deepseek-chat',
+            'mistral': 'mistral-small-latest',
+            'zhipu': 'glm-4-flash',
+            'grok': 'grok-2-latest'
+          };
+          const cheapest = cheapestMap[effectiveAiSettings.provider];
           
-          if (cheapest && aiSettings.model !== cheapest) {
+          if (cheapest && effectiveAiSettings.model !== cheapest && !adminConfig.useGlobalAiKey) {
             const newSettings = { ...aiSettings, model: cheapest };
             setAiSettings(newSettings);
             localStorage.setItem('adminAiSettings', JSON.stringify(newSettings));
@@ -153,7 +195,7 @@ export default function Dashboard({ user }: { user: any }) {
     if (showSettings) {
       fetchModels();
     }
-  }, [aiSettings.provider, aiSettings.apiKey, showSettings]);
+  }, [effectiveAiSettings.provider, effectiveAiSettings.apiKey, showSettings]);
   const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -209,7 +251,7 @@ export default function Dashboard({ user }: { user: any }) {
         const aiRes = await fetch("/api/parse-query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: textQuery, settings: aiSettings })
+          body: JSON.stringify({ prompt: textQuery, settings: effectiveAiSettings })
         });
         const data = await aiRes.json();
         
@@ -776,7 +818,7 @@ export default function Dashboard({ user }: { user: any }) {
           <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
             <Mail className="w-5 h-5" />
           </div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-800">MailFlow</h1>
+          <h1 onDoubleClick={() => setShowAdminPanel(true)} className="text-lg sm:text-xl font-bold tracking-tight text-slate-800 cursor-default select-none">MailFlow</h1>
           <div className="hidden sm:block ml-4 border-l border-slate-200 pl-4">
             <HealthScoreWidget />
           </div>
@@ -1081,10 +1123,18 @@ export default function Dashboard({ user }: { user: any }) {
                    </button>
                 </div>
                 {folderFilters.includes('trash') ? (
-                  <>
-                    <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
-                    <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
-                  </>
+                  adminConfig.enablePermanentDelete ? (
+                    <>
+                      <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Delete Selected" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "delete"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
+                      <ActionButton icon={<Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Empty Trash" onClick={handleEmptyTrash} disabled={actionLoading !== null || emails.length === 0} loading={actionLoading === "empty_trash"} className="text-slate-700 hover:bg-slate-100 flex-1 sm:flex-initial justify-center" />
+                    </>
+                  ) : (
+                    <div className="text-xs sm:text-sm text-slate-500 flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                      <Trash2 className="w-4 h-4 shrink-0 text-slate-400" />
+                      <span className="hidden sm:inline">Emails in Trash auto-delete after 30 days. To empty immediately, please use the official Gmail app.</span>
+                      <span className="sm:hidden">Auto-deletes after 30 days.</span>
+                    </div>
+                  )
                 ) : (
                   <>
                     <ActionButton icon={<Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} label="Trash" onClick={() => handleBulkAction("trash")} disabled={selectedIds.size === 0 || actionLoading !== null} loading={actionLoading === "trash"} className="text-rose-600 hover:bg-rose-50 flex-1 sm:flex-initial justify-center" />
@@ -1763,6 +1813,7 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         </div>
       )}
+      <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
     </div>
   );
 }
