@@ -912,6 +912,7 @@ export default function Dashboard({ user }: { user: any }) {
              userEmail={user?.email}
              aiSettings={aiSettings} 
              userLabels={userLabels}
+             onRefresh={() => handleSearch()}
              onApplyQuery={(q, filter, sortOption) => {
                setQuery(q);
                if (sortOption) {

@@ -37,7 +37,7 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   'fastmail.com'
 ]);
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[] }) {
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void }) {
   const [stats, setStats] = useState<any>(null);
   const [sizes, setSizes] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -285,7 +285,10 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
       {isSmartTriageOpen && (
         <SmartTriageModal
           isOpen={isSmartTriageOpen}
-          onClose={() => setIsSmartTriageOpen(false)}
+          onClose={() => {
+             setIsSmartTriageOpen(false);
+             if (onRefresh) onRefresh();
+          }}
           aiSettings={aiSettings}
           userLabels={userLabels}
         />

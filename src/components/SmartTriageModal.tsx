@@ -129,6 +129,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       
       // Mark all matching emails as completed
       const newCompleted = new Set(completedIds);
+      newCompleted.add(suggestion.emailId);
       matchingEmails.forEach(e => newCompleted.add(e.id));
       setCompletedIds(newCompleted);
     } catch (err) {
