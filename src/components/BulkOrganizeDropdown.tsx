@@ -8,12 +8,13 @@ interface Props {
   selectedIds: Set<string>;
   emails: any[];
   userLabels: any[];
+  aiSettings?: any;
   onComplete: () => void;
   disabled?: boolean;
   className?: string;
 }
 
-export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, onComplete, disabled, className }: Props) {
+export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettings, onComplete, disabled, className }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'menu' | 'manual' | 'ai' | 'smart' | 'applying'>('menu');
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -24,26 +25,17 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, onComple
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (aiAvailable === null) {
+    if (aiSettings?.apiKey) {
       const cached = sessionStorage.getItem('ai_quota_ok');
       if (cached === 'false') {
         setAiAvailable(false);
-        return;
+      } else {
+        setAiAvailable(true);
       }
-      fetch('/api/check-quota', { method: 'POST', body: JSON.stringify({ settings: {} }), headers: { 'Content-Type': 'application/json' } })
-        .then(res => {
-          if (res.status === 429) {
-            sessionStorage.setItem('ai_quota_ok', 'false');
-            setAiAvailable(false);
-          } else if (res.ok) {
-            setAiAvailable(true);
-          } else {
-            setAiAvailable(false);
-          }
-        })
-        .catch(() => setAiAvailable(false));
+    } else {
+      setAiAvailable(false);
     }
-  }, [aiAvailable]);
+  }, [aiSettings?.apiKey]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

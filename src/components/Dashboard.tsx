@@ -1085,7 +1085,8 @@ export default function Dashboard({ user }: { user: any }) {
                   className="flex-1 sm:flex-initial"
                   selectedIds={selectedIds} 
                   emails={emails} 
-                  userLabels={userLabels} 
+                  userLabels={userLabels || []}
+                  aiSettings={aiSettings}
                   onComplete={() => {
                     setSelectedIds(new Set());
                     setIsSearching(true);

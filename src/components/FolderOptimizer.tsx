@@ -92,9 +92,12 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
           if (res.ok) {
             const data = await res.json();
             if (data.recommendations && data.recommendations.length > 0) {
-              setRecommendations(data.recommendations);
-              setUsedAi(true);
-              aiSucceeded = true;
+              const validRecs = data.recommendations.filter((r: any) => r.emailIds && r.emailIds.length > 1);
+              if (validRecs.length > 0) {
+                setRecommendations(validRecs);
+                setUsedAi(true);
+                aiSucceeded = true;
+              }
             }
           } else if (res.status === 429) {
             sessionStorage.setItem('ai_quota_ok', 'false');
