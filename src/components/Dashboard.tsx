@@ -1585,7 +1585,17 @@ export default function Dashboard({ user }: { user: any }) {
                 )}
               </div>
             </div>
-            <div className="bg-slate-50 px-5 py-4 flex justify-end border-t border-slate-100">
+            <div className="bg-slate-50 px-5 py-4 flex items-center justify-between border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setShowContextHelp(false);
+                  localStorage.removeItem('hasSeenOnboarding');
+                  setWalkthroughKey(prev => prev + 1);
+                }}
+                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                Restart Tour
+              </button>
               <button
                 onClick={() => setShowContextHelp(false)}
                 className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm"
