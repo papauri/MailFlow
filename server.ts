@@ -140,8 +140,28 @@ async function startServer() {
         return res.status(400).json({ error: "Emails array is required" });
       }
 
-      const emailText = emails.map(e => `ID: ${e.id} | From: ${e.sender} | Subject: ${e.subject} | Current Categories: [${(e.labelIds || []).join(', ')}]`).join('\n');
-      const labelsText = existingLabels ? existingLabels.map(l => l.name).join(', ') : 'None';
+      const standardMap: Record<string, string> = {
+        'INBOX': 'Inbox',
+        'CATEGORY_PERSONAL': 'Primary',
+        'CATEGORY_UPDATES': 'Updates',
+        'CATEGORY_PROMOTIONS': 'Promotions',
+        'CATEGORY_SOCIAL': 'Social',
+        'STARRED': 'Starred'
+      };
+
+      const resolveLabels = (ids: string[]) => {
+        if (!ids) return [];
+        return ids
+          .filter(id => id !== 'UNREAD' && id !== 'IMPORTANT')
+          .map(id => {
+            if (standardMap[id]) return standardMap[id];
+            const userLabel = existingLabels?.find((l: any) => l.id === id);
+            return userLabel ? userLabel.name : id;
+          });
+      };
+
+      const emailText = emails.map(e => `ID: ${e.id} | From: ${e.sender} | Subject: ${e.subject} | Current Location: [${resolveLabels(e.labelIds).join(', ')}]`).join('\n');
+      const labelsText = existingLabels ? existingLabels.map((l: any) => l.name).join(', ') : 'None';
 
       const schema = {
         type: Type.OBJECT,
@@ -175,6 +195,7 @@ async function startServer() {
         1. If an email is HIGHLY IMPORTANT (e.g., an upcoming exam, a flight ticket, legal documents, a message from a boss/real human) and it is currently hiding in Updates or Promotions, you MUST suggest 'move_to_primary' (and optionally star it) so the user does not miss it! DO NOT archive important upcoming events.
         2. If an email is useful but not urgent (e.g., receipts, project logs), apply a logical label (new or existing) and 'archive' it out of the inbox. 
         3. Only suggest 'archive' for items that are truly dealt with, useless clutter, or non-actionable logs.
+        4. CRITICAL: I have provided the 'Current Location' for each email (e.g., [Inbox, Receipts]). If an email is ALREADY correctly categorized in its current location, do NOT suggest applying that exact same label again!
         
         You can combine actions! For example, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (with applyToAllFuture = true).
         Or suggest 'move_to_primary' AND suggestedLabel 'University'.
