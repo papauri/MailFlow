@@ -84,7 +84,7 @@ export async function searchEmails(query: string, maxResults = 500, onProgress?:
     allThreads.push(...newThreads);
     
     // Process this batch immediately
-    const chunkDetails = await processInChunks(newThreads, 10, async (thread: any) => {
+    const chunkDetails = await processInChunks(newThreads, 8, async (thread: any) => {
       try {
         const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
         if (!detail.messages || detail.messages.length === 0) return null;

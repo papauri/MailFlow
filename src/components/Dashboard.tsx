@@ -286,7 +286,7 @@ export default function Dashboard({ user }: { user: any }) {
 
       if (results && results.threads && results.threads.length > 0) {
         setNextPageToken(results.nextPageToken || null);
-        const detailed = await processInChunks(results.threads, 15, async (thread: any) => {
+        const detailed = await processInChunks(results.threads, 8, async (thread: any) => {
           try {
             const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
             if (!detail.messages || detail.messages.length === 0) return null;
@@ -358,7 +358,7 @@ export default function Dashboard({ user }: { user: any }) {
       const results = await fetchGmailAPI(`/threads?q=${encodeURIComponent(lastExecutedQuery)}&maxResults=100&pageToken=${encodeURIComponent(currentToken)}`);
       if (results && results.threads && results.threads.length > 0) {
         setNextPageToken(results.nextPageToken || null);
-        const detailed = await processInChunks(results.threads, 15, async (thread: any) => {
+        const detailed = await processInChunks(results.threads, 8, async (thread: any) => {
           try {
             const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
             if (!detail.messages || detail.messages.length === 0) return null;
