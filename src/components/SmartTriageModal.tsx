@@ -191,14 +191,30 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                   className="bg-slate-50 border border-slate-200 rounded-md py-0.5 px-2 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
                 >
                   <option value="anywhere">Everywhere</option>
-                  <option value="in:inbox">Inbox Only</option>
-                  <option value="category:primary">Primary</option>
-                  <option value="category:promotions">Promotions</option>
-                  <option value="category:updates">Updates</option>
-                  <option value="category:social">Social</option>
-                  {userLabels?.map(l => (
-                    <option key={l.id} value={`label:${l.name}`}>{l.name}</option>
-                  ))}
+                  {(() => {
+                    if (!userLabels) return null;
+                    const systemMap: Record<string, string> = {
+                      'INBOX': 'Inbox',
+                      'CATEGORY_PERSONAL': 'Primary',
+                      'CATEGORY_PROMOTIONS': 'Promotions',
+                      'CATEGORY_UPDATES': 'Updates',
+                      'CATEGORY_SOCIAL': 'Social',
+                      'CATEGORY_FORUMS': 'Forums'
+                    };
+                    const allowedSystem = Object.keys(systemMap);
+                    
+                    const options = [];
+                    for (const l of userLabels) {
+                      if (l.type === 'system' && allowedSystem.includes(l.id)) {
+                        let query = l.id.startsWith('CATEGORY_') ? `category:${l.id.replace('CATEGORY_', '').toLowerCase()}` : `in:${l.id.toLowerCase()}`;
+                        if (query === 'category:personal') query = 'category:primary';
+                        options.push(<option key={l.id} value={query}>{systemMap[l.id]}</option>);
+                      } else if (l.type === 'user') {
+                        options.push(<option key={l.id} value={`label:"${l.name}"`}>{l.name}</option>);
+                      }
+                    }
+                    return options;
+                  })()}
                 </select>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">Triage and organize emails by folder.</p>

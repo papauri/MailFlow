@@ -1155,14 +1155,24 @@ export default function Dashboard({ user }: { user: any }) {
 
             {isActuallyUnreadOnly && (
               <div className="flex items-center px-2 sm:px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/50 bg-slate-50/50 pt-2 gap-1 sm:gap-2">
-                {[
-                  { id: 'anywhere', label: 'All Unread' },
-                  { id: 'category:primary', label: 'Primary' },
-                  { id: 'category:promotions', label: 'Promotions' },
-                  { id: 'category:updates', label: 'Updates' },
-                  { id: 'category:social', label: 'Social' },
-                  { id: 'category:forums', label: 'Forums' }
-                ].map(tab => {
+                {(() => {
+                  const unreadTabs = [{ id: 'anywhere', label: 'All Unread' }];
+                  const sysMap: Record<string, string> = {
+                    'CATEGORY_PERSONAL': 'Primary',
+                    'CATEGORY_PROMOTIONS': 'Promotions',
+                    'CATEGORY_UPDATES': 'Updates',
+                    'CATEGORY_SOCIAL': 'Social',
+                    'CATEGORY_FORUMS': 'Forums'
+                  };
+                  userLabels.forEach(l => {
+                    if (l.type === 'system' && sysMap[l.id]) {
+                      let query = l.id.startsWith('CATEGORY_') ? `category:${l.id.replace('CATEGORY_', '').toLowerCase()}` : `in:${l.id.toLowerCase()}`;
+                      if (query === 'category:personal') query = 'category:primary';
+                      unreadTabs.push({ id: query, label: sysMap[l.id] });
+                    }
+                  });
+                  return unreadTabs;
+                })().map(tab => {
                   const isActive = folderFilters.length === 1 && folderFilters[0] === tab.id;
                   return (
                     <button
@@ -1833,18 +1843,40 @@ function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { select
     if (onClose) onClose();
   };
 
-  const options = [
-    { value: 'anywhere', label: 'All Mail' },
-    { value: 'inbox', label: 'Inbox' },
-    { value: 'category:primary', label: 'Primary' },
-    { value: 'category:promotions', label: 'Promotions' },
-    { value: 'category:social', label: 'Social' },
-    { value: 'category:updates', label: 'Updates' },
-    { value: 'category:forums', label: 'Forums' },
-    ...userLabels.filter(l => l.type === 'user').map(l => ({ value: l.name, label: l.name })),
-    { value: 'spam', label: 'Spam' },
-    { value: 'trash', label: 'Trash' }
-  ];
+  const options = (() => {
+    const opts = [{ value: 'anywhere', label: 'All Mail' }];
+    const systemMap: Record<string, string> = {
+      'INBOX': 'Inbox',
+      'CATEGORY_PERSONAL': 'Primary',
+      'CATEGORY_PROMOTIONS': 'Promotions',
+      'CATEGORY_UPDATES': 'Updates',
+      'CATEGORY_SOCIAL': 'Social',
+      'CATEGORY_FORUMS': 'Forums',
+      'SPAM': 'Spam',
+      'TRASH': 'Trash'
+    };
+    
+    userLabels.forEach(l => {
+      if (l.type === 'system' && systemMap[l.id]) {
+        let val = l.id.startsWith('CATEGORY_') ? `category:${l.id.replace('CATEGORY_', '').toLowerCase()}` : l.id.toLowerCase();
+        if (val === 'category:personal') val = 'category:primary';
+        opts.push({ value: val, label: systemMap[l.id] });
+      } else if (l.type === 'user') {
+        opts.push({ value: l.name, label: l.name });
+      }
+    });
+    
+    // Sort so Spam and Trash are at the bottom
+    opts.sort((a, b) => {
+      if (a.value === 'anywhere') return -1;
+      if (b.value === 'anywhere') return 1;
+      if (['spam', 'trash'].includes(a.value)) return 1;
+      if (['spam', 'trash'].includes(b.value)) return -1;
+      return 0;
+    });
+    
+    return opts;
+  })();
 
   const toggle = (val: string) => {
     if (val === 'anywhere') {
