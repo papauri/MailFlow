@@ -178,7 +178,7 @@ async function startServer() {
                 suggestedAction: { type: Type.STRING, description: "Base action: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'keep_in_inbox'" },
                 suggestedLabel: { type: Type.STRING, description: "(Optional) A label to apply IN ADDITION to the base action. Recommend an existing folder or propose a NEW folder (e.g., 'Invoices')." },
                 applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this combination should automatically apply to all future emails from this exact sender." },
-                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Moving to Updates and applying Alerts label will keep your primary inbox clean.')" }
+                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Moving to Updates. Based on your pattern of ignoring automated Jira alerts, this bundles 6 similar emails out of your way.')" }
               },
               required: ["emailId", "sender", "subject", "suggestedAction", "applyToAllFuture", "reason"]
             }
@@ -196,6 +196,11 @@ async function startServer() {
         2. If an email is useful but not urgent (e.g., receipts, project logs), apply a logical label (new or existing) and 'archive' it out of the inbox. 
         3. Only suggest 'archive' for items that are truly dealt with, useless clutter, or non-actionable logs.
         4. CRITICAL: I have provided the 'Current Location' for each email (e.g., [Inbox, Receipts]). If an email is ALREADY correctly categorized in its current location, do NOT suggest applying that exact same label again!
+        
+        ADVANCED DATA REVIEW & PATTERN LEARNING:
+        - Identify patterns in the data: if you see multiple emails from the exact same sender or domain (e.g., automated tools, newsletters), assume historical behavior means they should ALL be bundled into the exact same rule. 
+        - Provide EXACTLY ONE suggestion per sender, ensuring that rule perfectly addresses ALL their emails.
+        - Anticipate typical user engagement (e.g., Jira updates belong in 'Dev', Uber receipts belong in 'Travel/Expenses') based on common historical organization habits.
         
         You can combine actions! For example, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (with applyToAllFuture = true).
         Or suggest 'move_to_primary' AND suggestedLabel 'University'.

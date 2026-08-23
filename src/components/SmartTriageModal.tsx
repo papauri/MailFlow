@@ -261,12 +261,12 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                       </div>
 
                       {/* Right: Actions */}
-                      <div className="shrink-0 flex gap-2 w-full sm:w-auto">
+                      <div className="shrink-0 flex flex-col gap-2 w-full sm:w-36">
                         {labelExists ? (
                           <button 
                             onClick={() => executeAction(suggestion, false)}
                             disabled={isProcessing}
-                            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 ${actionUi.color}`}
+                            className={`w-full flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 ${actionUi.color}`}
                           >
                             {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                             Execute
@@ -276,7 +276,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                             <button 
                               onClick={() => executeAction(suggestion, false)}
                               disabled={isProcessing}
-                              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 ${actionUi.color}`}
+                              className={`w-full flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-white font-medium text-xs transition-colors shadow-sm disabled:opacity-50 ${actionUi.color}`}
                             >
                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : actionUi.icon}
                               {actionUi.text} Only
@@ -284,7 +284,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                             <button 
                               onClick={() => executeAction(suggestion, true)}
                               disabled={isProcessing}
-                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 font-medium text-xs transition-colors disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 font-medium text-xs transition-colors disabled:opacity-50"
                             >
                               {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Tag className="w-3 h-3" />}
                               + Create '{suggestion.suggestedLabel}'
