@@ -719,8 +719,13 @@ export default function Dashboard({ user }: { user: any }) {
     (parsedQuery?.query || "").toLowerCase().includes("size:");
 
 
+  const isActuallyUnreadOnly = onlyUnread || 
+    query.toLowerCase().includes('is:unread') || 
+    (parsedQuery?.query || '').toLowerCase().includes('is:unread') ||
+    lastExecutedQuery.toLowerCase().includes('is:unread');
+
   const groupedEmails = useMemo(() => {
-    if (!onlyUnread) {
+    if (!isActuallyUnreadOnly) {
       return [{ title: null, emails: filteredEmails }];
     }
     const groups: any = {};
@@ -758,7 +763,7 @@ export default function Dashboard({ user }: { user: any }) {
         if (b.title === 'Primary Inbox') return 1;
         return a.title.localeCompare(b.title);
       });
-  }, [filteredEmails, onlyUnread, userLabels]);
+  }, [filteredEmails, isActuallyUnreadOnly, userLabels]);
 
   return (
     <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
@@ -1103,7 +1108,7 @@ export default function Dashboard({ user }: { user: any }) {
               </div>
             </div>
 
-            {onlyUnread && (
+            {isActuallyUnreadOnly && (
               <div className="flex items-center px-2 sm:px-3 pb-1 overflow-x-auto no-scrollbar border-t border-slate-200/50 bg-slate-50/50 pt-2 gap-1 sm:gap-2">
                 {[
                   { id: 'anywhere', label: 'All Unread' },
@@ -1293,7 +1298,7 @@ export default function Dashboard({ user }: { user: any }) {
                                const labels = email.labelIds || [];
                                const badges = [];
                                
-                               if (!onlyUnread) return null;
+                               if (!isActuallyUnreadOnly) return null;
                                
                                if (labels.includes('SPAM')) badges.push({ text: 'Spam', color: 'bg-red-50 text-red-700 border-red-100' });
                                else if (labels.includes('TRASH')) badges.push({ text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' });
