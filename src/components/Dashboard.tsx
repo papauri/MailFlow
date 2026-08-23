@@ -233,6 +233,9 @@ export default function Dashboard({ user }: { user: any }) {
     const textQuery = customQuery ?? query;
     // Removed early return so we can load all emails initially
     
+    // Always anchor back to top when a new search is initiated
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     const searchId = ++searchIdRef.current;
     setIsSearching(true);
     setEmails([]);
@@ -470,6 +473,7 @@ export default function Dashboard({ user }: { user: any }) {
     });
     
   const handleHashChange = () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       const hash = decodeURIComponent(window.location.hash.replace('#', '')) || 'dashboard';
       if (hash === 'health') {
         setShowHealth(true);
