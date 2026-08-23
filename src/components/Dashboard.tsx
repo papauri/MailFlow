@@ -864,8 +864,12 @@ export default function Dashboard({ user }: { user: any }) {
              userEmail={user?.email}
              aiSettings={aiSettings} 
              userLabels={userLabels}
-             onApplyQuery={(q, filter) => {
+             onApplyQuery={(q, filter, sortOption) => {
                setQuery(q);
+               if (sortOption) {
+                 setSortBy(sortOption);
+                 setSortDesc(true); // Always sort highest to lowest by default
+               }
                let newFilters = ['anywhere'];
                if (filter) {
                  if (filter === 'spam+trash') newFilters = ['spam', 'trash'];

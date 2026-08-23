@@ -25,7 +25,7 @@ const CATEGORY_CONFIG = [
 export interface CategoryDistributionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyCategory?: (query: string, filter?: string) => void;
+  onApplyCategory?: (query: string, filter?: string, sortOption?: "date" | "size" | "sender") => void;
 }
 
 export function CategoryDistributionModal({

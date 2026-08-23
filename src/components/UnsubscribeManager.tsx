@@ -4,7 +4,7 @@ import { searchEmails, batchTrashEmails, batchModifyEmails } from '../lib/gmail'
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 
-export function UnsubscribeManager({ isOpen, onClose, onApplyQuery, aiSettings }: { isOpen: boolean; onClose: () => void; onApplyQuery: (q: string, filter?: string) => void; aiSettings?: any }) {
+export function UnsubscribeManager({ isOpen, onClose, onApplyQuery, aiSettings }: { isOpen: boolean; onClose: () => void; onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void; aiSettings?: any }) {
   const [activeTab, setActiveTab] = useState<'active' | 'unsubscribed' | 'ghost_blocked'>('active');
   const [activeSubTab, setActiveSubTab] = useState<'easy_unsub' | 'block'>('easy_unsub');
   const [loading, setLoading] = useState(true);

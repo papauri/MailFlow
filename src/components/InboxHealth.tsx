@@ -36,7 +36,7 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   'fastmail.com'
 ]);
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }: { userEmail?: string, onApplyQuery: (q: string, filter?: string) => void, aiSettings?: any, userLabels?: any[] }) {
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[] }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
@@ -188,7 +188,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           desc="Emails larger than 5MB taking up valuable Google Drive space."
           color="border-orange-200 bg-orange-50/50 hover:bg-orange-50"
           actionText="Review Large Emails"
-          onAction={() => onApplyQuery("larger:5M", "anywhere")}
+          onAction={() => onApplyQuery("larger:5M", "anywhere", "size")}
         />
         <HealthCard 
           icon={<Trash2 className="w-6 h-6 text-purple-500" />}
