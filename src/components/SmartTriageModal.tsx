@@ -77,8 +77,11 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   const executeAction = async (suggestion: any, createFolder: boolean = false) => {
     setProcessingId(suggestion.emailId);
     try {
-      // Find all matching emails from this sender to process in one click
-      const matchingEmails = fetchedEmails.filter(e => e.sender === suggestion.sender);
+      // Find all matching emails from this sender to process in one click using exact sender string
+      const originalEmail = fetchedEmails.find(e => e.id === suggestion.emailId);
+      const trueSender = originalEmail?.sender || suggestion.sender;
+      const matchingEmails = fetchedEmails.filter(e => e.sender === trueSender);
+      
       const msgIds = matchingEmails.flatMap(e => e.messageIds);
       
       let addLabels: string[] = [];
@@ -86,13 +89,13 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
 
       // 1. Base Action
       if (suggestion.suggestedAction === 'move_to_primary') {
-        addLabels.push('CATEGORY_PERSONAL');
+        addLabels.push('INBOX', 'CATEGORY_PERSONAL');
         removeLabels.push('CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'move_to_updates') {
-        addLabels.push('CATEGORY_UPDATES');
+        addLabels.push('INBOX', 'CATEGORY_UPDATES');
         removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'move_to_promotions') {
-        addLabels.push('CATEGORY_PROMOTIONS');
+        addLabels.push('INBOX', 'CATEGORY_PROMOTIONS');
         removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'archive') {
         removeLabels.push('INBOX');
@@ -253,8 +256,9 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                   .filter((id: string) => id !== 'UNREAD' && id !== 'IMPORTANT')
                   .map((id: string) => standardMap[id] || userLabels?.find(l => l.id === id)?.name || id);
 
-                // Calculate batch impact
-                const matchingCount = fetchedEmails.filter(e => e.sender === suggestion.sender).length;
+                // Calculate batch impact using the true sender from the payload, not the AI's string
+                const trueSender = originalEmail?.sender || suggestion.sender;
+                const matchingCount = fetchedEmails.filter(e => e.sender === trueSender).length;
                 
                 // Check if suggested label requires creation
                 const labelExists = !suggestion.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
