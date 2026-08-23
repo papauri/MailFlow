@@ -23,6 +23,8 @@ export default function Dashboard({ user }: { user: any }) {
   const queryRef = useRef(query);
   useEffect(() => { queryRef.current = query; }, [query]);
 
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [excludeSent, setExcludeSent] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [folderFilters, setFolderFilters] = useState<string[]>(["anywhere"]);
@@ -218,7 +220,7 @@ export default function Dashboard({ user }: { user: any }) {
       const timer = setTimeout(() => handleSearch(undefined, undefined, undefined, true), 100);
       return () => clearTimeout(timer);
     }
-  }, [onlyUnread, excludeSent]);
+  }, [onlyUnread, excludeSent, startDate, endDate]);
 
   const saveSettings = (s: any) => {
     setAiSettings(s);
@@ -293,6 +295,8 @@ export default function Dashboard({ user }: { user: any }) {
       }
     }
 
+    if (startDate) parts.push(`after:${startDate.replace(/-/g, '/')}`);
+    if (endDate) parts.push(`before:${endDate.replace(/-/g, '/')}`);
     if (excludeSent) parts.push(`-in:sent`);
     if (onlyUnread) parts.push(`is:unread`);
 
@@ -458,7 +462,7 @@ export default function Dashboard({ user }: { user: any }) {
       handleSearch();
     }, 100);
     return () => clearTimeout(timer);
-  }, [excludeSent, onlyUnread]);
+  }, [startDate, endDate, excludeSent, onlyUnread]);
 
   useEffect(() => {
     fetchGmailAPI('/labels').then(data => {
@@ -983,19 +987,28 @@ export default function Dashboard({ user }: { user: any }) {
              </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 pb-1">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-20">
+            <FolderMultiSelect 
+              selected={folderFilters} 
+              onChange={(newFilters) => {
+                const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                  ? `#folders=${newFilters.join(',')}` 
+                  : '#dashboard';
+                
+                if (window.location.hash !== newHash) {
+                  window.location.hash = newHash;
+                }
+                setFolderFilters(newFilters);
+              }} 
+              userLabels={userLabels} 
+            />
+            <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={onlyUnread} onChange={e => {
-                const val = e.target.checked;
-                setOnlyUnread(val);
-              }} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
             </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
-              <input type="checkbox" checked={excludeSent} onChange={e => {
-                const val = e.target.checked;
-                setExcludeSent(val);
-              }} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <input type="checkbox" checked={excludeSent} onChange={e => setExcludeSent(e.target.checked)} className="rounded text-slate-600 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Exclude Sent</span>
             </label>
           </div>
@@ -1807,4 +1820,149 @@ function ActionButton({ icon, label, onClick, disabled, loading, className }: an
   );
 }
 
+function FolderMultiSelect({ selected, onChange, onClose, userLabels }: { selected: string[], onChange: (s: string[]) => void, onClose?: () => void, userLabels: any[] }) {
+  const [open, setOpen] = useState(false);
+  
+  const handleClose = () => {
+    setOpen(false);
+    if (onClose) onClose();
+  };
 
+  const options = [
+    { value: 'anywhere', label: 'All Mail' },
+    { value: 'inbox', label: 'Inbox' },
+    { value: 'category:primary', label: 'Primary' },
+    { value: 'category:promotions', label: 'Promotions' },
+    { value: 'category:social', label: 'Social' },
+    { value: 'category:updates', label: 'Updates' },
+    { value: 'category:forums', label: 'Forums' },
+    ...userLabels.filter(l => l.type === 'user').map(l => ({ value: l.name, label: l.name })),
+    { value: 'spam', label: 'Spam' },
+    { value: 'trash', label: 'Trash' }
+  ];
+
+  const toggle = (val: string) => {
+    if (val === 'anywhere') {
+      onChange(['anywhere']);
+      return;
+    }
+    let next = selected.filter(x => x !== 'anywhere');
+    if (next.includes(val)) {
+      next = next.filter(x => x !== val);
+    } else {
+      next.push(val);
+    }
+    if (next.length === 0) next = ['anywhere'];
+    onChange(next);
+  };
+
+  const label = selected.includes('anywhere') || selected.length === 0 ? 'All Mail' : selected.length === 1 ? options.find(o => o.value === selected[0])?.label || selected[0].replace('category:', '') : `${selected.length} Folders`;
+
+  return (
+    <div className="relative">
+      <button 
+        type="button" 
+        onClick={() => {
+          if (open) handleClose();
+          else setOpen(true);
+        }} 
+        className="bg-slate-50 border border-slate-200 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-slate-700 font-medium flex items-center gap-1.5 sm:gap-2 hover:bg-slate-100 transition-colors whitespace-nowrap"
+      >
+        <span className="truncate max-w-[110px] sm:max-w-none">{label}</span>
+        <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={handleClose} />
+          <div className="absolute top-full left-0 mt-1 w-52 sm:w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-80 sm:max-h-96 overflow-y-auto py-1">
+            {options.map(opt => (
+              <label key={opt.value} className="flex items-center gap-2.5 sm:gap-3 px-3 py-1.5 sm:py-2 hover:bg-slate-50 cursor-pointer text-xs sm:text-sm">
+                <input 
+                  type="checkbox" 
+                  checked={selected.includes(opt.value)}
+                  onChange={() => toggle(opt.value)}
+                  className="rounded border-slate-300 text-slate-700 focus:ring-slate-500 w-3.5 h-3.5 sm:w-4 sm:h-4"
+                />
+                <span className="text-slate-700 truncate">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange }: any) {
+  const [open, setOpen] = useState(false);
+  const todayStr = new Date().toISOString().split("T")[0];
+  
+  let label = "Any time";
+  if (startDate && endDate) {
+    label = `${startDate} to ${endDate}`;
+  } else if (startDate) {
+    label = `After ${startDate}`;
+  } else if (endDate) {
+    label = `Before ${endDate}`;
+  }
+
+  const setRange = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - days);
+    onStartChange(start.toISOString().split("T")[0]);
+    onEndChange(end.toISOString().split("T")[0]);
+    setOpen(false);
+  };
+
+  const clearRange = () => {
+    onStartChange("");
+    onEndChange("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button 
+        type="button" 
+        onClick={() => setOpen(!open)} 
+        className={cn("bg-slate-50 border rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm shrink-0 whitespace-nowrap", startDate || endDate ? "border-slate-800 text-slate-800 bg-white" : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100")}
+      >
+        <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
+        <span className="truncate max-w-[150px]">{label}</span>
+        <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
+      </button>
+      
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-3 flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-2">Quick Select</span>
+              <button type="button" onClick={() => setRange(7)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last 7 days</button>
+              <button type="button" onClick={() => setRange(30)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last 30 days</button>
+              <button type="button" onClick={() => setRange(365)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last year</button>
+              <button type="button" onClick={clearRange} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Any time</button>
+            </div>
+            
+            <div className="h-px bg-slate-100 -mx-3" />
+            
+            <div className="flex flex-col gap-2 px-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Custom Range</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-8 font-medium">From</span>
+                  <input type="date" value={startDate} onChange={e => onStartChange(e.target.value)} max={todayStr} className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-md px-2 py-1 outline-none text-xs sm:text-sm focus:ring-2 focus:ring-slate-400 font-medium cursor-pointer" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-8 font-medium">To</span>
+                  <input type="date" value={endDate} onChange={e => onEndChange(e.target.value)} max={todayStr} className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-md px-2 py-1 outline-none text-xs sm:text-sm focus:ring-2 focus:ring-slate-400 font-medium cursor-pointer" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
