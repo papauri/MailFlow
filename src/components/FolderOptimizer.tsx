@@ -71,7 +71,11 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       let aiSucceeded = false;
       
       // ONLY run AI if explicitly requested to save costs
-      if (forceAi && hasAiKey) {
+      // OR if local heuristics found absolutely nothing and we want to bridge the gap
+      
+      let localRecs = runLocalHeuristics(sample);
+      
+      if ((forceAi || localRecs.length === 0) && hasAiKey) {
         try {
           const payload = {
             emails: sample.map(e => ({ id: e.id, sender: e.sender, subject: e.subject })),
@@ -101,7 +105,6 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
       }
 
       if (!aiSucceeded) {
-        const localRecs = runLocalHeuristics(sample);
         setRecommendations(localRecs);
         setUsedAi(false);
       }

@@ -110,18 +110,38 @@ export default function Dashboard({ user }: { user: any }) {
         });
         if (res.ok) {
           const data = await res.json();
+          let modelList = [];
           if (data.models && data.models.length > 0) {
-            setDynamicModels(data.models);
+            modelList = data.models;
           } else {
             // Fallbacks
-            if (aiSettings.provider === 'gemini') setDynamicModels(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash']);
-            if (aiSettings.provider === 'openai') setDynamicModels(['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini']);
-            if (aiSettings.provider === 'anthropic') setDynamicModels(['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest']);
-            if (aiSettings.provider === 'groq') setDynamicModels(['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']);
-            if (aiSettings.provider === 'deepseek') setDynamicModels(['deepseek-chat', 'deepseek-reasoner']);
-            if (aiSettings.provider === 'mistral') setDynamicModels(['mistral-small-latest', 'mistral-large-latest']);
-            if (aiSettings.provider === 'zhipu') setDynamicModels(['glm-4-flash', 'glm-4-plus']);
-            if (aiSettings.provider === 'grok') setDynamicModels(['grok-2-latest', 'grok-beta']);
+            if (aiSettings.provider === 'gemini') modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+            if (aiSettings.provider === 'openai') modelList = ['gpt-4o-mini', 'gpt-4o', 'o1-mini', 'o1', 'o3-mini'];
+            if (aiSettings.provider === 'anthropic') modelList = ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'];
+            if (aiSettings.provider === 'groq') modelList = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+            if (aiSettings.provider === 'deepseek') modelList = ['deepseek-chat', 'deepseek-reasoner'];
+            if (aiSettings.provider === 'mistral') modelList = ['mistral-small-latest', 'mistral-large-latest'];
+            if (aiSettings.provider === 'zhipu') modelList = ['glm-4-flash', 'glm-4-plus'];
+            if (aiSettings.provider === 'grok') modelList = ['grok-2-latest', 'grok-beta'];
+          }
+          
+          setDynamicModels(modelList);
+          
+          // Automatically default to the cheapest model available today
+          const cheapKeywords = ['flash', 'mini', 'haiku', '8b', 'small', 'chat'];
+          let cheapest = modelList[0];
+          for (const keyword of cheapKeywords) {
+            const found = modelList.find((m: string) => m.toLowerCase().includes(keyword));
+            if (found) {
+              cheapest = found;
+              break;
+            }
+          }
+          
+          if (cheapest && aiSettings.model !== cheapest) {
+            const newSettings = { ...aiSettings, model: cheapest };
+            setAiSettings(newSettings);
+            localStorage.setItem('adminAiSettings', JSON.stringify(newSettings));
           }
         }
       } catch (e) {
