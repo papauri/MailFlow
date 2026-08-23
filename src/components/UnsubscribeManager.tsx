@@ -278,8 +278,8 @@ export function UnsubscribeManager({ isOpen, onClose, onApplyQuery, aiSettings }
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-white">
           <WalkthroughTip 
             storageKey="tip_unsub" 
-            title="Subscription Manager" 
-            description="Use 1-Click Unsubscribe to easily remove yourself from standard mailing lists. If a sender is hiding their unsubscribe button, use the Block & Trash tool to ban them."
+            title="AI Subscription Manager" 
+            description="Use 1-Click Unsubscribe to easily remove yourself from standard mailing lists. If you have an AI key connected, MailFlow will automatically run an Intent Audit to identify the type of list to help you decide!"
           />
           {activeTab === 'active' && (
             <>

@@ -888,8 +888,8 @@ export default function Dashboard({ user }: { user: any }) {
         <>
         <WalkthroughTip 
           storageKey="tip_dashboard" 
-          title="Welcome to the Smart Inbox" 
-          description="Start by typing a conversational search like 'newsletters from last month' to quickly filter your inbox. Select multiple emails below to bulk delete or archive them."
+          title="Welcome to your MailFlow Workspace" 
+          description="Try out the new 'Inbox Health' button above to unleash the automated Folder Optimizer, or select multiple emails below to test out Smart Organize Analytics and the Rule Suggester!"
         />
         <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 sm:gap-4">
           <form onSubmit={handleSearch} className="flex gap-2">

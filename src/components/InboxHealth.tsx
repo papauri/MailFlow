@@ -154,8 +154,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
     <div className="flex flex-col gap-6">
       <WalkthroughTip 
         storageKey="tip_health" 
-        title="Inbox Health Scan" 
-        description="This dashboard analyzes your inbox patterns. It identifies your most frequent senders, categorizes your storage usage, and helps you quickly find large files or noisy newsletters to clear out."
+        title="Inbox Health & AI Optimization" 
+        description="Check out the Folder Optimizer below! It uses strict statistical anomalies (or Deep AI) to find massive clusters of noise. When you clean them up, the Rule Suggester will offer to automate it for you!"
       />
       <div className="bg-gradient-to-br from-indigo-50/50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
         <div className="flex items-center gap-3 sm:gap-5">

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Search, Trash2, Sparkles, X, ChevronRight, ChevronLeft, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export function OnboardingWalkthrough({ onComplete, key }: { onComplete: () => void, key?: any }) {
+export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   
@@ -26,7 +26,7 @@ export function OnboardingWalkthrough({ onComplete, key }: { onComplete: () => v
   const steps = [
     {
       title: "Welcome to MailFlow",
-      description: "A fast, smart way to clean up your Gmail inbox and get rid of the clutter you don't need.",
+      description: "A fast, smart way to clean up your Gmail inbox using advanced data analytics and AI clustering.",
       icon: <Mail className="w-12 h-12 text-indigo-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center border border-slate-200">
@@ -40,71 +40,68 @@ export function OnboardingWalkthrough({ onComplete, key }: { onComplete: () => v
       )
     },
     {
-      title: "Smart Search",
-      description: "Use everyday language to find emails. Try asking for 'receipts from last month' or 'newsletters I haven't read'.",
-      icon: <Search className="w-12 h-12 text-blue-600 mb-4" />,
-      image: (
-        <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
-          <div className="bg-white rounded-full px-3 py-1.5 flex items-center gap-2 border border-slate-300 w-full shadow-sm">
-            <Sparkles className="w-3 h-3 text-blue-500" />
-            <div className="h-1.5 bg-slate-200 rounded w-24"></div>
-          </div>
-          <div className="w-full bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex items-center gap-2">
-             <div className="w-4 h-4 rounded-full bg-slate-200"></div>
-             <div className="h-1.5 bg-slate-200 rounded w-16"></div>
-          </div>
-        </div>
-      )
-    },
-    {
-      title: "Analyze Your Inbox",
-      description: "Discover hidden patterns, see your top senders, and find out what's taking up the most space with our AI-powered Inbox Health scan.",
+      title: "Automated Folder Optimizer",
+      description: "Click 'Inbox Health' to access the Folder Optimizer. It uses strict statistical anomalies to automatically group massive clusters of noise in your inbox.",
       icon: <ShieldCheck className="w-12 h-12 text-emerald-600 mb-4" />,
-      image: (
-        <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
-           <div className="grid grid-cols-2 gap-2 w-full">
-             <div className="bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex flex-col items-center gap-1">
-               <div className="h-4 w-4 bg-emerald-100 rounded-full"></div>
-               <div className="h-1.5 bg-slate-200 rounded w-8"></div>
-             </div>
-             <div className="bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex flex-col items-center gap-1">
-               <div className="h-4 w-4 bg-rose-100 rounded-full"></div>
-               <div className="h-1.5 bg-slate-200 rounded w-8"></div>
-             </div>
-           </div>
-        </div>
-      )
-    },
-    {
-      title: "Organize & Analyze",
-      description: "Select multiple emails and use Smart Analytics to instantly group them by sender and apply labels, archive, or trash them in bulk.",
-      icon: <Sparkles className="w-12 h-12 text-indigo-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
            <div className="w-full bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex flex-col gap-2">
              <div className="flex justify-between items-center">
                <div className="h-2 bg-slate-200 rounded w-1/3"></div>
-               <div className="h-2 bg-slate-200 rounded w-1/6"></div>
+               <div className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded">24 emails</div>
              </div>
-             <div className="h-6 w-full bg-blue-600 rounded mt-1"></div>
-             <div className="flex gap-2">
-               <div className="h-6 w-full bg-slate-100 border border-slate-200 rounded"></div>
-               <div className="h-6 w-full bg-slate-100 border border-slate-200 rounded"></div>
-             </div>
+             <div className="h-6 w-full bg-indigo-600 rounded mt-1 flex items-center justify-center text-[10px] text-white font-bold">Group & Clear</div>
            </div>
         </div>
       )
     },
     {
-      title: "Bulk Delete & Archive",
-      description: "Select hundreds of emails at once and permanently delete them or archive them to instantly free up space.",
+      title: "Smart Organize Analytics",
+      description: "Select any batch of emails and hit the 'Organize' button. MailFlow calculates standard deviations to instantly group patterns or uses deep AI to categorize them.",
+      icon: <Sparkles className="w-12 h-12 text-blue-600 mb-4" />,
+      image: (
+        <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
+          <div className="bg-white rounded-full px-3 py-1.5 flex items-center justify-center gap-2 border border-slate-300 w-full shadow-sm">
+            <Sparkles className="w-3 h-3 text-blue-500" />
+            <div className="h-2 bg-slate-200 rounded w-24"></div>
+          </div>
+          <div className="flex gap-2 w-full">
+             <div className="h-5 w-full bg-slate-200 border border-slate-300 rounded"></div>
+             <div className="h-5 w-full bg-slate-200 border border-slate-300 rounded"></div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "Automated Routing Rules",
+      description: "Tired of doing it manually? When you apply an optimization, MailFlow's Rule Suggester can create a permanent Gmail Filter to route future emails instantly.",
+      icon: <Search className="w-12 h-12 text-purple-600 mb-4" />,
+      image: (
+        <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-2">
+           <div className="w-full bg-white rounded-lg p-3 border border-slate-200 shadow-sm flex items-center justify-between">
+             <div className="h-2 bg-slate-200 rounded w-20"></div>
+             <div className="h-4 w-12 bg-emerald-500 rounded-full"></div>
+           </div>
+           <div className="w-full bg-white rounded-lg p-3 border border-slate-200 shadow-sm flex items-center justify-between opacity-50">
+             <div className="h-2 bg-slate-200 rounded w-16"></div>
+             <div className="h-4 w-12 bg-slate-300 rounded-full"></div>
+           </div>
+        </div>
+      )
+    },
+    {
+      title: "Unsubscribe & Audit",
+      description: "Identify mailing lists and easily trigger one-click unsubscriptions. MailFlow can even AI-scan your subscriptions for intent to help you decide what to keep.",
       icon: <Trash2 className="w-12 h-12 text-rose-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-2">
-           {[1, 2, 3].map(i => (
-             <div key={i} className="w-full bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-indigo-500"></div>
-               <div className="h-1.5 bg-slate-200 rounded w-20"></div>
+           {[1, 2].map(i => (
+             <div key={i} className="w-full bg-white rounded-lg p-2 border border-slate-200 shadow-sm flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <div className="w-3 h-3 rounded-full bg-rose-100"></div>
+                 <div className="h-1.5 bg-slate-200 rounded w-16"></div>
+               </div>
+               <div className="h-4 w-12 bg-rose-50 text-[8px] text-rose-600 flex items-center justify-center rounded border border-rose-100">Unsub</div>
              </div>
            ))}
         </div>
