@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Wand2, Tag, ArrowRight } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Tag, CornerDownRight, Zap, Layers, Filter } from 'lucide-react';
 import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
 
 export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { isOpen: boolean, onClose: () => void, aiSettings: any, userLabels?: any[] }) {
@@ -62,27 +62,31 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       let addLabels: string[] = [];
       let removeLabels: string[] = [];
 
+      // 1. Base Action
       if (suggestion.suggestedAction === 'move_to_primary') {
-        addLabels = ['CATEGORY_PERSONAL'];
-        removeLabels = ['CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL'];
+        addLabels.push('CATEGORY_PERSONAL');
+        removeLabels.push('CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'move_to_updates') {
-        addLabels = ['CATEGORY_UPDATES'];
-        removeLabels = ['CATEGORY_PERSONAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL'];
+        addLabels.push('CATEGORY_UPDATES');
+        removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'move_to_promotions') {
-        addLabels = ['CATEGORY_PROMOTIONS'];
-        removeLabels = ['CATEGORY_PERSONAL', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL'];
+        addLabels.push('CATEGORY_PROMOTIONS');
+        removeLabels.push('CATEGORY_PERSONAL', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL');
       } else if (suggestion.suggestedAction === 'archive') {
-        removeLabels = ['INBOX'];
+        removeLabels.push('INBOX');
       } else if (suggestion.suggestedAction === 'star') {
-        addLabels = ['STARRED'];
-      } else if (suggestion.suggestedAction === 'apply_label' && suggestion.suggestedLabel) {
+        addLabels.push('STARRED');
+      }
+
+      // 2. Additional Label 
+      if (suggestion.suggestedLabel) {
         const existing = userLabels?.find(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
         if (existing) {
-          addLabels = [existing.id];
+          addLabels.push(existing.id);
         } else {
           const lbl = await createLabel(suggestion.suggestedLabel);
           if (lbl && lbl.id) {
-            addLabels = [lbl.id];
+            addLabels.push(lbl.id);
           }
         }
       }
@@ -108,16 +112,23 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   };
 
   const getActionLabel = (action: string, labelName?: string) => {
+    let base = { icon: <CheckCircle2 className="w-4 h-4" />, text: "Organize", color: "bg-blue-600 hover:bg-blue-700" };
     switch (action) {
-      case 'move_to_primary': return { icon: <Inbox className="w-4 h-4" />, text: "Move to Primary", color: "bg-indigo-500 hover:bg-indigo-600" };
-      case 'move_to_updates': return { icon: <FolderDown className="w-4 h-4" />, text: "Move to Updates", color: "bg-blue-500 hover:bg-blue-600" };
-      case 'move_to_promotions': return { icon: <FolderDown className="w-4 h-4" />, text: "Move to Promos", color: "bg-amber-500 hover:bg-amber-600" };
-      case 'archive': return { icon: <Archive className="w-4 h-4" />, text: "Archive", color: "bg-slate-600 hover:bg-slate-700" };
-      case 'star': return { icon: <Star className="w-4 h-4" />, text: "Star", color: "bg-yellow-500 hover:bg-yellow-600" };
-      case 'apply_label': return { icon: <Tag className="w-4 h-4" />, text: `Label: ${labelName || 'Custom'}`, color: "bg-teal-500 hover:bg-teal-600" };
-      default: return { icon: <CheckCircle2 className="w-4 h-4" />, text: "Execute", color: "bg-slate-800 hover:bg-slate-900" };
+      case 'move_to_primary': base = { icon: <Inbox className="w-4 h-4" />, text: "Primary", color: "bg-blue-600 hover:bg-blue-700" }; break;
+      case 'move_to_updates': base = { icon: <FolderDown className="w-4 h-4" />, text: "Updates", color: "bg-blue-600 hover:bg-blue-700" }; break;
+      case 'move_to_promotions': base = { icon: <FolderDown className="w-4 h-4" />, text: "Promos", color: "bg-blue-600 hover:bg-blue-700" }; break;
+      case 'archive': base = { icon: <Archive className="w-4 h-4" />, text: "Archive", color: "bg-slate-700 hover:bg-slate-800" }; break;
+      case 'star': base = { icon: <Star className="w-4 h-4" />, text: "Star", color: "bg-amber-500 hover:bg-amber-600" }; break;
     }
+    
+    if (labelName) {
+      base.text = action === 'keep_in_inbox' ? `Label: ${labelName}` : `${base.text} + ${labelName}`;
+    }
+    return base;
   };
+
+  const hasCompletedAll = suggestions.length > 0 && completedIds.size === suggestions.length;
+  const timeSaved = completedIds.size * 2 + suggestions.filter(s => s.applyToAllFuture && completedIds.has(s.emailId)).length * 5;
 
   if (!isOpen) return null;
 
@@ -126,12 +137,12 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
       <div className="bg-white w-full max-w-3xl max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden ring-1 ring-slate-900/5 animate-in zoom-in-95 relative">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-white relative z-10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-              <Wand2 className="w-4 h-4 text-indigo-600" />
+            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center">
+              <Layers className="w-4 h-4 text-blue-600" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                Smart Triage
+                Smart Organizer
               </h2>
               <p className="text-xs text-slate-500">Intelligently analyze your inbox and suggest actions.</p>
             </div>
@@ -145,8 +156,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16">
               <div className="relative">
-                <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-                <Sparkles className="w-4 h-4 text-indigo-400 absolute -top-1 -right-1 animate-pulse" />
+                <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
               </div>
               <p className="text-slate-600 font-medium mt-3 text-sm">Analyzing your inbox...</p>
               <p className="text-slate-400 text-xs mt-1 max-w-xs text-center">Reading headers, identifying senders, and finding miscategorized emails.</p>
@@ -160,6 +170,23 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 <button onClick={analyzeInbox} className="mt-2 bg-white text-red-600 border border-red-200 px-2 py-1 rounded-md text-xs font-medium hover:bg-red-50">Try Again</button>
               </div>
             </div>
+          ) : hasCompletedAll ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center animate-in zoom-in duration-300">
+              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-800 tracking-tight">You're all caught up!</h3>
+              <p className="text-slate-500 mt-2 max-w-sm text-sm">
+                You successfully processed {completedIds.size} items. 
+                With your new automated filters, the system has saved you an estimated <strong className="text-slate-700 font-bold">{timeSaved} minutes</strong> of manual sorting every month.
+              </p>
+              <button 
+                onClick={onClose} 
+                className="mt-6 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm hover:bg-slate-900 transition-colors"
+              >
+                Return to Inbox
+              </button>
+            </div>
           ) : suggestions.length > 0 ? (
             <div className="space-y-2">
               {suggestions.map((suggestion, idx) => {
@@ -168,21 +195,23 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
                 const isProcessing = processingId === suggestion.emailId;
 
                 return (
-                  <div key={idx} className={`bg-white border rounded-xl p-3 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}>
+                  <div key={idx} className={`bg-white border rounded-xl p-3 transition-all ${isCompleted ? 'border-green-200 bg-green-50/50' : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'}`}>
                     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate leading-tight">{suggestion.sender}</p>
                         <p className="text-xs text-slate-600 truncate mt-0.5">{suggestion.subject}</p>
                         
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          <p className="text-xs text-indigo-700 font-medium flex items-center gap-1">
-                            <ArrowRight className="w-3 h-3" /> {suggestion.reason}
+                        <div className="flex items-center gap-1.5 mt-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 inline-flex">
+                          <p className="text-xs text-slate-600 font-medium flex items-center gap-1">
+                            <CornerDownRight className="w-3 h-3 text-slate-400" /> {suggestion.reason}
                           </p>
                         </div>
                         
                         {suggestion.applyToAllFuture && (
-                          <div className="mt-2 inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-amber-100">
-                            <Sparkles className="w-3 h-3" /> Applies to all future emails
+                          <div className="mt-2 flex">
+                            <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-amber-100">
+                              <Zap className="w-3 h-3" /> Applies to all future emails
+                            </div>
                           </div>
                         )}
                       </div>

@@ -155,10 +155,10 @@ async function startServer() {
                 emailId: { type: Type.STRING },
                 sender: { type: Type.STRING },
                 subject: { type: Type.STRING },
-                suggestedAction: { type: Type.STRING, description: "Exact string: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'apply_label'" },
-                suggestedLabel: { type: Type.STRING, description: "Required ONLY if suggestedAction is 'apply_label'. Recommend an existing folder or propose a brand NEW folder (e.g., 'Invoices', 'Travel')." },
-                applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this rule should automatically apply to all future emails from this exact sender." },
-                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Creating a new folder for all AWS billing emails will keep your inbox clean.')" }
+                suggestedAction: { type: Type.STRING, description: "Base action: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'keep_in_inbox'" },
+                suggestedLabel: { type: Type.STRING, description: "(Optional) A label to apply IN ADDITION to the base action. Recommend an existing folder or propose a NEW folder (e.g., 'Invoices')." },
+                applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this combination should automatically apply to all future emails from this exact sender." },
+                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Moving to Updates and applying Alerts label will keep your primary inbox clean.')" }
               },
               required: ["emailId", "sender", "subject", "suggestedAction", "applyToAllFuture", "reason"]
             }
@@ -171,14 +171,15 @@ async function startServer() {
         I am giving you a deep sample of recent emails across my entire mailbox.
         My current custom folders (labels) are: [${labelsText}].
         
-        Your job is to provide comprehensive, actionable organization insights. Don't just archive things—actively suggest creating NEW folders or moving items into existing folders to build a highly organized system.
+        Your job is to provide comprehensive, actionable organization insights. Decide what is important and what should be triaged.
+        You can combine actions! For example, you can Archive an email AND apply a 'Receipts' label. 
         For example:
-        - If you see multiple receipts, suggest 'apply_label' with 'Receipts & Billing' (new or existing) and set applyToAllFuture = true.
-        - If you see scattered project emails, suggest moving them to a new 'Project X' folder.
+        - If you see multiple receipts, suggest 'archive' AND suggestedLabel 'Receipts & Billing' (new or existing) with applyToAllFuture = true.
+        - If you see scattered project emails, suggest 'move_to_primary' AND suggestedLabel 'Project X'.
         - Move automated alerts to Updates, or apply a specific 'Alerts' label.
         - Clean up inbox clutter.
         
-        Provide up to 15 of the highest-value, most thorough organization suggestions. Only include emails that *need* action or would benefit from being placed in a specific folder.
+        Provide up to 15 of the highest-value, most thorough organization suggestions. Focus on helping the user triage effectively.
         
         Emails:
         ${emailText}
