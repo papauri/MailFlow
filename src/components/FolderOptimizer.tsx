@@ -92,7 +92,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
           if (res.ok) {
             const data = await res.json();
             if (data.recommendations && data.recommendations.length > 0) {
-              const validRecs = data.recommendations.filter((r: any) => r.emailIds && r.emailIds.length > 1);
+              const validRecs = data.recommendations.filter((r: any) => r.emailIds && r.emailIds.length > 3);
               if (validRecs.length > 0) {
                 setRecommendations(validRecs);
                 setUsedAi(true);
@@ -151,25 +151,25 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, on
     });
 
     senderMap.forEach((emails, addr) => {
-      if (emails.length > 2) {
+      if (emails.length > 3) {
         const domain = addr.split('@')[1] || addr;
         const brand = domain.split('.')[0];
         const title = brand.charAt(0).toUpperCase() + brand.slice(1);
         recs.push({
           suggestedLabel: title,
           emailIds: emails.map(e => e.id),
-          reason: `High volume detected: ${emails.length} emails from ${addr}. Group them together or bulk clear them.`
+          reason: `Significant volume detected: ${emails.length} emails from ${addr}. Group them together or bulk clear them.`
         });
       }
     });
 
     keywordMap.forEach((emails, category) => {
-      if (emails.length > 2) {
+      if (emails.length > 3) {
         const uniqueIds = [...new Set(emails.map(e => e.id))];
         recs.push({
           suggestedLabel: category,
           emailIds: uniqueIds,
-          reason: `Found ${uniqueIds.length} emails matching common "${category}" patterns.`
+          reason: `Strong pattern found: ${uniqueIds.length} emails matching common "${category}" attributes.`
         });
       }
     });

@@ -140,7 +140,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
         const recs: any[] = [];
         
         senderMap.forEach((ids, name) => {
-          if (ids.length >= 2 && name.toLowerCase() !== 'unknown') {
+          if (ids.length >= 3 && name.toLowerCase() !== 'unknown') {
              recs.push({
                title: name,
                suggestedLabel: name,
