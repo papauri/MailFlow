@@ -211,6 +211,30 @@ async function startServer() {
       `;
 
       const result = await generateAIContent(aiPrompt, schema, settings);
+      
+      // Strict Backend Filter: Strip out suggestions that redundantly propose an email's current location
+      if (result && result.suggestions) {
+        result.suggestions = result.suggestions.filter((s: any) => {
+          const email = emails.find((e: any) => e.id === s.emailId);
+          if (!email) return false;
+          const currentLabels = resolveLabels(email.labelIds).map((l: string) => l.toLowerCase());
+          const isArchived = !currentLabels.includes('inbox');
+          
+          // Useless archive suggestion
+          if (s.suggestedAction === 'archive' && isArchived && !s.suggestedLabel) return false;
+          // Redundant folder move
+          if (s.suggestedLabel && currentLabels.includes(s.suggestedLabel.toLowerCase())) return false;
+          // Redundant tab moves
+          if (s.suggestedAction === 'move_to_primary' && currentLabels.includes('primary')) return false;
+          if (s.suggestedAction === 'move_to_promotions' && currentLabels.includes('promotions')) return false;
+          if (s.suggestedAction === 'move_to_updates' && currentLabels.includes('updates')) return false;
+          if (s.suggestedAction === 'move_to_social' && currentLabels.includes('social')) return false;
+          if (s.suggestedAction === 'keep_in_inbox' && currentLabels.includes('inbox') && !s.suggestedLabel) return false;
+          
+          return true;
+        });
+      }
+      
       res.json(result);
     } catch (e: any) {
       console.error(e);

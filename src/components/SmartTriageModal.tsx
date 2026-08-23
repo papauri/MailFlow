@@ -154,7 +154,8 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
   };
 
   const processedCount = completedIds.size + ignoredIds.size;
-  const hasCompletedAll = suggestions.length > 0 && processedCount === suggestions.length;
+  // Completed if processed everything, OR if the API successfully returned 0 suggestions after analyzing
+  const hasCompletedAll = (suggestions.length > 0 && processedCount === suggestions.length) || (suggestions.length === 0 && !loading && !error);
   const timeSaved = completedIds.size * 2 + suggestions.filter(s => s.applyToAllFuture && completedIds.has(s.emailId)).length * 5;
 
   if (!isOpen) return null;
@@ -239,8 +240,14 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { 
               </div>
               <h3 className="text-2xl font-bold text-slate-800 tracking-tight">You're all caught up!</h3>
               <p className="text-slate-500 mt-2 max-w-sm text-sm">
-                You successfully processed {completedIds.size} items. 
-                With your new automated filters, the system has saved you an estimated <strong className="text-slate-700 font-bold">{timeSaved} minutes</strong> of manual sorting every month.
+                {completedIds.size > 0 ? (
+                  <>
+                    You successfully processed {completedIds.size} items. 
+                    With your new automated filters, the system has saved you an estimated <strong className="text-slate-700 font-bold">{timeSaved} minutes</strong> of manual sorting every month.
+                  </>
+                ) : (
+                  "No new recommendations found! Your inbox is looking clean."
+                )}
               </p>
               <button 
                 onClick={onClose} 
