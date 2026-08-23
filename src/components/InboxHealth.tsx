@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -54,30 +54,32 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
       // Only show full page loader on initial mount
       if (!stats) setLoading(true);
       try {
-        const [unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner] = await Promise.all([
+        const [unread, oldPromo, large, spamAndTrash, importantUnread, directToMe, withAttachments, oldMail] = await Promise.all([
           countEmails("is:unread in:inbox"),
           countEmails("category:promotions older_than:6m -in:trash"),
           countEmails("larger:5M -in:trash"),
           countEmails("in:spam OR in:trash"),
-          countEmails("(category:promotions OR in:spam) -in:trash"), // Gatekeeper
-          countEmails("is:important -category:promotions -in:trash"), // Trust
-          countEmails("has:attachment -in:trash"), // Content
-          countEmails("(is:starred OR label:personal) -in:trash") // Learner
+          countEmails("is:unread is:important -category:promotions -in:trash"),
+          countEmails("to:me -cc:me -category:promotions -in:trash"),
+          countEmails("has:attachment -in:trash"),
+          countEmails("older_than:1y -in:trash")
         ]);
-        setStats({ unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner });
+        setStats({ unread, oldPromo, large, spamAndTrash, importantUnread, directToMe, withAttachments, oldMail });
         
         // Fetch estimated sizes in background
         Promise.all([
           estimateQuerySize("category:promotions older_than:6m -in:trash", oldPromo),
           estimateQuerySize("larger:5M -in:trash", large),
           estimateQuerySize("in:spam OR in:trash", spamAndTrash),
-          estimateQuerySize("has:attachment -in:trash", content)
-        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, contentSize]) => {
+          estimateQuerySize("has:attachment -in:trash", withAttachments),
+          estimateQuerySize("older_than:1y -in:trash", oldMail)
+        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize]) => {
           setSizes({ 
             oldPromo: oldPromoSize, 
             large: largeSize, 
             spamAndTrash: spamAndTrashSize,
-            content: contentSize 
+            withAttachments: attachmentsSize,
+            oldMail: oldMailSize
           });
         });
       } catch (e) {
@@ -274,42 +276,45 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         </div>
         <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button 
-            onClick={() => onApplyQuery("(category:promotions OR in:spam)", "anywhere")}
+            onClick={() => onApplyQuery("is:unread is:important -category:promotions -in:trash", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Newsletters & Spam</span>
-            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.gatekeeper || 0}</span>
+            <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-500" />
+            <span>Important Unread</span>
+            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.importantUnread || 0}</span>
           </button>
           
           <button 
-            onClick={() => onApplyQuery("is:important -category:promotions", "anywhere")}
+            onClick={() => onApplyQuery("to:me -cc:me -category:promotions -in:trash", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <Network className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Important & Trusted</span>
-            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.trust || 0}</span>
+            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-indigo-500" />
+            <span>Directly To Me</span>
+            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.directToMe || 0}</span>
           </button>
           
           <button 
-            onClick={() => onApplyQuery("has:attachment", "anywhere")}
+            onClick={() => onApplyQuery("has:attachment -in:trash", "anywhere", "size")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <FileSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <FileSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-blue-500" />
             <span>With Attachments</span>
             <div className="flex items-center gap-1 ml-1 shrink-0">
-              <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.content || 0}</span>
-              {sizes?.content > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.content)}</span>}
+              <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.withAttachments || 0}</span>
+              {sizes?.withAttachments > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.withAttachments)}</span>}
             </div>
           </button>
 
           <button 
-            onClick={() => onApplyQuery("(is:starred OR label:personal)", "anywhere")}
+            onClick={() => onApplyQuery("older_than:1y -in:trash", "anywhere", "size")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
-            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Starred & Personal</span>
-            <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.learner || 0}</span>
+            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-400" />
+            <span>Older Than 1 Year</span>
+            <div className="flex items-center gap-1 ml-1 shrink-0">
+              <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.oldMail || 0}</span>
+              {sizes?.oldMail > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.oldMail)}</span>}
+            </div>
           </button>
         </div>
       </div>
