@@ -987,7 +987,7 @@ export default function Dashboard({ user }: { user: any }) {
              </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 pb-1 relative z-50">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 pb-1 relative z-20">
             <div className="shrink-0">
               <FolderMultiSelect 
                 selected={folderFilters} 
