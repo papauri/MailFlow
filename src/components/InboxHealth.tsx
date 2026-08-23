@@ -55,10 +55,10 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
       try {
         const [unread, oldPromo, large, spamAndTrash, gatekeeper, trust, content, learner] = await Promise.all([
           countEmails("is:unread in:inbox"),
-          countEmails("category:promotions older_than:6m"),
+          countEmails("category:promotions older_than:6m -in:trash"),
           countEmails("larger:5M -in:trash"),
           countEmails("in:spam OR in:trash"),
-          countEmails("category:promotions OR in:spam"), // Gatekeeper
+          countEmails("(category:promotions OR in:spam) -in:trash"), // Gatekeeper
           countEmails("is:important -category:promotions -in:trash"), // Trust
           countEmails("has:attachment -in:trash"), // Content
           countEmails("(is:starred OR label:personal) -in:trash") // Learner
@@ -197,7 +197,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           desc="Marketing emails and newsletters older than 6 months."
           color="border-slate-300 bg-slate-100/50 hover:bg-slate-100"
           actionText="Clean Up Promotions"
-          onAction={() => onApplyQuery("older_than:6m", "category:promotions")}
+          onAction={() => onApplyQuery("older_than:6m -in:trash", "category:promotions")}
         />
         <HealthCard 
           icon={<ShieldAlert className="w-6 h-6 text-red-500" />}
@@ -255,7 +255,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         </div>
         <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button 
-            onClick={() => onApplyQuery("category:promotions OR in:spam", "anywhere")}
+            onClick={() => onApplyQuery("(category:promotions OR in:spam)", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
             <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -282,7 +282,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           </button>
 
           <button 
-            onClick={() => onApplyQuery("is:starred OR label:personal", "anywhere")}
+            onClick={() => onApplyQuery("(is:starred OR label:personal)", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
           >
             <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />

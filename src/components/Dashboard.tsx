@@ -724,8 +724,10 @@ export default function Dashboard({ user }: { user: any }) {
     (parsedQuery?.query || '').toLowerCase().includes('is:unread') ||
     lastExecutedQuery.toLowerCase().includes('is:unread');
 
+  const shouldCategorize = isActuallyUnreadOnly || folderFilters.length > 1 || query.includes(' OR ') || (parsedQuery?.query || '').includes(' OR ') || lastExecutedQuery.includes(' OR ');
+
   const groupedEmails = useMemo(() => {
-    if (!isActuallyUnreadOnly) {
+    if (!shouldCategorize) {
       return [{ title: null, emails: filteredEmails }];
     }
     const groups: any = {};
@@ -763,7 +765,7 @@ export default function Dashboard({ user }: { user: any }) {
         if (b.title === 'Primary Inbox') return 1;
         return a.title.localeCompare(b.title);
       });
-  }, [filteredEmails, isActuallyUnreadOnly, userLabels]);
+  }, [filteredEmails, shouldCategorize, userLabels]);
 
   return (
     <div className={cn("min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col", !showHealth && "h-screen overflow-hidden")}>
@@ -1302,7 +1304,7 @@ export default function Dashboard({ user }: { user: any }) {
                                const labels = email.labelIds || [];
                                const badges = [];
                                
-                               if (!isActuallyUnreadOnly) return null;
+                               if (shouldCategorize) return null;
                                
                                if (labels.includes('SPAM')) badges.push({ text: 'Spam', color: 'bg-red-50 text-red-700 border-red-100' });
                                else if (labels.includes('TRASH')) badges.push({ text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' });
