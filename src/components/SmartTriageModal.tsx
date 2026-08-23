@@ -432,17 +432,15 @@ export function SmartTriageModal({
     setExpandedGroupIds(new Set());
 
     try {
-      let q = "-in:trash -in:spam -in:sent";
-      if (folderQuery === "in:inbox") {
-        q = "in:inbox";
-      } else if (folderQuery.startsWith("label:")) {
-        const labelName = folderQuery.replace("label:", "").replace(/"/g, "");
-        q = `label:"${labelName}" -in:trash -in:spam -in:sent`;
-      } else if (folderQuery !== "anywhere") {
-        q = `${folderQuery} -in:trash -in:spam -in:sent`;
-      }
-
-      // Fetch emails
+      let q = "-in:trash -in:spam -in:sent -is:draft";
+      if (folderQuery !== "anywhere") {
+        if (folderQuery.startsWith("label:")) {
+           const labelName = folderQuery.split(":")[1];
+           q = `label:"${labelName}" -in:trash -in:spam -in:sent -is:draft`;
+        } else {
+           q = `${folderQuery} -in:trash -in:spam -in:sent -is:draft`;
+        }
+      }// Fetch emails
       const rawEmails = await searchEmails(q, 100);
       const handledIds = getStoredHandledIds();
       const dismissedSenders = getStoredDismissedSenders();

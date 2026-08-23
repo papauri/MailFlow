@@ -76,7 +76,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
 
       try {
-        const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam", 250);
+        const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam -in:sent -is:draft", 250);
         setRecentEmailsState(recentEmails);
         
         // Local Aggregation

@@ -185,10 +185,14 @@ export async function searchEmailsPaginated(query: string, maxResults = 50, page
 
 export async function batchModifyEmails(ids: string[], addLabelIds: string[], removeLabelIds: string[]) {
   if (ids.length === 0) return;
-  await fetchGmailAPI('/messages/batchModify', {
-    method: 'POST',
-    body: JSON.stringify({ ids, addLabelIds, removeLabelIds })
-  });
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + CHUNK_SIZE);
+    await fetchGmailAPI('/messages/batchModify', {
+      method: 'POST',
+      body: JSON.stringify({ ids: chunk, addLabelIds, removeLabelIds })
+    });
+  }
 }
 
 export async function batchTrashEmails(ids: string[]) {
@@ -198,10 +202,14 @@ export async function batchTrashEmails(ids: string[]) {
 
 export async function batchDeleteEmails(ids: string[]) {
   if (ids.length === 0) return;
-  await fetchGmailAPI('/messages/batchDelete', {
-    method: 'POST',
-    body: JSON.stringify({ ids })
-  });
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + CHUNK_SIZE);
+    await fetchGmailAPI('/messages/batchDelete', {
+      method: 'POST',
+      body: JSON.stringify({ ids: chunk })
+    });
+  }
 }
 
 export async function batchArchiveEmails(ids: string[]) {
@@ -367,16 +375,15 @@ export async function renameLabel(id: string, name: string) {
 }
 
 export async function createFilter(query: string, addLabelIds: string[], removeLabelIds: string[] = ['INBOX']) {
+  const action: any = {};
+  if (addLabelIds && addLabelIds.length > 0) action.addLabelIds = addLabelIds;
+  if (removeLabelIds && removeLabelIds.length > 0) action.removeLabelIds = removeLabelIds;
+  
   return await fetchGmailAPI('/settings/filters', {
     method: 'POST',
     body: JSON.stringify({
-      criteria: {
-        query
-      },
-      action: {
-        addLabelIds,
-        removeLabelIds
-      }
+      criteria: { query },
+      action
     })
   });
 }
