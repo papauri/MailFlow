@@ -8,6 +8,7 @@ import { UnsubscribeManager } from "./UnsubscribeManager";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { FolderOptimizer } from "./FolderOptimizer";
 import { RuleSuggester } from './RuleSuggester';
+import { SmartTriageModal } from './SmartTriageModal';
 
 const GENERIC_EMAIL_DOMAINS = new Set([
   'gmail.com',
@@ -43,6 +44,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
+  const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
@@ -258,6 +260,17 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           actionText="Open Labels"
           onAction={() => setIsLabelManagerOpen(true)}
         />
+        {aiSettings?.apiKey && (
+          <HealthCard 
+            icon={<Bot className="w-6 h-6 text-indigo-500" />}
+            title="AI Smart Triage"
+            count="Analyze"
+            desc="Let AI organize your inbox intelligently."
+            color="border-indigo-300 bg-indigo-50 hover:bg-indigo-100"
+            actionText="Run Smart Triage"
+            onAction={() => setIsSmartTriageOpen(true)}
+          />
+        )}
       </div>
 
       {isLabelManagerOpen && (
@@ -265,6 +278,14 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           isOpen={isLabelManagerOpen}
           onClose={() => setIsLabelManagerOpen(false)}
           userLabels={userLabels}
+          aiSettings={aiSettings}
+        />
+      )}
+
+      {isSmartTriageOpen && (
+        <SmartTriageModal
+          isOpen={isSmartTriageOpen}
+          onClose={() => setIsSmartTriageOpen(false)}
           aiSettings={aiSettings}
         />
       )}

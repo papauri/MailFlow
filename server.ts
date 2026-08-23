@@ -133,6 +133,59 @@ async function startServer() {
     }
   });
 
+  app.post("/api/smart-triage", async (req, res) => {
+    try {
+      const { emails, settings } = req.body;
+      if (!emails || !Array.isArray(emails)) {
+        return res.status(400).json({ error: "Emails array is required" });
+      }
+
+      const emailText = emails.map(e => `ID: ${e.id} | From: ${e.sender} | Subject: ${e.subject} | Current Categories: [${(e.labelIds || []).join(', ')}]`).join('\n');
+
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          suggestions: {
+            type: Type.ARRAY,
+            description: "List of actionable triage suggestions for specific emails.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                emailId: { type: Type.STRING },
+                sender: { type: Type.STRING },
+                subject: { type: Type.STRING },
+                suggestedAction: { type: Type.STRING, description: "Exact string: 'move_to_primary', 'move_to_updates', 'move_to_promotions', 'archive', or 'star'" },
+                reason: { type: Type.STRING, description: "Why this action is recommended (e.g., 'This looks like an important follow-up from a lawyer.')" }
+              },
+              required: ["emailId", "sender", "subject", "suggestedAction", "reason"]
+            }
+          }
+        },
+        required: ["suggestions"]
+      };
+
+      const aiPrompt = `You are an expert AI Email Assistant. 
+        I am giving you a list of recent emails in my inbox (metadata only).
+        Your job is to identify emails that are currently miscategorized or need immediate triage action based on their sender and subject.
+        For example:
+        - An email from a lawyer, colleague, or real human that requires a response should be moved to Primary (if it isn't) or Starred.
+        - A bank OTP, receipt, or automated alert sitting in Primary should be moved to Updates.
+        - Marketing spam that bypassed filters should be archived or moved to Promotions.
+        
+        Only provide suggestions for emails that *need* to be moved or acted upon to improve inbox organization. Do not include emails that are already in their correct category. Keep it to the top 10 most valuable suggestions.
+        
+        Emails:
+        ${emailText}
+      `;
+
+      const result = await generateAIContent(aiPrompt, schema, settings);
+      res.json(result);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: e.message || "Failed to generate triage suggestions" });
+    }
+  });
+
   app.post("/api/analyze-inbox", async (req, res) => {
     try {
       const { emails, userEmail, settings } = req.body;
