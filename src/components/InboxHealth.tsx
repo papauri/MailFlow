@@ -287,6 +287,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
           isOpen={isSmartTriageOpen}
           onClose={() => setIsSmartTriageOpen(false)}
           aiSettings={aiSettings}
+          userLabels={userLabels}
         />
       )}
 

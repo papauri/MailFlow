@@ -135,12 +135,13 @@ async function startServer() {
 
   app.post("/api/smart-triage", async (req, res) => {
     try {
-      const { emails, settings } = req.body;
+      const { emails, settings, existingLabels } = req.body;
       if (!emails || !Array.isArray(emails)) {
         return res.status(400).json({ error: "Emails array is required" });
       }
 
       const emailText = emails.map(e => `ID: ${e.id} | From: ${e.sender} | Subject: ${e.subject} | Current Categories: [${(e.labelIds || []).join(', ')}]`).join('\n');
+      const labelsText = existingLabels ? existingLabels.map(l => l.name).join(', ') : 'None';
 
       const schema = {
         type: Type.OBJECT,
@@ -155,9 +156,9 @@ async function startServer() {
                 sender: { type: Type.STRING },
                 subject: { type: Type.STRING },
                 suggestedAction: { type: Type.STRING, description: "Exact string: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'apply_label'" },
-                suggestedLabel: { type: Type.STRING, description: "Required ONLY if suggestedAction is 'apply_label'. A concise, smart label name (e.g., 'Invoices', 'Travel', 'Urgent')." },
+                suggestedLabel: { type: Type.STRING, description: "Required ONLY if suggestedAction is 'apply_label'. Recommend an existing folder or propose a brand NEW folder (e.g., 'Invoices', 'Travel')." },
                 applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this rule should automatically apply to all future emails from this exact sender." },
-                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Important lawyer follow-up. Future emails will be caught.')" }
+                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Creating a new folder for all AWS billing emails will keep your inbox clean.')" }
               },
               required: ["emailId", "sender", "subject", "suggestedAction", "applyToAllFuture", "reason"]
             }
@@ -166,16 +167,18 @@ async function startServer() {
         required: ["suggestions"]
       };
 
-      const aiPrompt = `You are an expert Inbox Organizer.
-        I am giving you a list of recent emails in my inbox (metadata only).
-        Your job is to identify emails that are miscategorized, need immediate triage, or should be automatically filtered in the future.
-        For example:
-        - A lawyer's email: move_to_primary, applyToAllFuture = true.
-        - A bank OTP or receipt: move_to_updates, applyToAllFuture = true.
-        - Important project updates: apply_label (with a smart suggestedLabel), applyToAllFuture = true.
-        - Marketing spam that bypassed filters: archive, applyToAllFuture = true.
+      const aiPrompt = `You are a meticulous, highly-thorough Inbox Organizer.
+        I am giving you a deep sample of recent emails across my entire mailbox.
+        My current custom folders (labels) are: [${labelsText}].
         
-        Only provide the top 10 most valuable suggestions for emails that *need* action to improve inbox organization. Do not include emails that are fine.
+        Your job is to provide comprehensive, actionable organization insights. Don't just archive things—actively suggest creating NEW folders or moving items into existing folders to build a highly organized system.
+        For example:
+        - If you see multiple receipts, suggest 'apply_label' with 'Receipts & Billing' (new or existing) and set applyToAllFuture = true.
+        - If you see scattered project emails, suggest moving them to a new 'Project X' folder.
+        - Move automated alerts to Updates, or apply a specific 'Alerts' label.
+        - Clean up inbox clutter.
+        
+        Provide up to 15 of the highest-value, most thorough organization suggestions. Only include emails that *need* action or would benefit from being placed in a specific folder.
         
         Emails:
         ${emailText}

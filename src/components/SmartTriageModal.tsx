@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, CheckCircle2, Inbox, Archive, Star, FolderDown, Wand2, Tag, ArrowRight } from 'lucide-react';
 import { searchEmails, batchModifyEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
 
-export function SmartTriageModal({ isOpen, onClose, aiSettings }: { isOpen: boolean, onClose: () => void, aiSettings: any }) {
+export function SmartTriageModal({ isOpen, onClose, aiSettings, userLabels }: { isOpen: boolean, onClose: () => void, aiSettings: any, userLabels?: any[] }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +19,8 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings }: { isOpen: bool
     setLoading(true);
     setError(null);
     try {
-      // Fetch recent emails from inbox
-      const recentEmails = await searchEmails("in:inbox", 50);
+      // Fetch recent emails from across the mailbox (excluding junk) for thorough analysis
+      const recentEmails = await searchEmails("-in:trash -in:spam", 100);
       
       const payload = recentEmails.map(e => ({
         id: e.id,
@@ -33,7 +33,7 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings }: { isOpen: bool
       const res = await fetch("/api/smart-triage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: payload, settings: aiSettings })
+        body: JSON.stringify({ emails: payload, settings: aiSettings, existingLabels: userLabels })
       });
 
       if (!res.ok) {
@@ -76,9 +76,14 @@ export function SmartTriageModal({ isOpen, onClose, aiSettings }: { isOpen: bool
       } else if (suggestion.suggestedAction === 'star') {
         addLabels = ['STARRED'];
       } else if (suggestion.suggestedAction === 'apply_label' && suggestion.suggestedLabel) {
-        const lbl = await createLabel(suggestion.suggestedLabel);
-        if (lbl && lbl.id) {
-          addLabels = [lbl.id];
+        const existing = userLabels?.find(l => l.name.toLowerCase() === suggestion.suggestedLabel.toLowerCase());
+        if (existing) {
+          addLabels = [existing.id];
+        } else {
+          const lbl = await createLabel(suggestion.suggestedLabel);
+          if (lbl && lbl.id) {
+            addLabels = [lbl.id];
+          }
         }
       }
       
