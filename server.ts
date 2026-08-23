@@ -154,25 +154,28 @@ async function startServer() {
                 emailId: { type: Type.STRING },
                 sender: { type: Type.STRING },
                 subject: { type: Type.STRING },
-                suggestedAction: { type: Type.STRING, description: "Exact string: 'move_to_primary', 'move_to_updates', 'move_to_promotions', 'archive', or 'star'" },
-                reason: { type: Type.STRING, description: "Why this action is recommended (e.g., 'This looks like an important follow-up from a lawyer.')" }
+                suggestedAction: { type: Type.STRING, description: "Exact string: 'move_to_primary', 'move_to_updates', 'archive', 'star', or 'apply_label'" },
+                suggestedLabel: { type: Type.STRING, description: "Required ONLY if suggestedAction is 'apply_label'. A concise, smart label name (e.g., 'Invoices', 'Travel', 'Urgent')." },
+                applyToAllFuture: { type: Type.BOOLEAN, description: "Set to true if this rule should automatically apply to all future emails from this exact sender." },
+                reason: { type: Type.STRING, description: "Brief reason (e.g., 'Important lawyer follow-up. Future emails will be caught.')" }
               },
-              required: ["emailId", "sender", "subject", "suggestedAction", "reason"]
+              required: ["emailId", "sender", "subject", "suggestedAction", "applyToAllFuture", "reason"]
             }
           }
         },
         required: ["suggestions"]
       };
 
-      const aiPrompt = `You are an expert AI Email Assistant. 
+      const aiPrompt = `You are an expert Inbox Organizer.
         I am giving you a list of recent emails in my inbox (metadata only).
-        Your job is to identify emails that are currently miscategorized or need immediate triage action based on their sender and subject.
+        Your job is to identify emails that are miscategorized, need immediate triage, or should be automatically filtered in the future.
         For example:
-        - An email from a lawyer, colleague, or real human that requires a response should be moved to Primary (if it isn't) or Starred.
-        - A bank OTP, receipt, or automated alert sitting in Primary should be moved to Updates.
-        - Marketing spam that bypassed filters should be archived or moved to Promotions.
+        - A lawyer's email: move_to_primary, applyToAllFuture = true.
+        - A bank OTP or receipt: move_to_updates, applyToAllFuture = true.
+        - Important project updates: apply_label (with a smart suggestedLabel), applyToAllFuture = true.
+        - Marketing spam that bypassed filters: archive, applyToAllFuture = true.
         
-        Only provide suggestions for emails that *need* to be moved or acted upon to improve inbox organization. Do not include emails that are already in their correct category. Keep it to the top 10 most valuable suggestions.
+        Only provide the top 10 most valuable suggestions for emails that *need* action to improve inbox organization. Do not include emails that are fine.
         
         Emails:
         ${emailText}

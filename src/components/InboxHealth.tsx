@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, Sparkles, ArrowRight, Bot, Target, Filter, ShieldCheck, Network, FileSearch, BrainCircuit, PieChart, Tag, AlertCircle, User, Clock, Bell, Wand2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -262,12 +262,12 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels }:
         />
         {aiSettings?.apiKey && (
           <HealthCard 
-            icon={<Bot className="w-6 h-6 text-indigo-500" />}
-            title="AI Smart Triage"
+            icon={<Wand2 className="w-6 h-6 text-indigo-500" />}
+            title="Smart Organizer"
             count="Analyze"
-            desc="Let AI organize your inbox intelligently."
+            desc="Intelligently organize your inbox."
             color="border-indigo-300 bg-indigo-50 hover:bg-indigo-100"
-            actionText="Run Smart Triage"
+            actionText="Run Organizer"
             onAction={() => setIsSmartTriageOpen(true)}
           />
         )}
