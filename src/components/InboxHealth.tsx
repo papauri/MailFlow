@@ -560,7 +560,7 @@ function HealthCard({ icon, iconBg = "bg-slate-100", title, count, desc, actionT
         {icon}
       </div>
       
-      <div className="flex-1 flex flex-col sm:block min-w-0">
+      <div className="flex-1 flex flex-col sm:block min-w-0 pr-2 sm:pr-0">
         <h3 className="font-bold text-slate-900 text-sm sm:text-base sm:mb-1 truncate flex items-center gap-2">
           {title}
         </h3>
@@ -568,11 +568,11 @@ function HealthCard({ icon, iconBg = "bg-slate-100", title, count, desc, actionT
         <p className="text-[11px] text-slate-500 truncate sm:hidden">{actionText}</p>
       </div>
       
-      <div className="flex flex-col items-end sm:w-full sm:flex-row sm:items-center sm:justify-between sm:pt-3 sm:mt-auto shrink-0 border-t sm:border-slate-100/80 w-full">
+      <div className="flex flex-col items-end sm:flex-row sm:items-center sm:justify-between sm:pt-3 sm:mt-auto shrink-0 sm:border-t sm:border-slate-100/80 sm:w-full border-t-0">
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
            <span className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
            {sizeEstimate > 0 && (
-              <span className="text-[10px] sm:text-xs font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 mt-1 sm:mt-0">
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 mt-1 sm:mt-0 text-right sm:text-left whitespace-nowrap">
                 ~{formatSize(sizeEstimate)}
               </span>
            )}
