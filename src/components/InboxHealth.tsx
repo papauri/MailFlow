@@ -315,6 +315,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           userLabels={userLabels}
           userEmail={userEmail}
           onRefresh={onRefresh}
+          onSearchQuery={(q) => onApplyQuery(q)}
         />
       )}
 

@@ -15,7 +15,8 @@ import {
   RefreshCw,
   FolderPlus,
   Inbox,
-  Sparkles
+  Zap,
+  Search
 } from 'lucide-react';
 import { 
   searchEmails, 
@@ -59,6 +60,7 @@ export interface SmartTriageModalProps {
   userLabels?: any[];
   userEmail?: string;
   onRefresh?: () => void;
+  onSearchQuery?: (query: string) => void;
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
@@ -110,7 +112,8 @@ export function SmartTriageModal({
   aiSettings,
   userLabels = [],
   userEmail,
-  onRefresh
+  onRefresh,
+  onSearchQuery
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
@@ -758,14 +761,14 @@ export function SmartTriageModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 lg:p-6 animate-in fade-in duration-150"
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-start justify-center p-2 sm:p-4 lg:p-6 animate-in fade-in duration-150 overflow-y-auto"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="smart-organizer-title"
     >
       <div 
-        className="bg-white w-full max-w-4xl shadow-xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-[88vh] sm:rounded-xl"
+        className="bg-white w-full max-w-4xl shadow-xl flex flex-col border border-slate-200 sm:rounded-xl min-h-full sm:min-h-0 sm:my-auto sm:mb-8"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -824,9 +827,9 @@ export function SmartTriageModal({
 
         {/* Macro Insights */}
         {!loading && insights.length > 0 && !isAllCompleted && (
-          <div className="px-5 pt-4 pb-2 bg-gradient-to-br from-indigo-50 to-blue-50/30 border-b border-indigo-100/50 shrink-0">
-            <h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> Smarter Organizer Insights
+          <div className="px-5 pt-4 pb-4 bg-slate-50 border-b border-slate-200 shrink-0">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-blue-600" /> Smart Actions
             </h3>
             <div className="flex flex-col gap-2.5">
               {insights.map(insight => {
@@ -835,19 +838,32 @@ export function SmartTriageModal({
                 const isExecuting = executingInsightId === insight.id;
 
                 return (
-                  <div key={insight.id} className="bg-white border border-indigo-100/80 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div key={insight.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm">{insight.title}</h4>
-                      <p className="text-xs text-slate-600 mt-0.5">{insight.description}</p>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-snug">{insight.description}</p>
                     </div>
-                    <button
-                      onClick={() => executeInsightAction(insight)}
-                      disabled={isExecuting}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
-                    >
-                      {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                      {insight.actionLabel}
-                    </button>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => {
+                          if (onSearchQuery) {
+                            onSearchQuery(insight.filterQuery);
+                            onClose();
+                          }
+                        }}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                      >
+                        <Search className="w-3 h-3" /> Review
+                      </button>
+                      <button
+                        onClick={() => executeInsightAction(insight)}
+                        disabled={isExecuting}
+                        className="flex-1 sm:flex-none shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                      >
+                        {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                        {insight.actionLabel}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -944,8 +960,8 @@ export function SmartTriageModal({
           </div>
         )}
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6">
+        {/* Main List */}
+        <div className="flex-1 bg-slate-50/50 p-4 sm:p-6">
           {loading ? (
             <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
               <Loader2 className="w-7 h-7 text-slate-700 animate-spin" />
