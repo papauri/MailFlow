@@ -874,7 +874,7 @@ export function SmartTriageModal({
         {/* Top Control Bar & Filters */}
         {!loading && groups.length > 0 && !isAllCompleted && (
           <div className="px-5 py-3 border-b border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
               <button
                 onClick={() => setActiveFilterTab('all')}
                 className={cn(

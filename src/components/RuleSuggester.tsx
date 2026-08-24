@@ -412,7 +412,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           {/* Tabs switch */}
           <div 
             className="flex items-center bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold"

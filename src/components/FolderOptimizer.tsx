@@ -746,29 +746,29 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
     <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8">
       {/* Header */}
       <div 
-        className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 cursor-pointer hover:bg-slate-100/50 transition-colors"
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 cursor-pointer hover:bg-slate-100/50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="p-2 rounded-lg bg-slate-100 text-slate-700 mt-1 sm:mt-0 shrink-0">
             <SlidersHorizontal className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-slate-800">
+          <div className="min-w-0 pr-2 sm:pr-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
                 Folder & Label Optimizer
               </h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full uppercase tracking-wider">
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full uppercase tracking-wider shrink-0">
                 Precision Engine
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 leading-snug">
               Statistical sender & topic clustering &bull; Choose between tagging or filing away
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           {hasScanned ? (
             <button 
               onClick={(e) => {

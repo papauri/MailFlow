@@ -331,7 +331,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           {showQuickFilters ? <ChevronUp className="w-4 h-4 ml-auto text-slate-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />}
         </button>
         {showQuickFilters && (
-        <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex flex-wrap gap-2 pt-1 pb-1">
           <button 
             onClick={() => onApplyQuery("is:unread is:important -category:promotions -in:trash", "anywhere")}
             className="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-sm shrink-0 whitespace-nowrap"
