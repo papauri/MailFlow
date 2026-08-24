@@ -712,9 +712,9 @@ export function SmartTriageModal({
       if (allMessageIds.length > 0) {
         if (insight.actionType === 'mark_read') {
           await batchModifyEmails(allMessageIds, [], ['UNREAD']);
-        } else if (insight.actionType === 'trash_promotions') {
+        } else if (insight.actionType === 'trash_promotions' || insight.actionType === 'trash') {
           await batchTrashEmails(allMessageIds);
-        } else if (insight.actionType === 'archive_old') {
+        } else if (insight.actionType === 'archive_old' || insight.actionType === 'archive') {
           await batchArchiveEmails(allMessageIds);
         } else {
           // Default to archive if unknown
