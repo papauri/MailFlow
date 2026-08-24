@@ -839,11 +839,11 @@ export function SmartTriageModal({
 
                 return (
                   <div key={insight.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm">{insight.title}</h4>
-                      <p className="text-xs text-slate-600 mt-0.5 leading-snug">{insight.description}</p>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-800 text-sm truncate">{insight.title}</h4>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-snug break-words">{insight.description}</p>
                     </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                       <button
                         onClick={() => {
                           if (onSearchQuery) {
@@ -1059,7 +1059,7 @@ export function SmartTriageModal({
                             <span>Done</span>
                           </div>
                         ) : (
-                          <div className="flex flex-1 sm:flex-initial gap-2 items-center">
+                          <div className="flex flex-wrap flex-1 sm:flex-initial gap-2 items-center">
                             {group.actionType === 'trash' && (
                               <button
                                 onClick={() => executeGroupAction(group)}
