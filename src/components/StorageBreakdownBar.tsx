@@ -191,9 +191,7 @@ export function StorageBreakdownBar({
       <div className="p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-slate-100 rounded-xl text-slate-700">
-              <HardDrive className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
+            
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-slate-900">Storage & Cleanup Breakdown</h3>
@@ -271,7 +269,7 @@ export function StorageBreakdownBar({
                   <div>
                     <div className="flex items-center justify-between gap-1.5 mb-1.5">
                       <div className="flex items-center gap-1.5">
-                        <span className={segment.colorText}>{segment.icon}</span>
+                        
                         <span className={cn("text-xs font-bold truncate", segment.colorText)}>{segment.name}</span>
                       </div>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 bg-white/90 rounded border border-slate-200/60 text-slate-700">
@@ -292,9 +290,7 @@ export function StorageBreakdownBar({
                         {segment.count.toLocaleString()} emails
                       </div>
                     </div>
-                    <div className="p-1 rounded-md bg-white text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors shadow-2xs">
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
+                    
                   </div>
                 </button>
               );

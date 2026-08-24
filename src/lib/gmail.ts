@@ -12,10 +12,20 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  } catch (err) {
+    if (retries > 0) {
+      console.warn(`Network error on ${endpoint} (${err.message || err}). Retrying in ${backoff}ms...`);
+      await new Promise(r => setTimeout(r, backoff));
+      return fetchGmailAPI(endpoint, options, retries - 1, backoff * 1.5);
+    }
+    throw err;
+  }
   
-  if (response.status === 429 && retries > 0) {
-    console.warn(`Rate limit hit on ${endpoint}. Retrying in ${backoff}ms...`);
+  if ((response.status === 429 || response.status >= 500) && retries > 0) {
+    console.warn(`Status ${response.status} hit on ${endpoint}. Retrying in ${backoff}ms...`);
     await new Promise(r => setTimeout(r, backoff));
     return fetchGmailAPI(endpoint, options, retries - 1, backoff * 1.5);
   }
@@ -287,26 +297,22 @@ export async function markAllAsReadByQuery(query: string, onProgress?: (markedCo
   return totalMarked;
 }
 
-export async function countEmails(query: string): Promise<number | string> {
+export async function countEmails(query: string): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
     let pages = 0;
     
     do {
-      let url = `/threads?q=${encodeURIComponent(query)}&maxResults=500`;
+      let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
       if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
       
-      if (!res || !res.threads || res.threads.length === 0) break;
-      total += res.threads.length;
+      if (!res || !res.messages || res.messages.length === 0) break;
+      total += res.messages.length;
       pageToken = res.nextPageToken;
       pages++;
     } while (pageToken && pages < 10); // Check up to 5,000 emails max to save API calls
-    
-    if (pageToken) {
-      return "5,000+";
-    }
     
     return total;
   } catch (err) {

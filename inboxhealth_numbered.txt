@@ -1,0 +1,619 @@
+     1	import React, { useState, useEffect } from 'react';
+     2	import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
+     3	import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
+     4	import { cn } from '../lib/utils';
+     5	import { WalkthroughTip } from "./WalkthroughTip";
+     6	import { TypingLoader } from "./TypingLoader";
+     7	import { CategoryDistributionModal } from './CategoryDistributionModal';
+     8	import { UnsubscribeManager } from "./UnsubscribeManager";
+     9	import { LabelManagerModal } from "./LabelManagerModal";
+    10	import { FolderOptimizer } from "./FolderOptimizer";
+    11	import { RuleSuggester } from './RuleSuggester';
+    12	import { SmartTriageModal } from './SmartTriageModal';
+    13	import { HealthScoreModal } from './HealthScoreModal';
+    14	import { StorageBreakdownBar } from './StorageBreakdownBar';
+    15	import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
+    16	
+    17	export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender") => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
+    18	  const [stats, setStats] = useState<any>(null);
+    19	  const [sizes, setSizes] = useState<any>({});
+    20	  const [loading, setLoading] = useState(true);
+    21	  const [isChartModalOpen, setIsChartModalOpen] = useState(false);
+    22	  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
+    23	  const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
+    24	  const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
+    25	  const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
+    26	  const [topSenders, setTopSenders] = useState<any[]>([]);
+    27	  const [topDomains, setTopDomains] = useState<any[]>([]);
+    28	  const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
+    29	  const [isLoadingEmails, setIsLoadingEmails] = useState(true);
+    30	  const [reloadTrigger, setReloadTrigger] = useState(0);
+    31	
+    32	  const [showOverview, setShowOverview] = useState(true);
+    33	  const [showQuickFilters, setShowQuickFilters] = useState(true);
+    34	  const [showAnalytics, setShowAnalytics] = useState(true);
+    35	
+    36	  useEffect(() => {
+    37	    async function fetchStats() {
+    38	      // Only show full page loader on initial mount
+    39	      if (!stats) setLoading(true);
+    40	      try {
+    41	        const [unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
+    42	          countEmails("is:unread in:inbox"),
+    43	          countEmails("category:promotions older_than:6m -in:trash"),
+    44	          countEmails("larger:5M -in:trash"),
+    45	          countEmails("in:spam OR in:trash"),
+    46	          countEmails("is:unread is:important -category:promotions -in:trash"),
+    47	          countEmails("category:updates OR category:social -in:trash"),
+    48	          countEmails("has:attachment -in:trash"),
+    49	          countEmails("older_than:1y -in:trash")
+    50	        ]);
+    51	        setStats({ unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail });
+    52	        
+    53	        // Fetch estimated sizes in background
+    54	        Promise.all([
+    55	          estimateQuerySize("category:promotions older_than:6m -in:trash", oldPromo),
+    56	          estimateQuerySize("larger:5M -in:trash", large),
+    57	          estimateQuerySize("in:spam OR in:trash", spamAndTrash),
+    58	          estimateQuerySize("has:attachment -in:trash", withAttachments),
+    59	          estimateQuerySize("older_than:1y -in:trash", oldMail),
+    60	          estimateQuerySize("category:updates OR category:social -in:trash", updatesAndSocial)
+    61	        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize]) => {
+    62	          setSizes({ 
+    63	            oldPromo: oldPromoSize, 
+    64	            large: largeSize, 
+    65	            spamAndTrash: spamAndTrashSize,
+    66	            withAttachments: attachmentsSize,
+    67	            oldMail: oldMailSize,
+    68	            updatesAndSocial: updatesAndSocialSize
+    69	          });
+    70	        });
+    71	      } catch (e) {
+    72	        console.error(e);
+    73	      } finally {
+    74	        setLoading(false);
+    75	      }
+    76	    }
+    77	    
+    78	    async function fetchClusters() {
+    79	      setIsLoadingEmails(true);
+    80	      const normalizedUser = (userEmail || '').toLowerCase().trim();
+    81	      const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
+    82	
+    83	      try {
+    84	        const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam -in:sent -is:draft", 250);
+    85	        setRecentEmailsState(recentEmails);
+    86	        
+    87	        // Local Aggregation
+    88	        const senderCounts = new Map();
+    89	        const domainCounts = new Map();
+    90	        
+    91	        recentEmails.forEach(e => {
+    92	          const details = extractSenderDetails(e.sender);
+    93	          const email = details.emailAddr;
+    94	          const rootDomain = details.rootDomain;
+    95	          
+    96	          if (!senderCounts.has(email)) {
+    97	            senderCounts.set(email, { 
+    98	              email, 
+    99	              name: details.displayName, 
+   100	              count: 0 
+   101	            });
+   102	          }
+   103	          senderCounts.get(email).count++;
+   104	          
+   105	          // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers and self)
+   106	          if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
+   107	            if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0 });
+   108	            domainCounts.get(rootDomain).count++;
+   109	          }
+   110	        });
+   111	        
+   112	        const rawSenders = Array.from(senderCounts.values())
+   113	          .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
+   114	          .sort((a, b) => b.count - a.count).slice(0, 8);
+   115	        const exactSenders = await Promise.all(rawSenders.map(async (s) => {
+   116	           const exactCount = await countEmails(`from:(${s.email}) -in:trash`);
+   117	           return { ...s, count: typeof exactCount === 'number' ? exactCount : s.count };
+   118	        }));
+   119	        setTopSenders(exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
+   120	
+   121	        const rawDomains = Array.from(domainCounts.values())
+   122	          .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
+   123	          .sort((a, b) => b.count - a.count).slice(0, 8);
+   124	        const exactDomains = await Promise.all(rawDomains.map(async (d) => {
+   125	           const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
+   126	           return { ...d, count: typeof exactCount === 'number' ? exactCount : d.count };
+   127	        }));
+   128	        setTopDomains(exactDomains.filter(d => d.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
+   129	
+   130	      } catch (err: any) {
+   131	        console.error("Pattern analysis error:", err);
+   132	      } finally {
+   133	        setIsLoadingEmails(false);
+   134	      }
+   135	    }
+   136	    
+   137	    fetchStats();
+   138	    fetchClusters();
+   139	  }, [userEmail, reloadTrigger]);
+   140	
+   141	  const exportHealthReport = () => {
+   142	    let csv = "Section,Metric,Value\n";
+   143	    
+   144	    // Stats
+   145	    if (stats) {
+   146	      csv += `Overview,Important Unread,${stats.importantUnread || 0}\n`;
+   147	      csv += `Overview,Updates & Social,${stats.updatesAndSocial || 0}\n`;
+   148	      csv += `Overview,With Attachments,${stats.withAttachments || 0}\n`;
+   149	      csv += `Overview,Older Than 1 Year,${stats.oldMail || 0}\n`;
+   150	    }
+   151	    
+   152	    // Top Senders
+   153	    topSenders.forEach(s => {
+   154	      csv += `Top Sender,${s.email},${s.count}\n`;
+   155	    });
+   156	    
+   157	    // Top Domains
+   158	    topDomains.forEach(d => {
+   159	      csv += `Top Domain,${d.domain},${d.count}\n`;
+   160	    });
+   161	    
+   162	    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+   163	    const url = URL.createObjectURL(blob);
+   164	    const a = document.createElement('a');
+   165	    a.href = url;
+   166	    a.download = `mailflow_health_report_${new Date().toISOString().split('T')[0]}.csv`;
+   167	    document.body.appendChild(a);
+   168	    a.click();
+   169	    document.body.removeChild(a);
+   170	    URL.revokeObjectURL(url);
+   171	  };
+   172	
+   173	  if (loading || isLoadingEmails) {
+   174	    return <TypingLoader title="Analyzing Inbox Health" messages={["Scanning folders...", "Calculating storage sizes...", "Running email distribution analysis...", "Identifying large attachments...", "Categorizing subscriptions..."]} />;
+   175	  }
+   176	
+   177	  return (
+   178	    <div className="flex flex-col gap-6">
+   179	      <WalkthroughTip 
+   180	        storageKey="tip_health" 
+   181	        title="Inbox Health & Cleaners" 
+   182	        description="Check out Category Breakdown and top sender clusters to quickly identify large volumes of messages. You can archive, delete, or create filters with one click."
+   183	      />
+   184	
+   185	      <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
+   186	        <div className="flex items-center gap-3 sm:gap-5">
+   187	          
+   188	          <div>
+   189	            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-0.5">Inbox Health & Tools</h2>
+   190	            <p className="text-slate-500 text-xs sm:text-sm font-medium">
+   191	              Automated insights to help organize your inbox and free up space.
+   192	            </p>
+   193	          </div>
+   194	        </div>
+   195	
+   196	        <div className="flex flex-wrap items-center gap-2">
+   197	          <button
+   198	            onClick={exportHealthReport}
+   199	            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all shrink-0 hover:shadow-xs"
+   200	            title="Export health data to CSV"
+   201	          >
+   202	            
+   203	            <span>Export CSV</span>
+   204	          </button>
+   205	          
+   206	          <button
+   207	            onClick={() => setIsChartModalOpen(true)}
+   208	            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all shrink-0 hover:shadow-xs"
+   209	            title="View email distribution by category"
+   210	          >
+   211	            
+   212	            <span>Category Breakdown</span>
+   213	          </button>
+   214	        </div>
+   215	      </div>
+   216	
+   217	      <StorageBreakdownBar onApplyQuery={onApplyQuery} className="mb-4 sm:mb-6" />
+   218	
+   219	      <div className="flex flex-col gap-3 mt-2">
+   220	        <button 
+   221	          onClick={() => setShowOverview(!showOverview)}
+   222	          className="flex items-center gap-2 text-slate-800 font-bold hover:text-slate-600 transition-colors w-full text-left"
+   223	        >
+   224	          
+   225	          <span className="text-lg">Inbox Overview</span>
+   226	          {showOverview ? <ChevronUp className="w-4 h-4 ml-auto text-slate-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />}
+   227	        </button>
+   228	        {showOverview && (
+   229	          <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+   230	        <HealthCard 
+   231	          title="Storage Hogs"
+   232	          count={stats?.large}
+   233	          sizeEstimate={sizes?.large}
+   234	          desc="Emails larger than 5MB taking up valuable Google Drive space."
+   235	          actionText="Review Large Emails"
+   236	          onAction={() => onApplyQuery("larger:5M", "anywhere", "size")}
+   237	        />
+   238	        <HealthCard 
+   239	          title="Stale Promotions"
+   240	          count={stats?.oldPromo}
+   241	          sizeEstimate={sizes?.oldPromo}
+   242	          desc="Marketing emails and newsletters older than 6 months."
+   243	          actionText="Clean Up Promotions"
+   244	          onAction={() => onApplyQuery("older_than:6m -in:trash", "category:promotions")}
+   245	        />
+   246	        <HealthCard 
+   247	          title="Spam & Trash"
+   248	          count={stats?.spamAndTrash}
+   249	          sizeEstimate={sizes?.spamAndTrash}
+   250	          desc="Junk accumulating in your Spam and Trash folders."
+   251	          actionText="Review Junk"
+   252	          onAction={() => onApplyQuery("", "spam+trash")}
+   253	        />
+   254	        <HealthCard 
+   255	          title="Subscriptions"
+   256	          count="Manage"
+   257	          desc="Manage newsletters & promo senders in bulk."
+   258	          actionText="Open Manager"
+   259	          onAction={() => setIsUnsubscribeModalOpen(true)}
+   260	        />
+   261	        <HealthCard 
+   262	          title="Inbox Overload"
+   263	          count={stats?.unread}
+   264	          desc="Unread emails sitting around demanding your attention."
+   265	          actionText="Triage Unread"
+   266	          onAction={() => onApplyQuery("is:unread", "inbox")}
+   267	        />
+   268	        <HealthCard 
+   269	          title="Folders & Labels"
+   270	          count="Manage"
+   271	          desc="Create, rename, delete custom labels, and organize emails into folders."
+   272	          actionText="Manage Folders"
+   273	          onAction={() => setIsLabelManagerOpen(true)}
+   274	        />
+   275	        <HealthCard 
+   276	          title="Batch Organizer"
+   277	          count="Group"
+   278	          desc="Cluster recurring senders and organize inbox in bulk."
+   279	          actionText="Run Organizer"
+   280	          onAction={() => setIsSmartTriageOpen(true)}
+   281	        />
+   282	      </div>
+   283	        )}
+   284	      </div>
+   285	
+   286	      {isSmartTriageOpen && (
+   287	        <SmartTriageModal
+   288	          isOpen={isSmartTriageOpen}
+   289	          onClose={() => {
+   290	             setIsSmartTriageOpen(false);
+   291	             if (onRefresh) onRefresh();
+   292	          }}
+   293	          aiSettings={aiSettings}
+   294	          userLabels={userLabels}
+   295	          userEmail={userEmail}
+   296	          onRefresh={onRefresh}
+   297	          onSearchQuery={(q) => onApplyQuery(q)}
+   298	        />
+   299	      )}
+   300	
+   301	      
+   302	      
+   303	      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
+   304	        <div className="p-4 sm:p-5">
+   305	          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+   306	            <div className="flex items-center gap-2.5">
+   307	              <div className="flex items-center gap-2">
+   308	                <h3 className="text-sm sm:text-base font-bold text-slate-900">Quick Filters</h3>
+   309	              </div>
+   310	              <p className="text-xs text-slate-500 hidden sm:block">One-click searches to quickly find specific emails.</p>
+   311	            </div>
+   312	            <div className="flex items-center gap-2 self-end sm:self-center">
+   313	              <button
+   314	                onClick={() => setShowQuickFilters(!showQuickFilters)}
+   315	                className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+   316	              >
+   317	                <span>{showQuickFilters ? "Collapse Details" : "View Filters"}</span>
+   318	                {showQuickFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+   319	              </button>
+   320	            </div>
+   321	          </div>
+   322	          
+   323	          {showQuickFilters && (
+   324	            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+   325	              <button 
+   326	                onClick={() => onApplyQuery("is:unread is:important -category:promotions -in:trash", "anywhere")}
+   327	                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap"
+   328	              >
+   329	                <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-500" />
+   330	                <span>Important Unread</span>
+   331	                <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.importantUnread || 0}</span>
+   332	              </button>
+   333	              
+   334	              <button 
+   335	                onClick={() => onApplyQuery("category:updates OR category:social -in:trash", "anywhere", "size")}
+   336	                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap"
+   337	              >
+   338	                <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-500" />
+   339	                <span>Updates & Social</span>
+   340	                <div className="flex items-center gap-1 ml-1 shrink-0">
+   341	                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.updatesAndSocial || 0}</span>
+   342	                  {sizes?.updatesAndSocial > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.updatesAndSocial)}</span>}
+   343	                </div>
+   344	              </button>
+   345	              
+   346	              <button 
+   347	                onClick={() => onApplyQuery("has:attachment -in:trash", "anywhere", "size")}
+   348	                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap"
+   349	              >
+   350	                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-500" />
+   351	                <span>With Attachments</span>
+   352	                <div className="flex items-center gap-1 ml-1 shrink-0">
+   353	                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.withAttachments || 0}</span>
+   354	                  {sizes?.withAttachments > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.withAttachments)}</span>}
+   355	                </div>
+   356	              </button>
+   357	              
+   358	              <button 
+   359	                onClick={() => onApplyQuery("older_than:1y -in:trash", "anywhere", "size")}
+   360	                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap"
+   361	              >
+   362	                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-400" />
+   363	                <span>Older Than 1 Year</span>
+   364	                <div className="flex items-center gap-1 ml-1 shrink-0">
+   365	                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.oldMail || 0}</span>
+   366	                  {sizes?.oldMail > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.oldMail)}</span>}
+   367	                </div>
+   368	              </button>
+   369	            </div>
+   370	          )}
+   371	        </div>
+   372	      </div>
+   373	
+   374	
+   375	      
+   376	      {/* Local Aggregations */}
+   377	      {topSenders.length > 0 && (
+   378	        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
+   379	        <div className="p-4 sm:p-5">
+   380	          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+   381	            <div className="flex items-center gap-2.5">
+   382	              <div className="flex items-center gap-2">
+   383	                <h3 className="text-sm sm:text-base font-bold text-slate-900">Sender Analytics</h3>
+   384	              </div>
+   385	              <p className="text-xs text-slate-500 hidden sm:block">Analyze most frequent senders and domain clusters.</p>
+   386	            </div>
+   387	            <div className="flex items-center gap-2 self-end sm:self-center">
+   388	              <button
+   389	                onClick={() => setShowAnalytics(!showAnalytics)}
+   390	                className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+   391	              >
+   392	                <span>{showAnalytics ? "Collapse Details" : "View Analytics"}</span>
+   393	                {showAnalytics ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+   394	              </button>
+   395	            </div>
+   396	          </div>
+   397	          
+   398	          {showAnalytics && (
+   399	            <div className="flex flex-col gap-6 sm:grid sm:grid-cols-2 mt-4 pt-4 border-t border-slate-100">
+   400	              {/* Top Senders */}
+   401	              <div className="flex flex-col gap-3 sm:gap-4">
+   402	                <div className="flex items-center gap-2">
+   403	                  <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg shrink-0">
+   404	                    <Target className="w-4 h-4 text-slate-700" />
+   405	                  </div>
+   406	                  <div className="flex flex-col">
+   407	                    <h3 className="text-sm font-bold text-slate-800">Top Senders</h3>
+   408	                    <p className="text-[11px] text-slate-500">Most frequent contacts in recent history</p>
+   409	                  </div>
+   410	                </div>
+   411	                <div className="bg-slate-50 rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+   412	                  {topSenders.map((sender, i) => {
+   413	                    const maxCount = Math.max(...topSenders.map(s => s.count), 1);
+   414	                    const percent = Math.round((sender.count / maxCount) * 100);
+   415	                    return (
+   416	                    <div key={i} className="flex flex-col justify-center p-2.5 sm:p-3 border-b border-slate-200/60 last:border-0 hover:bg-white transition-colors">
+   417	                      <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-2">
+   418	                        <div className="flex-1 min-w-0 pr-1 sm:pr-3">
+   419	                          <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate">{sender.name}</p>
+   420	                          <p className="text-[11px] sm:text-xs text-slate-500 truncate">{sender.email}</p>
+   421	                        </div>
+   422	                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+   423	                          <span className="text-xs sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 px-1.5 sm:px-2 py-0.5 rounded-full">{sender.count}</span>
+   424	                          <button 
+   425	                            onClick={() => onApplyQuery(`from:${sender.email}`, "anywhere")}
+   426	                            className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white"
+   427	                            title="Filter by sender"
+   428	                          >
+   429	                            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+   430	                          </button>
+   431	                        </div>
+   432	                      </div>
+   433	                      <div className="w-full bg-slate-200/50 rounded-full h-1.5 mb-1">
+   434	                        <div className="bg-slate-800 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
+   435	                      </div>
+   436	                    </div>
+   437	                  )
+   438	                  })}
+   439	                </div>
+   440	              </div>
+   441	              
+   442	              {/* Top Domains */}
+   443	              <div className="flex flex-col gap-3 sm:gap-4">
+   444	                <div className="flex items-center gap-2">
+   445	                  <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg shrink-0">
+   446	                    <Layers className="w-4 h-4 text-slate-700" />
+   447	                  </div>
+   448	                  <div className="flex flex-col">
+   449	                    <h3 className="text-sm font-bold text-slate-800">Domain Clusters</h3>
+   450	                    <p className="text-[11px] text-slate-500">Companies emailing you the most</p>
+   451	                  </div>
+   452	                </div>
+   453	                <div className="bg-slate-50 rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+   454	                  {topDomains.map((domainObj, i) => {
+   455	                    const maxDomainCount = Math.max(...topDomains.map(d => d.count), 1);
+   456	                    const percent = Math.round((domainObj.count / maxDomainCount) * 100);
+   457	                    return (
+   458	                    <div key={i} className="flex flex-col justify-center p-2.5 sm:p-3 border-b border-slate-200/60 last:border-0 hover:bg-white transition-colors">
+   459	                      <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-2">
+   460	                        <div className="flex-1 min-w-0 pr-1 sm:pr-3 flex items-center gap-2 sm:gap-3">
+   461	                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-xs sm:text-sm font-bold text-slate-600 uppercase shadow-xs shrink-0">
+   462	                            {domainObj.domain.charAt(0)}
+   463	                          </div>
+   464	                          <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate">@{domainObj.domain}</p>
+   465	                        </div>
+   466	                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+   467	                          <span className="text-xs sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 px-1.5 sm:px-2 py-0.5 rounded-full">{domainObj.count}</span>
+   468	                          <button 
+   469	                            onClick={() => onApplyQuery(`from:${domainObj.domain}`, "anywhere")}
+   470	                            className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white"
+   471	                            title="Filter by domain"
+   472	                          >
+   473	                            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+   474	                          </button>
+   475	                        </div>
+   476	                      </div>
+   477	                      <div className="w-full bg-slate-200/50 rounded-full h-1.5 mb-1">
+   478	                        <div className="bg-slate-700 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
+   479	                      </div>
+   480	                    </div>
+   481	                  )
+   482	                  })}
+   483	                </div>
+   484	              </div>
+   485	            </div>
+   486	          )}
+   487	        </div>
+   488	      </div>
+   489	      )}
+   490	
+   491	      <FolderOptimizer 
+   492	        emails={recentEmailsState} 
+   493	        userLabels={userLabels || []}
+   494	        aiSettings={aiSettings}
+   495	        isFetching={isLoadingEmails}
+   496	        isAiWorking={isAiWorking}
+   497	        onReload={() => setReloadTrigger(prev => prev + 1)}
+   498	      />
+   499	
+   500	      <RuleSuggester 
+   501	        userLabels={userLabels || []} 
+   502	        recentEmails={recentEmailsState}
+   503	        onApplyQuery={onApplyQuery}
+   504	        aiSettings={aiSettings}
+   505	        isAiWorking={isAiWorking}
+   506	      />
+   507	
+   508	      <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
+   509	
+   510	      <LabelManagerModal
+   511	        isOpen={isLabelManagerOpen}
+   512	        onClose={() => setIsLabelManagerOpen(false)}
+   513	        userLabels={userLabels || []}
+   514	        onLabelsUpdated={() => {
+   515	          setReloadTrigger(prev => prev + 1);
+   516	          if (onRefresh) onRefresh();
+   517	        }}
+   518	        onApplyQuery={onApplyQuery}
+   519	      />
+   520	
+   521	      <CategoryDistributionModal
+   522	        isOpen={isChartModalOpen}
+   523	        onClose={() => setIsChartModalOpen(false)}
+   524	        onApplyCategory={onApplyQuery}
+   525	        userLabels={userLabels || []}
+   526	        aiSettings={aiSettings}
+   527	        userEmail={userEmail}
+   528	        onRefresh={() => {
+   529	          setReloadTrigger(prev => prev + 1);
+   530	          if (onRefresh) onRefresh();
+   531	        }}
+   532	      />
+   533	
+   534	      <HealthScoreModal
+   535	        isOpen={isHealthScoreModalOpen}
+   536	        onClose={() => setIsHealthScoreModalOpen(false)}
+   537	        onApplyQuery={onApplyQuery}
+   538	        onOpenUnsubscribe={() => {
+   539	          setIsHealthScoreModalOpen(false);
+   540	          setIsUnsubscribeModalOpen(true);
+   541	        }}
+   542	      />
+   543	    </div>
+   544	  );
+   545	}
+   546	
+   547	function formatSize(bytes: number) {
+   548	  if (!bytes || bytes === 0) return '0 B';
+   549	  const k = 1024;
+   550	  const sizes = ['B', 'KB', 'MB', 'GB'];
+   551	  const i = Math.floor(Math.log(bytes) / Math.log(k));
+   552	  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+   553	}
+   554	
+   555	function HealthCard({ title, count, desc, actionText, onAction, sizeEstimate }: any) {
+   556	  const displayCount = typeof count === 'string' ? count : (count || 0).toLocaleString();
+   557	  return (
+   558	    <button 
+   559	      onClick={onAction}
+   560	      className="bg-white rounded-xl border border-slate-200 hover:border-slate-800 p-4 flex flex-col gap-2 transition-all text-left group hover:shadow-xs items-start w-full relative overflow-hidden"
+   561	    >
+   562	      <div className="flex-1 flex flex-col min-w-0 pr-2 w-full">
+   563	        <h3 className="font-bold text-slate-900 text-sm truncate flex items-center gap-2">
+   564	          {title}
+   565	        </h3>
+   566	        <p className="text-xs text-slate-500 leading-snug line-clamp-2 mt-1">{desc}</p>
+   567	      </div>
+   568	      
+   569	      <div className="flex flex-col items-start pt-2 mt-auto shrink-0 w-full">
+   570	        <div className="flex items-baseline gap-2">
+   571	           <span className="text-xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
+   572	           {sizeEstimate > 0 && (
+   573	              <span className="text-[10px] font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 text-left whitespace-nowrap">
+   574	                ~{formatSize(sizeEstimate)}
+   575	              </span>
+   576	           )}
+   577	        </div>
+   578	        <div className="flex items-center text-[11px] font-semibold text-slate-500 group-hover:text-slate-900 transition-colors mt-2">
+   579	          {actionText}
+   580	          <ArrowRight className="w-3.5 h-3.5 sm:group-hover:translate-x-1 transition-transform ml-1" />
+   581	        </div>
+   582	      </div>
+   583	    </button>
+   584	  );
+   585	}
+   586	
+   587	function PipelineLayer({ step, title, modelName, icon, description, count, actionText, onAction }: any) {
+   588	  return (
+   589	    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-start md:items-center shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+   590	      <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 group-hover:bg-slate-1000 transition-colors"></div>
+   591	      
+   592	      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 shrink-0">
+   593	        {icon}
+   594	      </div>
+   595	      
+   596	      <div className="flex-1">
+   597	        <div className="flex items-center gap-2 mb-1">
+   598	          <span className="text-[10px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{step}</span>
+   599	          <h4 className="font-bold text-slate-900 text-base">{title}</h4>
+   600	          <span className="hidden sm:inline-block text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded ml-1 border border-slate-100">powered by {modelName}</span>
+   601	        </div>
+   602	        <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">{description}</p>
+   603	      </div>
+   604	      
+   605	      <div className="flex flex-col items-start md:items-end shrink-0 w-full md:w-auto mt-4 md:mt-0 gap-3">
+   606	         <div className="text-sm font-medium text-slate-500 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+   607	           ~{(count || 0).toLocaleString()} Processed
+   608	         </div>
+   609	         <button 
+   610	            onClick={onAction}
+   611	            className="text-sm font-medium text-slate-800 hover:text-slate-950 flex items-center gap-1 group-hover:underline"
+   612	          >
+   613	            {actionText}
+   614	            <ArrowRight className="w-4 h-4" />
+   615	         </button>
+   616	      </div>
+   617	    </div>
+   618	  );
+   619	}

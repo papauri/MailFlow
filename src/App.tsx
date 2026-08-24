@@ -10,6 +10,9 @@ import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import { Loader2 } from 'lucide-react';
 
+import LogoutScreen from "./components/LogoutScreen";
+import { logout } from "./lib/firebase";
+
 export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +32,7 @@ export default function App() {
   }, []);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleLogin = async () => {
@@ -50,6 +54,21 @@ export default function App() {
     }
   };
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      setTimeout(() => setIsLoggingOut(false), 2000); // give it time to type Goodbye
+    } catch (error) {
+      console.error(error);
+      setIsLoggingOut(false);
+    }
+  };
+
+  if (isLoggingOut) {
+    return <LogoutScreen />;
+  }
+
   if (isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -62,5 +81,5 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} isLoggingIn={isLoggingIn} error={loginError} />;
   }
 
-  return <Dashboard user={user} />;
+  return <Dashboard user={user} onLogout={handleLogout} />;
 }

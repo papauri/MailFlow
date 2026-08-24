@@ -1,3 +1,4 @@
+import { TypingLoader } from "./TypingLoader";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   X, 
@@ -761,14 +762,14 @@ export function SmartTriageModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-start justify-center p-2 sm:p-4 lg:p-6 animate-in fade-in duration-150 overflow-y-auto"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="smart-organizer-title"
     >
       <div 
-        className="bg-white w-full max-w-4xl shadow-xl flex flex-col border border-slate-200 sm:rounded-xl min-h-full sm:min-h-0 sm:my-auto sm:mb-8"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -838,7 +839,8 @@ export function SmartTriageModal({
                 const isExecuting = executingInsightId === insight.id;
 
                 return (
-                  <div key={insight.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div key={insight.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-slate-800 text-sm truncate">{insight.title}</h4>
                       <p className="text-xs text-slate-600 mt-0.5 leading-snug break-words">{insight.description}</p>
@@ -851,22 +853,23 @@ export function SmartTriageModal({
                             onClose();
                           }
                         }}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-medium shadow-xs transition-colors"
                       >
                         <Search className="w-3 h-3" /> Review
                       </button>
                       <button
                         onClick={() => executeInsightAction(insight)}
                         disabled={isExecuting}
-                        className="flex-1 sm:flex-none shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                        className="flex-1 sm:flex-none shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
                       >
                         {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
                         {insight.actionLabel}
                       </button>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              );
+            })}
             </div>
           </div>
         )}
@@ -943,7 +946,7 @@ export function SmartTriageModal({
             <button
               onClick={executeAllGroups}
               disabled={executingAll || completedGroupIds.size === groups.length}
-              className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 ml-auto"
+              className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50 ml-auto"
             >
               {executingAll ? (
                 <>
@@ -961,14 +964,18 @@ export function SmartTriageModal({
         )}
 
         {/* Main List */}
-        <div className="flex-1 bg-slate-50/50 p-4 sm:p-6">
+        <div className="flex-1 bg-slate-50/50 p-4 sm:p-6 overflow-y-auto">
           {loading ? (
             <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
-              <Loader2 className="w-7 h-7 text-slate-700 animate-spin" />
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Analyzing your inbox...</p>
-                <p className="text-xs text-slate-500 mt-0.5">Grouping emails by recurring senders, receipts, and notifications.</p>
-              </div>
+              <TypingLoader 
+                title="Triaging Inbox" 
+                messages={[
+                  "Analyzing unorganized emails...",
+                  "Grouping by recurring senders...",
+                  "Isolating receipts and notifications...",
+                  "Preparing smart recommendations..."
+                ]} 
+              />
             </div>
           ) : error ? (
             <div className="h-72 flex flex-col items-center justify-center gap-3 text-center p-4">
@@ -992,7 +999,7 @@ export function SmartTriageModal({
               </p>
               <button 
                 onClick={onClose}
-                className="mt-4 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors"
+                className="mt-4 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors"
               >
                 Done
               </button>
@@ -1025,46 +1032,98 @@ export function SmartTriageModal({
                   <div
                     key={group.id}
                     className={cn(
-                      "bg-white border rounded-xl p-4 shadow-xs transition-all flex flex-col gap-3",
+                      "bg-white border rounded-xl p-4 shadow-xs transition-all flex flex-col gap-0",
                       isCompleted ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-slate-200 hover:border-slate-300"
                     )}
                   >
-                    {/* Top Row: Sender Info & Actions */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div className="min-w-0 flex-1 w-full">
-                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          <span className="font-semibold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs">
-                            {group.sender}
-                          </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 shrink-0">
-                            {group.categoryTag}
-                          </span>
-                          <span className="text-xs text-slate-400 shrink-0">
-                            • {activeEmailIds.length} {activeEmailIds.length === 1 ? 'email' : 'emails'}
-                          </span>
-                        </div>
-                        <h4 className="text-xs sm:text-sm font-bold text-slate-800 break-words leading-snug">
-                          {group.title}
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-1 leading-relaxed break-words">
-                          {group.reason}
-                        </p>
+                    {/* Header Row: Sender Info & Dismiss */}
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="font-semibold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs">
+                          {group.sender}
+                        </span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 shrink-0">
+                          {group.categoryTag}
+                        </span>
+                        <span className="text-xs text-slate-400 shrink-0">
+                          • {activeEmailIds.length} {activeEmailIds.length === 1 ? 'email' : 'emails'}
+                        </span>
+                      </div>
+                      
+                      {!isCompleted && (
+                        <button
+                          onClick={() => handleDismissGroup(group)}
+                          disabled={isExecuting}
+                          className="p-1.5 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors -mt-1 -mr-1"
+                          title="Dismiss this recommendation"
+                        >
+                          <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Title & Description */}
+                    <div className="mb-4">
+                      <h4 className="text-sm font-bold text-slate-800 leading-snug break-words">
+                        {group.title}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed break-words">
+                        {group.reason}
+                      </p>
+                    </div>
+
+                    {/* Footer Row: Metadata & Actions */}
+                    <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      
+                      {/* Left: Review & Rule */}
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <button
+                          onClick={() => toggleExpandGroup(group.id)}
+                          className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
+                        >
+                          <span>{isExpanded ? 'Hide' : 'Review'} {sampleEmails.length} messages</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+
+                        {group.filterQuery && !isCompleted && (
+                          <div className="hidden sm:block w-px h-3.5 bg-slate-200"></div>
+                        )}
+
+                        {group.filterQuery && !isCompleted && (
+                          <div className="flex items-center">
+                            {isFilterCreated ? (
+                              <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Rule Created
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleCreateRule(group)}
+                                disabled={isCreatingFilter}
+                                className="text-[11px] text-slate-500 hover:text-slate-800 font-medium flex items-center gap-1 hover:underline disabled:opacity-50"
+                              >
+                                {isCreatingFilter ? <Loader2 className="w-3 h-3 animate-spin" /> : <Filter className="w-3 h-3" />}
+                                <span>Auto-apply to future</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Right Action Buttons */}
-                      <div className="shrink-0 flex flex-row sm:flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                      {/* Right: Primary Action Button */}
+                      <div className="shrink-0 w-full sm:w-auto">
                         {isCompleted ? (
-                          <div className="flex items-center justify-center gap-1.5 text-emerald-600 text-xs font-semibold px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-100 w-full sm:w-auto">
+                          <div className="flex items-center justify-center gap-1.5 text-emerald-600 text-xs font-semibold px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-100 w-full">
                             <CheckCircle2 className="w-4 h-4" />
                             <span>Done</span>
                           </div>
                         ) : (
-                          <div className="flex flex-wrap flex-1 sm:flex-initial gap-2 items-center">
+                          <div className="flex w-full">
                             {group.actionType === 'trash' && (
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                 <span>Trash ({activeEmailIds.length})</span>
@@ -1075,7 +1134,7 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
                                 <span>Archive ({activeEmailIds.length})</span>
@@ -1086,10 +1145,10 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group, !labelExists)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 min-w-[140px]"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5 shrink-0" />}
-                                <span className="truncate max-w-[120px] sm:max-w-[150px]">Move to {group.suggestedLabel || 'Label'}</span>
+                                <span className="truncate max-w-[150px]">Move to {group.suggestedLabel || 'Label'}</span>
                               </button>
                             )}
 
@@ -1097,87 +1156,63 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5 fill-current shrink-0" />}
                                 <span className="whitespace-nowrap">Protect & Keep</span>
                               </button>
                             )}
-
-                            <button
-                              onClick={() => handleDismissGroup(group)}
-                              disabled={isExecuting}
-                              className="p-2 sm:p-1.5 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 sm:border-transparent flex items-center justify-center"
-                              title="Dismiss this sender from future recommendations"
-                            >
-                              <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Bottom Metadata & Expandable Emails */}
-                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs gap-2">
-                      <button
-                        onClick={() => toggleExpandGroup(group.id)}
-                        className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
-                      >
-                        <span>{isExpanded ? 'Hide' : 'Review'} {sampleEmails.length} messages</span>
-                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      </button>
-
-                      {group.filterQuery && !isCompleted && (
-                        <div className="flex items-center gap-2">
-                          {isFilterCreated ? (
-                            <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Rule Created
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleCreateRule(group)}
-                              disabled={isCreatingFilter}
-                              className="text-[11px] text-slate-500 hover:text-slate-800 font-medium flex items-center gap-1 hover:underline disabled:opacity-50"
-                            >
-                              {isCreatingFilter ? <Loader2 className="w-3 h-3 animate-spin" /> : <Filter className="w-3 h-3" />}
-                              <span>Auto-apply to future</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
                     {/* Expanded Email List */}
                     {isExpanded && sampleEmails.length > 0 && (
-                      <div className="mt-1 bg-slate-50 rounded-lg p-2.5 border border-slate-200/70 flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                      <div className="mt-1 bg-slate-50 rounded-lg p-2.5 border border-slate-200/70 flex flex-col gap-1.5 max-h-72 overflow-y-auto">
                         {sampleEmails.map(email => {
                           const isChecked = !(group.deselectedEmailIds || []).includes(email.id);
 
                           return (
-                            <label
-                              key={email.id}
-                              className="flex items-start gap-2 p-1.5 rounded-md hover:bg-white transition-colors cursor-pointer text-xs"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => toggleEmailInGroup(group.id, email.id)}
-                                disabled={isCompleted}
-                                className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-slate-800 truncate">
-                                  {email.subject || '(No Subject)'}
-                                </p>
-                                <p className="text-[11px] text-slate-500 truncate">
-                                  {email.snippet || email.sender}
+                            <div key={email.id} className="flex flex-col gap-1.5 p-2 rounded-md hover:bg-white transition-colors border border-transparent hover:border-slate-200">
+                              <div className="flex items-start gap-2">
+                                <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => toggleEmailInGroup(group.id, email.id)}
+                                    disabled={isCompleted}
+                                    className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-slate-800 break-words leading-snug">
+                                      {email.subject || '(No Subject)'}
+                                    </p>
+                                  </div>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                    {email.date ? new Date(email.date).toLocaleDateString() : ''}
+                                  </span>
+                                  <a
+                                    href={`https://mail.google.com/mail/u/0/#all/${email.threadId || email.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors"
+                                    title="Open in Gmail"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                  </a>
+                                </div>
+                              </div>
+                              <div className="pl-6">
+                                <p className="text-[11px] text-slate-500 line-clamp-3 break-words">
+                                  <span className="font-medium text-slate-700 mr-1">{email.sender}</span>
+                                  {email.snippet}
                                 </p>
                               </div>
-                              <span className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap ml-2">
-                                {email.date ? new Date(email.date).toLocaleDateString() : ''}
-                              </span>
-                            </label>
+                            </div>
                           );
                         })}
                       </div>

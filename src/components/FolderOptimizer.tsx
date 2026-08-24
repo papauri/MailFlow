@@ -1,3 +1,4 @@
+import { TypingLoader } from "./TypingLoader";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Loader2, 
@@ -729,7 +730,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
       return <ShieldCheck className="w-4 h-4 text-amber-600" />;
     }
     if (combined.includes('newsletter') || combined.includes('digest') || combined.includes('content') || combined.includes('substack')) {
-      return <Newspaper className="w-4 h-4 text-indigo-600" />;
+      return <Newspaper className="w-4 h-4 text-slate-600" />;
     }
     if (combined.includes('notification') || combined.includes('update')) {
       return <Bell className="w-4 h-4 text-slate-600" />;
@@ -836,16 +837,20 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
       <div className="p-4 sm:p-6 bg-slate-50/30">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-10 gap-4">
-            <Loader2 className="w-8 h-8 animate-spin text-slate-700" />
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-700">Analyzing sender patterns and topics...</p>
-              <p className="text-xs text-slate-500 mt-1">Cross-referencing sender authenticity, subject context, and label relationships.</p>
-            </div>
+            <TypingLoader 
+              title="Optimizing Folders" 
+              messages={[
+                "Analyzing sender patterns...",
+                "Extracting topic clusters...",
+                "Cross-referencing subject context...",
+                "Generating structural recommendations..."
+              ]} 
+            />
           </div>
         ) : !hasScanned ? (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
             <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-2xs mb-3 text-slate-700">
-              <Sparkles className="w-6 h-6 text-indigo-500" />
+              <Sparkles className="w-6 h-6 text-slate-500" />
             </div>
             <h3 className="text-sm sm:text-base font-bold text-slate-800 mb-1">
               Analyze Senders & Discover Groups
@@ -856,7 +861,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
             <button
               onClick={runAnalysis}
               disabled={isFetching}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-semibold rounded-xl transition-colors shadow-2xs disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-medium rounded-xl transition-colors shadow-2xs disabled:opacity-50"
             >
               <SlidersHorizontal className="w-4 h-4" />
               <span>Scan & Group Emails</span>
@@ -947,7 +952,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
                           <button
                             onClick={() => handleCreateRule(idx, rec)}
                             disabled={creatingRuleId === idx}
-                            className="flex items-center justify-center gap-1.5 w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-1.5 w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
                           >
                             {creatingRuleId === idx ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Filter className="w-3.5 h-3.5" />}
                             Create Automatic Gmail Filter Rule
@@ -1021,7 +1026,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
                           <button
                             onClick={() => handleAction(idx, 'label_only', rec)}
                             disabled={processingKey !== null || activeEmailCount === 0}
-                            className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-2xs transition-colors disabled:opacity-50"
                             title="Add label tag while keeping these emails visible in your primary Inbox"
                           >
                             {processingKey === `${idx}-label_only` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Tag className="w-3.5 h-3.5" />}
@@ -1031,7 +1036,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
                           <button
                             onClick={() => handleAction(idx, 'move_archive', rec)}
                             disabled={processingKey !== null || activeEmailCount === 0}
-                            className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-2xs transition-colors disabled:opacity-50"
                             title="Add label tag and archive out of your primary Inbox"
                           >
                             {processingKey === `${idx}-move_archive` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5" />}

@@ -26,6 +26,7 @@ import {
   Eye
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { TypingLoader } from './TypingLoader';
 import { searchEmails, createFilter, createLabel } from '../lib/gmail';
 import { 
   extractSenderDetails, 
@@ -394,9 +395,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
-            <SlidersHorizontal className="w-5 h-5" />
-          </div>
+          
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-slate-800">
@@ -504,12 +503,16 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
       {/* Main Content Body */}
       <div className="p-4 sm:p-6 bg-slate-50/30">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <Loader2 className="w-8 h-8 animate-spin text-slate-700" />
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-700">Analyzing historical folder routing & inflow statistics...</p>
-              <p className="text-xs text-slate-500 mt-1">Calculating Bayesian consistency scores and isolating recurring domain patterns.</p>
-            </div>
+          <div className="flex flex-col items-center justify-center py-6 sm:py-12 gap-4">
+            <TypingLoader 
+              title="Generating Smart Rules" 
+              messages={[
+                "Analyzing historical folder routing...",
+                "Calculating Bayesian consistency scores...",
+                "Isolating recurring domain patterns...",
+                "Drafting optimal filter rules..."
+              ]} 
+            />
           </div>
         ) : activeTab === 'active_rules' ? (
           /* ACTIVE RULES TAB */
@@ -578,7 +581,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
               <button
                 onClick={runRuleAnalysis}
                 disabled={loading}
-                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-semibold rounded-xl transition-colors shadow-2xs disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-medium rounded-xl transition-colors shadow-2xs disabled:opacity-50"
               >
                 <SlidersHorizontal className="w-4 h-4" />
                 <span>Discover Sorting Rules</span>
@@ -783,7 +786,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
                       <button
                         onClick={() => handleApplyRule(proposal)}
                         disabled={isCreating}
-                        className="flex items-center justify-center gap-2 w-full bg-slate-800 hover:bg-slate-950 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                        className="flex items-center justify-center gap-2 w-full bg-slate-800 hover:bg-slate-950 text-white px-4 py-2.5 rounded-xl text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
                       >
                         {isCreating ? (
                           <>

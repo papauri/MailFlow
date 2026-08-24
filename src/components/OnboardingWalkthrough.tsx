@@ -27,14 +27,14 @@ export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ on
     {
       title: "Welcome to MailFlow",
       description: "A fast, smart way to clean up your Gmail inbox using advanced data analytics and AI clustering.",
-      icon: <Mail className="w-12 h-12 text-indigo-600 mb-4" />,
+      icon: <Mail className="w-12 h-12 text-slate-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center border border-slate-200">
           <div className="space-y-3 w-full max-w-[200px]">
             <div className="h-2 bg-slate-200 rounded w-full"></div>
             <div className="h-2 bg-slate-200 rounded w-5/6"></div>
             <div className="h-2 bg-slate-200 rounded w-4/6"></div>
-            <div className="h-8 bg-indigo-100 rounded-lg w-full mt-4 flex items-center justify-center text-indigo-700 text-xs font-bold">Start Cleaning</div>
+            <div className="h-8 bg-slate-100 rounded-lg w-full mt-4 flex items-center justify-center text-slate-700 text-xs font-bold">Start Cleaning</div>
           </div>
         </div>
       )
@@ -50,7 +50,7 @@ export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ on
                <div className="h-2 bg-slate-200 rounded w-1/3"></div>
                <div className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded">24 emails</div>
              </div>
-             <div className="h-6 w-full bg-indigo-600 rounded mt-1 flex items-center justify-center text-[10px] text-white font-bold">Group & Clear</div>
+             <div className="h-6 w-full bg-slate-600 rounded mt-1 flex items-center justify-center text-[10px] text-white font-bold">Group & Clear</div>
            </div>
         </div>
       )
@@ -75,7 +75,7 @@ export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ on
     {
       title: "Automated Routing Rules",
       description: "Tired of doing it manually? When you apply an optimization, MailFlow's Rule Suggester can create a permanent Gmail Filter to route future emails instantly.",
-      icon: <Search className="w-12 h-12 text-purple-600 mb-4" />,
+      icon: <Search className="w-12 h-12 text-slate-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-2">
            <div className="w-full bg-white rounded-lg p-3 border border-slate-200 shadow-sm flex items-center justify-between">
@@ -138,7 +138,7 @@ export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ on
                 key={i} 
                 className={cn(
                   "h-2 rounded-full transition-all duration-300", 
-                  i === step ? "w-6 bg-indigo-600" : "w-2 bg-slate-300"
+                  i === step ? "w-6 bg-slate-600" : "w-2 bg-slate-300"
                 )}
               />
             ))}
@@ -161,7 +161,7 @@ export const OnboardingWalkthrough: React.FC<{ onComplete: () => void }> = ({ on
                   setStep(s => s + 1);
                 }
               }}
-              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors flex items-center gap-1 text-sm shadow-sm"
+              className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-medium transition-colors flex items-center gap-1 text-sm shadow-sm"
             >
               {step === steps.length - 1 ? 'Get Started' : 'Next'}
               {step < steps.length - 1 && <ChevronRight className="w-4 h-4" />}

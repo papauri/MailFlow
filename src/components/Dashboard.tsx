@@ -3,6 +3,7 @@ import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown,
 import { AdminPanel } from "./AdminPanel";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
+import { TypingLoader } from "./TypingLoader";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
 import { WalkthroughTip } from "./WalkthroughTip";
@@ -20,7 +21,7 @@ function formatSize(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export default function Dashboard({ user }: { user: any }) {
+export default function Dashboard({ user, onLogout }: { user: any, onLogout?: () => void }) {
   const [walkthroughKey, setWalkthroughKey] = useState(0);
   const [query, setQueryState] = useState("");
   const queryRef = useRef(query);
@@ -963,7 +964,7 @@ export default function Dashboard({ user }: { user: any }) {
 
           <button 
             onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs sm:text-sm font-medium transition-colors cursor-pointer"
             title="Settings & Display Options"
           >
             <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -979,7 +980,7 @@ export default function Dashboard({ user }: { user: any }) {
           </button>
 
           <button 
-            onClick={() => window.location.reload()} 
+            onClick={onLogout} 
             className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer" 
             title="Log out"
           >
@@ -1197,11 +1198,11 @@ export default function Dashboard({ user }: { user: any }) {
 
                 <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
                   {selectedIds.size > 0 ? (
-                    <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-bold flex items-center gap-1.5">
+                    <span className="text-slate-700 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md font-bold flex items-center gap-1.5">
                       <span>{selectedIds.size} selected</span>
                       <button 
                         onClick={() => setSelectedIds(new Set())}
-                        className="text-[10px] text-indigo-500 hover:text-indigo-800 underline font-semibold ml-0.5 cursor-pointer"
+                        className="text-[10px] text-slate-500 hover:text-slate-800 underline font-medium ml-0.5 cursor-pointer"
                       >
                         Clear
                       </button>
@@ -1372,7 +1373,7 @@ export default function Dashboard({ user }: { user: any }) {
                       onClick={() => handleBulkAction("read")} 
                       disabled={actionLoading !== null} 
                       loading={actionLoading === "read"} 
-                      className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200" 
+                      className="bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200" 
                     />
                   </div>
                 )}
@@ -1411,7 +1412,7 @@ export default function Dashboard({ user }: { user: any }) {
                       className={cn(
                         "px-3 sm:px-4 py-1.5 rounded-t-lg text-xs sm:text-sm font-semibold transition-all shrink-0 border-b-2",
                         isActive 
-                          ? "text-indigo-600 border-indigo-600 bg-indigo-50/50"
+                          ? "text-slate-600 border-slate-600 bg-slate-50/50"
                           : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-100/50"
                       )}
                     >
@@ -1440,13 +1441,15 @@ export default function Dashboard({ user }: { user: any }) {
             {emails.length === 0 ? (
               (isSearching || isLoadingMore) ? (
                 <div className="flex flex-col items-center justify-center h-96 text-slate-400 px-4 text-center">
-                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                    <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-700 mb-2">Loading messages...</h3>
-                  <p className="text-sm text-slate-500 max-w-sm mb-6">
-                    Fetching your emails from Gmail.
-                  </p>
+                  <TypingLoader 
+                    title="Loading Messages" 
+                    messages={[
+                      "Fetching emails from Gmail...",
+                      "Applying current filters...",
+                      "Sorting inbox...",
+                      "Preparing view..."
+                    ]} 
+                  />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-96 text-slate-400 px-4 text-center">
@@ -1518,9 +1521,9 @@ export default function Dashboard({ user }: { user: any }) {
                                   if (group.title === 'Spam') return <ShieldAlert className="w-4 h-4 text-amber-500" />;
                                   if (group.title === 'Promotions') return <Tag className="w-4 h-4 text-amber-600" />;
                                   if (group.title === 'Updates') return <Activity className="w-4 h-4 text-emerald-600" />;
-                                  if (group.title === 'Social') return <Mail className="w-4 h-4 text-purple-600" />;
+                                  if (group.title === 'Social') return <Mail className="w-4 h-4 text-slate-600" />;
                                   if (group.title === 'Primary Inbox' || group.title === 'Inbox' || group.title === 'Primary') return <Inbox className="w-4 h-4 text-blue-600" />;
-                                  return <Folder className="w-4 h-4 text-indigo-500" />;
+                                  return <Folder className="w-4 h-4 text-slate-500" />;
                                 })()}
                                 <span>{group.title}</span>
                               </div>
@@ -1571,7 +1574,7 @@ export default function Dashboard({ user }: { user: any }) {
                                 else if (labels.includes('TRASH')) firstBadge = { text: 'Trash', color: 'bg-red-50 text-red-700 border-red-100' };
                                 else if (labels.includes('CATEGORY_PROMOTIONS')) firstBadge = { text: 'Promotions', color: 'bg-amber-50 text-amber-700 border-amber-100' };
                                 else if (labels.includes('CATEGORY_UPDATES')) firstBadge = { text: 'Updates', color: 'bg-green-50 text-green-700 border-green-100' };
-                                else if (labels.includes('CATEGORY_SOCIAL')) firstBadge = { text: 'Social', color: 'bg-purple-50 text-purple-700 border-purple-100' };
+                                else if (labels.includes('CATEGORY_SOCIAL')) firstBadge = { text: 'Social', color: 'bg-slate-50 text-slate-700 border-slate-100' };
                                 
                                 if (!firstBadge) return null;
                                 return (
@@ -1790,14 +1793,14 @@ export default function Dashboard({ user }: { user: any }) {
                                labels.forEach(l => {
                                  if (l.startsWith('CATEGORY_')) {
                                     if (l === 'CATEGORY_PROMOTIONS') badges.push({ text: 'Promotions', color: 'bg-amber-50 text-amber-700 border-amber-100' });
-                                    else if (l === 'CATEGORY_SOCIAL') badges.push({ text: 'Social', color: 'bg-purple-50 text-purple-700 border-purple-100' });
+                                    else if (l === 'CATEGORY_SOCIAL') badges.push({ text: 'Social', color: 'bg-slate-50 text-slate-700 border-slate-100' });
                                     else if (l === 'CATEGORY_UPDATES') badges.push({ text: 'Updates', color: 'bg-green-50 text-green-700 border-green-100' });
                                     else if (l === 'CATEGORY_FORUMS') badges.push({ text: 'Forums', color: 'bg-slate-100 text-slate-700 border-slate-200' });
                                     else if (l === 'CATEGORY_PERSONAL') badges.push({ text: 'Primary', color: 'bg-blue-50 text-blue-700 border-blue-100' });
                                  } else if (l === 'SENT') {
                                     badges.push({ text: 'Sent', color: 'bg-slate-100 text-slate-600 border-slate-200' });
                                  } else if (l === 'INBOX' && !labels.some(x => x.startsWith('CATEGORY_'))) {
-                                    badges.push({ text: 'Inbox', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' });
+                                    badges.push({ text: 'Inbox', color: 'bg-slate-50 text-slate-700 border-slate-100' });
                                  } else if (!['UNREAD', 'STARRED', 'IMPORTANT', 'INBOX', 'SPAM', 'TRASH', 'SENT'].includes(l)) {
                                     // Custom Label
                                     const ul = userLabels.find(ul => ul.id === l);
@@ -1950,7 +1953,7 @@ export default function Dashboard({ user }: { user: any }) {
                     <button
                       onClick={handleLoadMore}
                       disabled={isLoadingMore}
-                      className="flex items-center gap-2 px-5 sm:px-6 py-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-sm disabled:opacity-60 disabled:cursor-wait"
+                      className="flex items-center gap-2 px-5 sm:px-6 py-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 font-medium rounded-xl text-xs sm:text-sm transition-all shadow-sm disabled:opacity-60 disabled:cursor-wait"
                     >
                       {isLoadingMore ? (
                         <>
@@ -1995,7 +1998,7 @@ export default function Dashboard({ user }: { user: any }) {
               </button>
               <button
                 onClick={executeDeleteSelected}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
               >
                 Permanently Delete
               </button>
@@ -2025,7 +2028,7 @@ export default function Dashboard({ user }: { user: any }) {
               </button>
               <button
                 onClick={executeEmptyTrash}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5"
               >
                 Permanently Delete
               </button>
@@ -2045,7 +2048,7 @@ export default function Dashboard({ user }: { user: any }) {
           >
             <div className="p-5 sm:p-6 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <HelpCircle className="w-6 h-6 text-indigo-600" />
+                <HelpCircle className="w-6 h-6 text-slate-600" />
                 Help & Tips
               </h2>
               <div className="text-sm text-slate-600 space-y-4 leading-relaxed">
@@ -2085,13 +2088,13 @@ export default function Dashboard({ user }: { user: any }) {
                   localStorage.removeItem('hasSeenOnboarding');
                   setWalkthroughKey(prev => prev + 1);
                 }}
-                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                className="text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors"
               >
                 Restart Tour
               </button>
               <button
                 onClick={() => setShowContextHelp(false)}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm"
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-sm"
               >
                 Got it
               </button>
@@ -2114,7 +2117,7 @@ export default function Dashboard({ user }: { user: any }) {
                 <Settings className="w-5 h-5 text-slate-800" />
                 <h2 className="font-bold text-slate-800 text-base sm:text-lg">Bring Your Own Key (BYOK)</h2>
               </div>
-              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl leading-none">&times;</button>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 font-medium text-xl leading-none">&times;</button>
             </div>
             <div className="p-3.5 sm:p-6 flex flex-col gap-4 sm:gap-5 overflow-y-auto">
               
@@ -2289,7 +2292,7 @@ export default function Dashboard({ user }: { user: any }) {
                      window.location.reload();
                    }
                 }
-              }} className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer">
+              }} className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer">
                 Save Preferences
               </button>
             </div>
@@ -2324,7 +2327,7 @@ function ActionButton({ icon, label, onClick, disabled, loading, className, titl
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap",
+        "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap",
         disabled ? "opacity-50 cursor-not-allowed grayscale" : "",
         className || (disabled ? "text-slate-400" : "text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 shadow-2xs")
       )}
@@ -2432,9 +2435,9 @@ function FolderMultiSelect({ selected, onChange, onClose, userLabels, onOpenLabe
                     handleClose();
                     onOpenLabelManager();
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-slate-100 text-xs font-semibold text-slate-800 flex items-center gap-2"
+                  className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-slate-100 text-xs font-medium text-slate-800 flex items-center gap-2"
                 >
-                  <Folder className="w-3.5 h-3.5 text-indigo-500" />
+                  <Folder className="w-3.5 h-3.5 text-slate-500" />
                   <span>Manage Folders & Labels...</span>
                 </button>
               </div>

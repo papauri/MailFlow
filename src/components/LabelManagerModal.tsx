@@ -1,3 +1,4 @@
+import { TypingLoader } from "./TypingLoader";
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   X, 
@@ -60,11 +61,11 @@ interface LabelItem {
 }
 
 const SYSTEM_LABEL_MAP: Record<string, { name: string; query: string; icon: any; color: string }> = {
-  'INBOX': { name: 'Inbox', query: 'in:inbox', icon: Inbox, color: 'text-indigo-600' },
+  'INBOX': { name: 'Inbox', query: 'in:inbox', icon: Inbox, color: 'text-slate-600' },
   'CATEGORY_PERSONAL': { name: 'Primary', query: 'category:primary', icon: Mail, color: 'text-blue-600' },
   'CATEGORY_UPDATES': { name: 'Updates', query: 'category:updates', icon: Sparkles, color: 'text-emerald-600' },
   'CATEGORY_PROMOTIONS': { name: 'Promotions', query: 'category:promotions', icon: Tag, color: 'text-amber-600' },
-  'CATEGORY_SOCIAL': { name: 'Social', query: 'category:social', icon: Sparkles, color: 'text-purple-600' },
+  'CATEGORY_SOCIAL': { name: 'Social', query: 'category:social', icon: Sparkles, color: 'text-slate-600' },
   'CATEGORY_FORUMS': { name: 'Forums', query: 'category:forums', icon: LayoutList, color: 'text-slate-600' },
   'STARRED': { name: 'Starred', query: 'is:starred', icon: Star, color: 'text-yellow-600' },
   'SENT': { name: 'Sent', query: 'in:sent', icon: Send, color: 'text-slate-600' },
@@ -499,12 +500,12 @@ export function LabelManagerModal({
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-2xs">
-              <Folder className="w-5 h-5 text-indigo-400" />
+              <Folder className="w-5 h-5 text-slate-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Folders & Labels Manager</h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full">
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-full">
                   Gmail Labels & Folders
                 </span>
               </div>
@@ -560,15 +561,15 @@ export function LabelManagerModal({
               {!isCreatingLabel ? (
                 <button
                   onClick={() => setIsCreatingLabel(true)}
-                  className="flex items-center justify-center gap-1.5 w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-colors"
+                  className="flex items-center justify-center gap-1.5 w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-1.5 rounded-lg text-xs font-medium shadow-2xs transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ Create New Label / Folder</span>
                 </button>
               ) : (
-                <form onSubmit={handleCreateLabel} className="flex flex-col gap-1.5 p-2 bg-indigo-50/40 border border-indigo-200 rounded-lg">
+                <form onSubmit={handleCreateLabel} className="flex flex-col gap-1.5 p-2 bg-slate-50/40 border border-slate-200 rounded-lg">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-indigo-900 uppercase">New Label Name</span>
+                    <span className="text-[10px] font-bold text-slate-900 uppercase">New Label Name</span>
                     <span className="text-[10px] text-slate-400">e.g. Work/Clients</span>
                   </div>
                   <input
@@ -577,13 +578,13 @@ export function LabelManagerModal({
                     placeholder="Enter folder or label name..."
                     value={newLabelName}
                     onChange={(e) => setNewLabelName(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                    className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-600"
                   />
                   <div className="flex items-center gap-1.5 mt-1">
                     <button
                       type="submit"
                       disabled={!newLabelName.trim() || creatingLoading}
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-1 rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                     >
                       {creatingLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                       Create
@@ -670,7 +671,7 @@ export function LabelManagerModal({
                     {!folderSearchQuery && (
                       <button
                         onClick={() => setIsCreatingLabel(true)}
-                        className="mt-2 text-indigo-600 font-semibold hover:underline text-xs"
+                        className="mt-2 text-slate-600 font-semibold hover:underline text-xs"
                       >
                         + Create your first folder
                       </button>
@@ -684,13 +685,13 @@ export function LabelManagerModal({
 
                       if (isEditing) {
                         return (
-                          <div key={label.id} className="p-1.5 bg-white border border-indigo-300 rounded-lg flex items-center gap-1">
+                          <div key={label.id} className="p-1.5 bg-white border border-slate-300 rounded-lg flex items-center gap-1">
                             <input
                               type="text"
                               autoFocus
                               value={editedName}
                               onChange={(e) => setEditedName(e.target.value)}
-                              className="w-full text-xs px-1.5 py-0.5 border border-slate-200 rounded font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="w-full text-xs px-1.5 py-0.5 border border-slate-200 rounded font-medium focus:outline-none focus:ring-1 focus:ring-slate-500"
                             />
                             <button
                               onClick={() => handleRenameLabel(label.id)}
@@ -727,7 +728,7 @@ export function LabelManagerModal({
                           )}
                         >
                           <div className="flex items-center gap-2 truncate min-w-0 pr-1">
-                            <Folder className={cn("w-4 h-4 shrink-0", isSelected ? "text-white" : "text-indigo-500")} />
+                            <Folder className={cn("w-4 h-4 shrink-0", isSelected ? "text-white" : "text-slate-500")} />
                             <span className="truncate">{label.name}</span>
                           </div>
 
@@ -735,7 +736,7 @@ export function LabelManagerModal({
                             {label.messagesUnread ? (
                               <span className={cn(
                                 "text-[10px] font-bold px-1.5 py-0.2 rounded-full",
-                                isSelected ? "bg-slate-700 text-white" : "bg-indigo-100 text-indigo-700"
+                                isSelected ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-700"
                               )}>
                                 {label.messagesUnread}
                               </span>
@@ -792,9 +793,9 @@ export function LabelManagerModal({
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-2 rounded-lg bg-white border border-slate-200 text-slate-700 shadow-2xs">
                   {SYSTEM_LABEL_MAP[selectedFolderId] ? (
-                    React.createElement(SYSTEM_LABEL_MAP[selectedFolderId].icon, { className: "w-4 h-4 text-indigo-600" })
+                    React.createElement(SYSTEM_LABEL_MAP[selectedFolderId].icon, { className: "w-4 h-4 text-slate-600" })
                   ) : (
-                    <Folder className="w-4 h-4 text-indigo-600" />
+                    <Folder className="w-4 h-4 text-slate-600" />
                   )}
                 </div>
                 <div className="min-w-0">
@@ -873,7 +874,7 @@ export function LabelManagerModal({
             {/* Email Batch Action Toolbar (When emails are loaded or selected) */}
             <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-100/70 flex items-center justify-between gap-3 text-xs shrink-0 flex-wrap">
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
                   <input
                     type="checkbox"
                     checked={folderEmails.length > 0 && selectedEmailIds.size === folderEmails.length}
@@ -909,7 +910,7 @@ export function LabelManagerModal({
                       setIsLabelDropdownOpen(false);
                     }}
                     disabled={selectedEmailIds.size === 0 || isMovingEmails}
-                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <FolderInput className="w-3.5 h-3.5" />
                     <span>Move to Folder...</span>
@@ -930,7 +931,7 @@ export function LabelManagerModal({
                           onClick={() => handleMoveEmails('INBOX', 'Inbox')}
                           className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-slate-100 rounded-lg text-left text-slate-700 font-medium"
                         >
-                          <Inbox className="w-3.5 h-3.5 text-indigo-600" />
+                          <Inbox className="w-3.5 h-3.5 text-slate-600" />
                           <span>Inbox</span>
                         </button>
 
@@ -954,7 +955,7 @@ export function LabelManagerModal({
                             onClick={() => handleMoveEmails(l.id, l.name)}
                             className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-slate-100 rounded-lg text-left text-slate-700 font-medium truncate"
                           >
-                            <Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="truncate">{l.name}</span>
                           </button>
                         ))}
@@ -965,9 +966,9 @@ export function LabelManagerModal({
                         {!showNewFolderInMove ? (
                           <button
                             onClick={() => setShowNewFolderInMove(true)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-indigo-700 hover:bg-indigo-50 rounded-lg font-bold"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-slate-700 hover:bg-slate-50 rounded-lg font-medium"
                           >
-                            <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                            <Plus className="w-3.5 h-3.5 text-slate-600" />
                             <span>+ Create New & Move</span>
                           </button>
                         ) : (
@@ -984,7 +985,7 @@ export function LabelManagerModal({
                               <button
                                 type="submit"
                                 disabled={!customDestinationName.trim()}
-                                className="flex-1 bg-slate-900 text-white rounded py-1 text-xs font-bold disabled:opacity-50"
+                                className="flex-1 bg-slate-900 text-white rounded py-1 text-xs font-medium disabled:opacity-50"
                               >
                                 Create & Move
                               </button>
@@ -1011,10 +1012,10 @@ export function LabelManagerModal({
                       setIsMoveDropdownOpen(false);
                     }}
                     disabled={selectedEmailIds.size === 0 || isMovingEmails}
-                    className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Add or apply a label tag without moving from folder"
                   >
-                    <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                    <Tag className="w-3.5 h-3.5 text-slate-600" />
                     <span>Apply Label...</span>
                   </button>
 
@@ -1031,7 +1032,7 @@ export function LabelManagerModal({
                             onClick={() => handleApplyLabel(l.id, l.name)}
                             className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-slate-100 rounded-lg text-left text-slate-700 font-medium truncate"
                           >
-                            <Tag className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="truncate">{l.name}</span>
                           </button>
                         ))}
@@ -1044,7 +1045,7 @@ export function LabelManagerModal({
                 <button
                   onClick={handleQuickArchive}
                   disabled={selectedEmailIds.size === 0 || isMovingEmails}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg shadow-2xs transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg shadow-2xs transition-colors disabled:opacity-40"
                   title="Archive selected messages (remove from Inbox)"
                 >
                   <Archive className="w-3 h-3" />
@@ -1055,7 +1056,7 @@ export function LabelManagerModal({
                 <button
                   onClick={() => handleToggleRead(true)}
                   disabled={selectedEmailIds.size === 0 || isMovingEmails}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg shadow-2xs transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg shadow-2xs transition-colors disabled:opacity-40"
                   title="Mark selected as read"
                 >
                   <MailOpen className="w-3 h-3" />
@@ -1066,7 +1067,7 @@ export function LabelManagerModal({
                 <button
                   onClick={() => handleMoveEmails('TRASH', 'Trash')}
                   disabled={selectedEmailIds.size === 0 || isMovingEmails}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-lg shadow-2xs transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-medium rounded-lg shadow-2xs transition-colors disabled:opacity-40"
                   title="Move selected to Trash"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -1079,8 +1080,14 @@ export function LabelManagerModal({
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50/40">
               {loadingEmails ? (
                 <div className="h-full flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
-                  <p className="text-xs font-semibold text-slate-600">Loading messages from "{currentFolder.name}"...</p>
+                  <TypingLoader 
+                    title={`Loading ${currentFolder.name}`} 
+                    messages={[
+                      "Fetching emails...",
+                      "Retrieving sender information...",
+                      "Sorting by date..."
+                    ]} 
+                  />
                 </div>
               ) : folderEmails.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center py-16 text-slate-400 gap-3 text-center">
@@ -1137,7 +1144,7 @@ export function LabelManagerModal({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2 truncate">
-                                <span className={cn("text-xs truncate", isUnread ? "font-extrabold text-slate-900" : "font-semibold text-slate-700")}>
+                                <span className={cn("text-xs truncate", isUnread ? "font-semibold text-slate-900" : "font-semibold text-slate-700")}>
                                   {email.sender.replace(/<.*>/, '').trim() || email.sender}
                                 </span>
                                 {isUnread && (
@@ -1234,7 +1241,7 @@ export function LabelManagerModal({
                 <button
                   onClick={executeDeleteFolder}
                   disabled={deletingLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-medium transition-colors shadow-2xs disabled:opacity-50"
                 >
                   {deletingLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   <span>Confirm Delete</span>

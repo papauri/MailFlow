@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -8,4 +12,32 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-200%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes flash-highlight {
+  0%, 100% { 
+    transform: scale(1);
+    box-shadow: none;
+  }
+  25%, 75% { 
+    transform: scale(1.02);
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  50% { 
+    transform: scale(1);
+    box-shadow: none;
+  }
+}
+
+.animate-flash {
+  animation: flash-highlight 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10;
+  position: relative;
+  /* Adding a subtle blue tint overlay using filter */
+  filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.2));
 }
