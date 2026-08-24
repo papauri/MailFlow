@@ -14,7 +14,8 @@ import {
   CheckCircle,
   RefreshCw,
   FolderPlus,
-  Inbox
+  Inbox,
+  Sparkles
 } from 'lucide-react';
 import { 
   searchEmails, 
@@ -39,6 +40,15 @@ export interface SmartGroup {
   suggestedLabel?: string;
   categoryTag: string;
   reason: string;
+  filterQuery: string;
+}
+
+export interface SmartInsight {
+  id: string;
+  title: string;
+  description: string;
+  actionType: 'mark_read' | 'trash_promotions' | 'archive_old' | string;
+  actionLabel: string;
   filterQuery: string;
 }
 
@@ -104,6 +114,9 @@ export function SmartTriageModal({
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
+  const [insights, setInsights] = useState<SmartInsight[]>([]);
+  const [handledInsightIds, setHandledInsightIds] = useState<Set<string>>(new Set());
+  const [executingInsightId, setExecutingInsightId] = useState<string | null>(null);
   const [fetchedEmails, setFetchedEmails] = useState<EmailData[]>([]);
   const [error, setError] = useState<string | null>(null);
   
@@ -500,6 +513,11 @@ export function SmartTriageModal({
             const data = await res.json();
             if (data && data.groups && Array.isArray(data.groups) && data.groups.length > 0) {
               setGroups(data.groups);
+              if (data.insights && Array.isArray(data.insights)) {
+                setInsights(data.insights);
+              } else {
+                setInsights([]);
+              }
               aiSucceeded = true;
             }
           } else if (res.status === 429) {
@@ -683,6 +701,36 @@ export function SmartTriageModal({
     }
   };
 
+  const executeInsightAction = async (insight: SmartInsight) => {
+    setExecutingInsightId(insight.id);
+    try {
+      // Find emails matching the filterQuery locally from fetchedEmails (if possible)
+      // Otherwise, we could just execute a fresh search, but let's do a fresh search to be safe for macro insights
+      const matches = await searchEmails(insight.filterQuery, 500);
+      const allMessageIds = matches.flatMap(e => e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]);
+
+      if (allMessageIds.length > 0) {
+        if (insight.actionType === 'mark_read') {
+          await batchModifyEmails(allMessageIds, [], ['UNREAD']);
+        } else if (insight.actionType === 'trash_promotions') {
+          await batchTrashEmails(allMessageIds);
+        } else if (insight.actionType === 'archive_old') {
+          await batchArchiveEmails(allMessageIds);
+        } else {
+          // Default to archive if unknown
+          await batchArchiveEmails(allMessageIds);
+        }
+      }
+
+      setHandledInsightIds(prev => new Set(prev).add(insight.id));
+    } catch (err) {
+      console.error('Insight execution failed:', err);
+      alert('Failed to execute insight action.');
+    } finally {
+      setExecutingInsightId(null);
+    }
+  };
+
   // Dismiss a Sender permanently
   const handleDismissGroup = (group: SmartGroup) => {
     saveDismissedSender(group.sender);
@@ -773,6 +821,39 @@ export function SmartTriageModal({
             </button>
           </div>
         </div>
+
+        {/* Macro Insights */}
+        {!loading && insights.length > 0 && !isAllCompleted && (
+          <div className="px-5 pt-4 pb-2 bg-gradient-to-br from-indigo-50 to-blue-50/30 border-b border-indigo-100/50 shrink-0">
+            <h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Smarter Organizer Insights
+            </h3>
+            <div className="flex flex-col gap-2.5">
+              {insights.map(insight => {
+                const isHandled = handledInsightIds.has(insight.id);
+                if (isHandled) return null;
+                const isExecuting = executingInsightId === insight.id;
+
+                return (
+                  <div key={insight.id} className="bg-white border border-indigo-100/80 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">{insight.title}</h4>
+                      <p className="text-xs text-slate-600 mt-0.5">{insight.description}</p>
+                    </div>
+                    <button
+                      onClick={() => executeInsightAction(insight)}
+                      disabled={isExecuting}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                    >
+                      {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      {insight.actionLabel}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Top Control Bar & Filters */}
         {!loading && groups.length > 0 && !isAllCompleted && (

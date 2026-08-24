@@ -184,9 +184,25 @@ async function startServer() {
               },
               required: ["id", "sender", "title", "emailIds", "actionType", "categoryTag", "reason", "filterQuery"]
             }
+          },
+          insights: {
+            type: Type.ARRAY,
+            description: "1-2 overarching macro-level recommendations or observations based on the overall data (e.g., massive unread backlog, too many newsletters).",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING, description: "Catchy title for the insight, e.g., 'Newsletter Overload', 'Unread Alert'" },
+                description: { type: Type.STRING, description: "A conversational, personal note from the smart organizer explaining the insight." },
+                actionType: { type: Type.STRING, description: "One of: 'mark_read', 'trash_promotions', 'archive_old'" },
+                actionLabel: { type: Type.STRING, description: "Text for the 1-click button, e.g., 'Mark 50+ as Read'" },
+                filterQuery: { type: Type.STRING, description: "Gmail search filter to execute this macro action (e.g., 'is:unread category:updates')" }
+              },
+              required: ["id", "title", "description", "actionType", "actionLabel", "filterQuery"]
+            }
           }
         },
-        required: ["groups"]
+        required: ["groups", "insights"]
       };
 
       const aiPrompt = `You are a practical, highly disciplined Inbox Organizer.
@@ -208,6 +224,11 @@ RULES:
 
 3. DO NOT RECOMMEND REDUNDANT ACTIONS:
    - If an email is already in the right folder or already archived (not in Inbox), do not suggest archiving it again.
+
+4. MACRO INSIGHTS:
+   - Provide 1 or 2 high-level insights based on the overall data.
+   - For example, if you see many old unread emails, suggest actionType: 'mark_read' and a filter query like 'is:unread older_than:30d'.
+   - Be a personal, smart organizer giving actionable advice.
 
 Sampled emails:
 ${emailText}
