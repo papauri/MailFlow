@@ -85,6 +85,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [creatingRuleId, setCreatingRuleId] = useState<string | null>(null);
   const [createdRulesLog, setCreatedRulesLog] = useState<CreatedRuleRecord[]>([]);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [dismissedRuleIds, setDismissedRuleIds] = useState<Set<string>>(new Set());
   const [hasScanned, setHasScanned] = useState(false);
 
@@ -388,7 +389,10 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
   return (
     <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3">
+      <div 
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 cursor-pointer hover:bg-slate-100/50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
             <SlidersHorizontal className="w-5 h-5" />
@@ -410,7 +414,10 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           {/* Tabs switch */}
-          <div className="flex items-center bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold">
+          <div 
+            className="flex items-center bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={() => setActiveTab('suggestions')}
               className={cn(
@@ -433,7 +440,10 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
 
           {hasScanned ? (
             <button
-              onClick={runRuleAnalysis}
+              onClick={(e) => {
+                e.stopPropagation();
+                runRuleAnalysis();
+              }}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
               title="Scan folders and inbox for rule patterns"
@@ -443,7 +453,10 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
             </button>
           ) : (
             <button
-              onClick={runRuleAnalysis}
+              onClick={(e) => {
+                e.stopPropagation();
+                runRuleAnalysis();
+              }}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
               title="Scan for rule patterns"
@@ -452,8 +465,14 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
               <span>Discover Rules</span>
             </button>
           )}
+          <div className="p-1 sm:p-2 text-slate-400 hover:bg-slate-200/50 rounded-lg transition-colors ml-1">
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
         </div>
       </div>
+
+      {isExpanded && (
+        <div className="flex flex-col">
 
       {/* Category Filter Pills (Suggestions tab only) */}
       {hasScanned && activeTab === 'suggestions' && !loading && filteredProposals.length > 0 && (
@@ -790,6 +809,8 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
           )
         )}
       </div>
+      </div>
+      )}
     </div>
   );
 }

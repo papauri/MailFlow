@@ -225,6 +225,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   const [ruleCreatedIds, setRuleCreatedIds] = useState<Set<number>>(new Set());
   const [creatingRuleId, setCreatingRuleId] = useState<number | null>(null);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // Anti-Hallucination & Zero-False-Positive Sanitization Engine
   const validateAndSanitizeRecommendations = (rawRecs: any[], emailPool: any[]): Recommendation[] => {
@@ -744,7 +745,10 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   return (
     <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50">
+      <div 
+        className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 cursor-pointer hover:bg-slate-100/50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
             <SlidersHorizontal className="w-5 h-5" />
@@ -767,7 +771,10 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
         <div className="flex items-center gap-2">
           {hasScanned ? (
             <button 
-              onClick={runAnalysis}
+              onClick={(e) => {
+                e.stopPropagation();
+                runAnalysis();
+              }}
               disabled={loading || isFetching}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
               title="Scan inbox again"
@@ -777,7 +784,10 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
             </button>
           ) : (
             <button 
-              onClick={runAnalysis}
+              onClick={(e) => {
+                e.stopPropagation();
+                runAnalysis();
+              }}
               disabled={loading || isFetching}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
               title="Scan inbox for clusters"
@@ -786,8 +796,14 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
               <span>Scan Now</span>
             </button>
           )}
+          <div className="p-2 text-slate-400 hover:bg-slate-200/50 rounded-lg transition-colors">
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
         </div>
       </div>
+
+      {isExpanded && (
+        <div className="flex flex-col">
 
       {/* Category Pills */}
       {hasScanned && !loading && !error && recommendations.length > 0 && (
@@ -1054,6 +1070,8 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
           </div>
         )}
       </div>
+      </div>
+      )}
     </div>
   );
 }

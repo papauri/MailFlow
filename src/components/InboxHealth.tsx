@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
@@ -27,6 +27,10 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(true);
   const [reloadTrigger, setReloadTrigger] = useState(0);
+
+  const [showOverview, setShowOverview] = useState(true);
+  const [showQuickFilters, setShowQuickFilters] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
   useEffect(() => {
     async function fetchStats() {
@@ -219,7 +223,17 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
       <StorageBreakdownBar onApplyQuery={onApplyQuery} className="mb-4 sm:mb-6" />
 
-      <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+      <div className="flex flex-col gap-3 mt-2">
+        <button 
+          onClick={() => setShowOverview(!showOverview)}
+          className="flex items-center gap-2 text-slate-800 font-bold hover:text-slate-600 transition-colors w-full text-left"
+        >
+          <Activity className="w-5 h-5 text-indigo-500" />
+          <span className="text-lg">Inbox Overview</span>
+          {showOverview ? <ChevronUp className="w-4 h-4 ml-auto text-slate-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />}
+        </button>
+        {showOverview && (
+          <div className="flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         <HealthCard 
           icon={<HardDrive className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />}
           iconBg="bg-orange-50"
@@ -287,6 +301,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           onAction={() => setIsSmartTriageOpen(true)}
         />
       </div>
+        )}
+      </div>
 
       {isSmartTriageOpen && (
         <SmartTriageModal
@@ -304,11 +320,16 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
       
       
-      <div className="mt-2 sm:mt-4">
-        <div className="flex items-center gap-2 mb-2 sm:mb-3">
-          <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800" />
-          <h3 className="text-base sm:text-lg font-bold text-slate-800">Quick Filters</h3>
-        </div>
+      <div className="mt-2 sm:mt-4 flex flex-col gap-3">
+        <button 
+          onClick={() => setShowQuickFilters(!showQuickFilters)}
+          className="flex items-center gap-2 text-slate-800 font-bold hover:text-slate-600 transition-colors w-full text-left"
+        >
+          <Filter className="w-5 h-5 text-indigo-500" />
+          <span className="text-lg">Quick Filters</span>
+          {showQuickFilters ? <ChevronUp className="w-4 h-4 ml-auto text-slate-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />}
+        </button>
+        {showQuickFilters && (
         <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button 
             onClick={() => onApplyQuery("is:unread is:important -category:promotions -in:trash", "anywhere")}
@@ -355,14 +376,26 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
             </div>
           </button>
         </div>
+        )}
       </div>
 
 
       
       {/* Local Aggregations */}
       {topSenders.length > 0 && (
-        <div className="mt-6 sm:mt-8 flex flex-col gap-6 sm:grid sm:grid-cols-2">
-          {/* Top Senders */}
+        <div className="mt-6 sm:mt-8 flex flex-col gap-3">
+          <button 
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className="flex items-center gap-2 text-slate-800 font-bold hover:text-slate-600 transition-colors w-full text-left"
+          >
+            <PieChart className="w-5 h-5 text-indigo-500" />
+            <span className="text-lg">Sender Analytics</span>
+            {showAnalytics ? <ChevronUp className="w-4 h-4 ml-auto text-slate-400" /> : <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />}
+          </button>
+          
+          {showAnalytics && (
+            <div className="flex flex-col gap-6 sm:grid sm:grid-cols-2 mt-2">
+              {/* Top Senders */}
           <div className="flex flex-col gap-3 sm:gap-4">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-slate-200 rounded-lg shrink-0">
@@ -447,6 +480,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
               })}
             </div>
           </div>
+            </div>
+          )}
         </div>
       )}
 
