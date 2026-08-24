@@ -933,41 +933,41 @@ export function SmartTriageModal({
                     )}
                   >
                     {/* Top Row: Sender Info & Actions */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-semibold text-slate-900 text-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                      <div className="min-w-0 flex-1 w-full">
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <span className="font-semibold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs">
                             {group.sender}
                           </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600">
+                          <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 shrink-0">
                             {group.categoryTag}
                           </span>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-400 shrink-0">
                             • {activeEmailIds.length} {activeEmailIds.length === 1 ? 'email' : 'emails'}
                           </span>
                         </div>
-                        <h4 className="text-xs sm:text-sm font-medium text-slate-800">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-800 break-words leading-snug">
                           {group.title}
                         </h4>
-                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                        <p className="text-xs text-slate-500 mt-1 leading-relaxed break-words">
                           {group.reason}
                         </p>
                       </div>
 
                       {/* Right Action Buttons */}
-                      <div className="shrink-0 flex items-center gap-2 w-full sm:w-auto justify-end">
+                      <div className="shrink-0 flex flex-row sm:flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                         {isCompleted ? (
-                          <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold px-3 py-1.5 bg-emerald-50 rounded-lg border border-emerald-100">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          <div className="flex items-center justify-center gap-1.5 text-emerald-600 text-xs font-semibold px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-100 w-full sm:w-auto">
+                            <CheckCircle2 className="w-4 h-4" />
                             <span>Done</span>
                           </div>
                         ) : (
-                          <>
+                          <div className="flex flex-1 sm:flex-initial gap-2 items-center">
                             {group.actionType === 'trash' && (
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                 <span>Trash ({activeEmailIds.length})</span>
@@ -978,7 +978,7 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
                               >
                                 {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
                                 <span>Archive ({activeEmailIds.length})</span>
@@ -989,10 +989,10 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group, !labelExists)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 min-w-[140px]"
                               >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5" />}
-                                <span>Move to {group.suggestedLabel || 'Label'}</span>
+                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5 shrink-0" />}
+                                <span className="truncate max-w-[120px] sm:max-w-[150px]">Move to {group.suggestedLabel || 'Label'}</span>
                               </button>
                             )}
 
@@ -1000,22 +1000,22 @@ export function SmartTriageModal({
                               <button
                                 onClick={() => executeGroupAction(group)}
                                 disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
                               >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5 fill-current" />}
-                                <span>Protect & Keep</span>
+                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5 fill-current shrink-0" />}
+                                <span className="whitespace-nowrap">Protect & Keep</span>
                               </button>
                             )}
 
                             <button
                               onClick={() => handleDismissGroup(group)}
                               disabled={isExecuting}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              className="p-2 sm:p-1.5 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 sm:border-transparent flex items-center justify-center"
                               title="Dismiss this sender from future recommendations"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="w-4 h-4 sm:w-5 sm:h-5" />
                             </button>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
