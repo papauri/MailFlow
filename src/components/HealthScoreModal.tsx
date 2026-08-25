@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  X, ChevronDown, ChevronUp, Activity, Loader2, TrendingUp, AlertTriangle, 
-  HardDrive, Trash2, MailOpen, ArrowRight, ShieldCheck, RefreshCw, Sparkles, CheckCircle2, ArrowLeft, Mail,
-  Sliders, UserX, Filter, RotateCcw, Zap, ExternalLink, Clock
+import {
+  X, Activity, Loader2, TrendingUp, AlertTriangle,
+  HardDrive, Trash2, MailOpen, ShieldCheck, RefreshCw, Sparkles, ArrowLeft,
+  Sliders, UserX, Filter, RotateCcw, Clock
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { 
-  countEmails, markAllAsReadByQuery, emptyAllTrash, searchEmails, 
-  batchDeleteEmails, batchTrashEmails, batchMarkAsRead, EmailData 
+import {
+  countEmails, markAllAsReadByQuery, emptyAllTrash, searchEmails, batchTrashEmails
 } from '../lib/gmail';
 import {
   computeInboxHealthScore,
@@ -57,12 +56,6 @@ export function HealthScoreModal({
   const [simLarge, setSimLarge] = useState<number>(0);
   const [simExtraUnsubs, setSimExtraUnsubs] = useState<number>(0);
   const [simExtraRules, setSimExtraRules] = useState<number>(0);
-
-  // Inspect mode states
-  const [inspectingView, setInspectingView] = useState<{ title: string; query: string; actionType: FixableMetric, penalty: number } | null>(null);
-  const [previewEmails, setPreviewEmails] = useState<EmailData[]>([]);
-  const [selectedInspectIds, setSelectedInspectIds] = useState<Set<string>>(new Set());
-  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -191,103 +184,51 @@ export function HealthScoreModal({
   const simulatedScore = simBreakdown.score;
   const scoreDiff = simulatedScore - liveScore;
 
-  const handleFix = async (type: FixableMetric, _currentPts?: number, selectedIds?: string[]) => {
+  const handleFix = async (type: FixableMetric, _currentPts?: number) => {
     setActiveAction(type);
     try {
       let message = "";
-      
-      const isPartial = Boolean(selectedIds && selectedIds.length > 0);
-
-      // Resolve message IDs for selected items if inspecting
-      const selectedEmails = previewEmails.filter(e => selectedIds && selectedIds.includes(e.id));
-      const extractedMessageIds = selectedEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-      const targetIds = extractedMessageIds.length > 0 ? extractedMessageIds : (selectedIds || []);
 
       if (type === 'unread') {
-        if (isPartial) {
-          await batchMarkAsRead(targetIds);
-          message = `${selectedIds!.length} emails marked as read!`;
-        } else {
-          await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread);
-          message = "Inbox zero achieved (unread)!";
-        }
+        await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread);
+        message = "Inbox zero achieved (unread)!";
       } else if (type === 'spam') {
-        if (isPartial) {
-          await batchDeleteEmails(targetIds);
-          message = `${selectedIds!.length} spam & trash items removed!`;
-        } else {
-          await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash);
-          message = "Spam and trash emptied!";
-        }
+        await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash);
+        message = "Spam and trash emptied!";
       } else if (type === 'promo') {
-        if (isPartial) {
-          await batchTrashEmails(targetIds);
-          message = `${selectedIds!.length} old promotions cleaned!`;
-        } else {
-          const pEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldPromotions, 500);
-          const promoIds = pEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-          if (promoIds.length > 0) {
-            await batchTrashEmails(promoIds);
-          }
-          message = "Old promotions cleaned!";
-        }
+        const pEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldPromotions, 500);
+        const promoIds = pEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
+        if (promoIds.length > 0) await batchTrashEmails(promoIds);
+        message = "Old promotions cleaned!";
       } else if (type === 'large') {
-         if (isPartial) {
-           await batchTrashEmails(targetIds);
-           message = `${selectedIds!.length} large attachments removed!`;
-         } else if (inspectingView && previewEmails.length > 0) {
-           const largeIds = previewEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-           if (largeIds.length > 0) {
-             await batchTrashEmails(largeIds);
-           }
-           message = `${previewEmails.length} large attachments removed!`;
-         } else if (onApplyQuery) {
-            onClose();
-            onApplyQuery("larger:5M -in:trash");
-            return;
-         }
+        const lEmails = await searchEmails(HEALTH_SCORE_QUERIES.largeFiles, 500);
+        const largeIds = lEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
+        if (largeIds.length > 0) await batchTrashEmails(largeIds);
+        message = `${lEmails.length} large attachments moved to trash!`;
       } else if (type === 'oldMail') {
-        if (isPartial) {
-          await batchTrashEmails(targetIds);
-          message = `${selectedIds!.length} old messages archived to trash!`;
-        } else {
-          // Bounded to one page like the promotions sweep — clearing a decade of mail
-          // in one unbounded pass would hammer the API and can't be undone in bulk.
-          const oldEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldMail, 500);
-          const oldIds = oldEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-          if (oldIds.length > 0) {
-            await batchTrashEmails(oldIds);
-          }
-          message = `${oldEmails.length} messages older than a year cleaned!`;
-        }
+        // Bounded to one page like the promotions sweep — clearing a decade of mail
+        // in one unbounded pass would hammer the API and can't be undone in bulk.
+        const oldEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldMail, 500);
+        const oldIds = oldEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
+        if (oldIds.length > 0) await batchTrashEmails(oldIds);
+        message = `${oldEmails.length} messages older than a year cleaned!`;
       }
-      
-      const countToSubtract = isPartial
-        ? selectedIds!.length
-        : (inspectingView && previewEmails.length > 0 ? previewEmails.length : (
-            type === 'unread' ? metrics.unreadInbox :
-            type === 'spam' ? metrics.spamAndTrash :
-            type === 'promo' ? metrics.oldPromotions :
-            type === 'oldMail' ? (metrics.oldMail || 0) :
-            metrics.largeFiles
-          ));
 
-      // INSTANT OPTIMISTIC SCORE REFRESH:
-      // Compute the actual next metrics and derive points gained from the real score
-      // delta — never assume the full category penalty, since a partial fix (only
-      // some selected emails) only clears part of it.
+      const countToSubtract =
+        type === 'unread' ? metrics.unreadInbox :
+        type === 'spam' ? metrics.spamAndTrash :
+        type === 'promo' ? metrics.oldPromotions :
+        type === 'oldMail' ? (metrics.oldMail || 0) :
+        metrics.largeFiles;
+
+      // Derive points gained from the real before/after score rather than assuming
+      // the full category penalty, so the number shown is what was actually earned.
       const nextMetrics: HealthScoreMetrics = { ...metrics };
-      if (type === 'unread') {
-        nextMetrics.unreadInbox = isPartial ? Math.max(0, metrics.unreadInbox - countToSubtract) : 0;
-      } else if (type === 'spam') {
-        nextMetrics.spamAndTrash = isPartial ? Math.max(0, metrics.spamAndTrash - countToSubtract) : 0;
-      } else if (type === 'promo') {
-        nextMetrics.oldPromotions = isPartial ? Math.max(0, metrics.oldPromotions - countToSubtract) : 0;
-      } else if (type === 'large') {
-        nextMetrics.largeFiles = isPartial ? Math.max(0, metrics.largeFiles - countToSubtract) : 0;
-      } else if (type === 'oldMail') {
-        nextMetrics.oldMail = isPartial ? Math.max(0, (metrics.oldMail || 0) - countToSubtract) : 0;
-      }
+      if (type === 'unread') nextMetrics.unreadInbox = 0;
+      else if (type === 'spam') nextMetrics.spamAndTrash = 0;
+      else if (type === 'promo') nextMetrics.oldPromotions = 0;
+      else if (type === 'large') nextMetrics.largeFiles = 0;
+      else if (type === 'oldMail') nextMetrics.oldMail = 0;
 
       const ptsGained = computeInboxHealthScore(nextMetrics) - computeInboxHealthScore(metrics);
 
@@ -297,31 +238,12 @@ export function HealthScoreModal({
       setSimPromo(nextMetrics.oldPromotions);
       setSimLarge(nextMetrics.largeFiles);
 
-      const updatedMetricsState = nextMetrics;
-
-      // Update inspected emails view state
-      if (isPartial) {
-        setPreviewEmails(prev => prev.filter(e => !selectedIds!.includes(e.id)));
-        setSelectedInspectIds(new Set());
-      } else {
-        setPreviewEmails([]);
-        setSelectedInspectIds(new Set());
-        setInspectingView(null);
-      }
-
       setCelebration({ message, pts: ptsGained });
-      setTimeout(() => {
-        setCelebration(null);
-      }, 3500);
+      setTimeout(() => setCelebration(null), 3500);
 
       // Broadcast instant sync event for other views (InboxHealth, Dashboard, etc.)
       window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
-        detail: { 
-          type, 
-          count: countToSubtract, 
-          isPartial,
-          metrics: updatedMetricsState 
-        }
+        detail: { type, count: countToSubtract, isPartial: false, metrics: nextMetrics }
       }));
 
       // Background silent reconcile after 4 seconds once Gmail index catches up
@@ -335,57 +257,6 @@ export function HealthScoreModal({
     }
   };
 
-  const startInspect = async (title: string, query: string, actionType: FixableMetric, penalty: number) => {
-    setInspectingView({ title, query, actionType, penalty });
-    setLoadingPreview(true);
-    setPreviewEmails([]);
-    setSelectedInspectIds(new Set());
-    try {
-      const emails = await searchEmails(query, 50);
-      setPreviewEmails(emails);
-    } catch(e) {
-      console.error(e);
-    } finally {
-      setLoadingPreview(false);
-    }
-  };
-
-  const toggleInspectSelect = (id: string) => {
-    setSelectedInspectIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleInspectSelectAll = () => {
-    if (selectedInspectIds.size === previewEmails.length) {
-      setSelectedInspectIds(new Set());
-    } else {
-      setSelectedInspectIds(new Set(previewEmails.map(e => e.id)));
-    }
-  };
-
-  const getInspectProjectedScore = () => {
-    if (!inspectingView || selectedInspectIds.size === 0) return liveScore;
-    const projectedMetrics = { ...metrics };
-    if (inspectingView.actionType === 'unread') {
-      projectedMetrics.unreadInbox = Math.max(0, metrics.unreadInbox - selectedInspectIds.size);
-    } else if (inspectingView.actionType === 'spam') {
-      projectedMetrics.spamAndTrash = Math.max(0, metrics.spamAndTrash - selectedInspectIds.size);
-    } else if (inspectingView.actionType === 'promo') {
-      projectedMetrics.oldPromotions = Math.max(0, metrics.oldPromotions - selectedInspectIds.size);
-    } else if (inspectingView.actionType === 'large') {
-      projectedMetrics.largeFiles = Math.max(0, metrics.largeFiles - selectedInspectIds.size);
-    } else if (inspectingView.actionType === 'oldMail') {
-      projectedMetrics.oldMail = Math.max(0, (metrics.oldMail || 0) - selectedInspectIds.size);
-    }
-    return computeInboxHealthScore(projectedMetrics);
-  };
-
-  const inspectProjectedScore = getInspectProjectedScore();
-
   const getScoreStatus = (s: number) => {
     if (s >= 85) return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Optimal', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
     if (s >= 70) return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Good', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
@@ -395,6 +266,111 @@ export function HealthScoreModal({
 
   const status = getScoreStatus(liveScore);
   const simStatus = getScoreStatus(simulatedScore);
+
+  /**
+   * Inspect opens a real filtered page rather than an inline panel, so the user gets
+   * breadcrumbs, a named Back button, their own history entry, and the full set of
+   * bulk actions. `action` tells that page which operation this task calls for.
+   */
+  const openInspectPage = (
+    title: string,
+    query: string,
+    subtitle: string,
+    action: 'markRead' | 'trash' | 'deleteForever'
+  ) => {
+    const params = new URLSearchParams();
+    params.set('q', query);
+    params.set('title', title);
+    params.set('badge', 'Score Breakdown');
+    params.set('sub', subtitle);
+    params.set('source', isPage ? 'health-score' : 'health');
+    params.set('action', action);
+    window.location.hash = `#filter-view?${params.toString()}`;
+  };
+
+  /**
+   * One config drives every remediation row, so each is laid out identically instead
+   * of six hand-written blocks that drifted apart in button width and label length.
+   */
+  const remediationRows: {
+    id: FixableMetric;
+    icon: React.ReactNode;
+    title: string;
+    badge: string;
+    desc: string;
+    penalty: number;
+    count: number;
+    query: string;
+    subtitle: string;
+    actionLabel: string;
+    inspectAction: 'markRead' | 'trash' | 'deleteForever';
+  }[] = [
+    {
+      id: 'unread',
+      icon: <MailOpen className="w-4 h-4" />,
+      title: 'Unread Inbox Messages',
+      badge: `${metrics.unreadInbox.toLocaleString()} unread`,
+      desc: 'Unopened emails in your inbox (max -35 pts)',
+      penalty: liveBreakdown.unreadPenalty,
+      count: metrics.unreadInbox,
+      query: HEALTH_SCORE_QUERIES.unread,
+      subtitle: 'Unread messages sitting in your inbox',
+      actionLabel: 'Mark Read',
+      inspectAction: 'markRead',
+    },
+    {
+      id: 'spam',
+      icon: <Trash2 className="w-4 h-4" />,
+      title: 'Spam & Trash Items',
+      badge: `${metrics.spamAndTrash.toLocaleString()} items`,
+      desc: 'Junk messages still consuming storage (max -25 pts)',
+      penalty: liveBreakdown.spamPenalty,
+      count: metrics.spamAndTrash,
+      query: HEALTH_SCORE_QUERIES.spamAndTrash,
+      subtitle: 'Messages already in spam or trash',
+      actionLabel: 'Empty All',
+      inspectAction: 'deleteForever',
+    },
+    {
+      id: 'promo',
+      icon: <AlertTriangle className="w-4 h-4" />,
+      title: 'Stale Promotions (>6 Months)',
+      badge: `${metrics.oldPromotions.toLocaleString()} emails`,
+      desc: 'Expired marketing emails and newsletters (max -20 pts)',
+      penalty: liveBreakdown.promoPenalty,
+      count: metrics.oldPromotions,
+      query: HEALTH_SCORE_QUERIES.oldPromotions,
+      subtitle: 'Marketing mail older than six months',
+      actionLabel: 'Clean All',
+      inspectAction: 'trash',
+    },
+    {
+      id: 'large',
+      icon: <HardDrive className="w-4 h-4" />,
+      title: 'Large Attachments (>5MB)',
+      badge: `${metrics.largeFiles.toLocaleString()} files`,
+      desc: 'Heavy files taking up storage quota (storage bloat)',
+      penalty: liveBreakdown.largeFilesPenalty,
+      count: metrics.largeFiles,
+      query: HEALTH_SCORE_QUERIES.largeFiles,
+      subtitle: 'Messages carrying attachments over 5MB',
+      actionLabel: 'Clean All',
+      inspectAction: 'trash',
+    },
+    {
+      id: 'oldMail',
+      icon: <Clock className="w-4 h-4" />,
+      title: 'Old Mail (>1 Year)',
+      badge: `${(metrics.oldMail || 0).toLocaleString()} emails`,
+      desc: "Messages you haven't needed in over a year (storage bloat)",
+      penalty: liveBreakdown.oldMailPenalty,
+      count: metrics.oldMail || 0,
+      query: HEALTH_SCORE_QUERIES.oldMail,
+      subtitle: 'Messages older than one year',
+      actionLabel: 'Clean All',
+      inspectAction: 'trash',
+    },
+  ];
 
   if (!isPage && !isOpen) return null;
 
@@ -426,16 +402,14 @@ export function HealthScoreModal({
       </div>
       
       <div className="flex items-center gap-2">
-        {!inspectingView && (
-          <button
-            onClick={fetchMetrics}
-            disabled={loading}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
-            title="Refresh score"
-          >
-            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-          </button>
-        )}
+        <button
+          onClick={fetchMetrics}
+          disabled={loading}
+          className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
+          title="Refresh score"
+        >
+          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+        </button>
         {!isPage && (
           <button
             onClick={onClose}
@@ -453,139 +427,6 @@ export function HealthScoreModal({
       "bg-white flex flex-col relative",
       isPage ? "rounded-2xl border border-slate-200 shadow-2xs min-h-[600px] overflow-hidden" : "flex-1 min-h-0 overflow-hidden"
     )}>
-      {inspectingView ? (
-        <div className="flex flex-col h-full bg-white animate-in slide-in-from-right-4 duration-200">
-          {/* Inspect Header */}
-          <div className="px-6 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white shrink-0">
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setInspectingView(null)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer shrink-0"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  Inspecting: {inspectingView.title}
-                  <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md truncate max-w-[150px] sm:max-w-none">{inspectingView.query}</span>
-                </h3>
-                {selectedInspectIds.size > 0 && (
-                  <p className="text-xs font-medium text-emerald-700 mt-0.5">
-                    Projected Score: {inspectProjectedScore}% (+{inspectProjectedScore - liveScore} pts)
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <button
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  params.set('q', inspectingView.query);
-                  params.set('title', inspectingView.title);
-                  params.set('badge', 'Score Breakdown');
-                  params.set('sub', `Inspecting ${inspectingView.title} (deduction of -${Math.round(inspectingView.penalty)} pts)`);
-                  params.set('source', isPage ? 'health-score' : 'health');
-                  window.location.hash = `#filter-view?${params.toString()}`;
-                }}
-                className="text-xs font-medium px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Inspect in dedicated full-page view"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Open Full Page</span>
-              </button>
-              <button
-                onClick={() => handleFix(inspectingView.actionType, inspectingView.penalty, Array.from(selectedInspectIds))}
-                disabled={activeAction !== null}
-                className="text-xs font-semibold px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50 whitespace-nowrap"
-              >
-                {activeAction === inspectingView.actionType ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                {selectedInspectIds.size > 0 
-                  ? `Fix ${selectedInspectIds.size} Selected` 
-                  : `Fix All (+${Math.round(inspectingView.penalty)} pts)`}
-              </button>
-            </div>
-          </div>
-          
-          {/* Email List Container */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto bg-slate-50/30">
-            {loadingPreview ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[250px] text-slate-400">
-                <Loader2 className="w-7 h-7 animate-spin mb-3 text-slate-500" />
-                <p className="text-sm font-medium text-slate-600">Fetching messages...</p>
-              </div>
-            ) : previewEmails.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[250px] text-slate-400">
-                <CheckCircle2 className="w-9 h-9 text-slate-400 mb-2.5" />
-                <p className="text-sm font-medium text-slate-700">No messages found here</p>
-                <p className="text-xs text-slate-500 mt-0.5">This category is already clean.</p>
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col p-0 sm:p-4 mx-auto w-full max-w-full">
-                <div className="bg-white border-y sm:border sm:border-slate-200 sm:rounded-xl sm:shadow-2xs overflow-hidden">
-                  <div className="px-3 sm:px-4 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
-                    <button 
-                      onClick={toggleInspectSelectAll}
-                      className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer", selectedInspectIds.size === previewEmails.length && previewEmails.length > 0 ? "bg-slate-900 border-slate-900 text-white" : "border-slate-300 bg-white text-transparent")}
-                    >
-                      <CheckCircle2 className="w-3 h-3" />
-                    </button>
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Select All ({previewEmails.length})</span>
-                  </div>
-                  <ul className="divide-y divide-slate-100">
-                    {previewEmails.map((email) => {
-                      const isUnread = email.labelIds?.includes('UNREAD');
-                      const isSelected = selectedInspectIds.has(email.id);
-                      return (
-                        <li 
-                          key={email.id} 
-                          onClick={() => toggleInspectSelect(email.id)}
-                          className={cn("px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-slate-50 transition-colors group flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 border-b border-slate-100 last:border-b-0 cursor-pointer", isSelected && "bg-slate-50/80")}
-                        >
-                          <div className="flex items-center gap-2.5 sm:gap-3 sm:w-1/3 shrink-0 min-w-0">
-                            <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0", isSelected ? "bg-slate-900 border-slate-900 text-white" : "border-slate-300 bg-white text-transparent")}>
-                              <CheckCircle2 className="w-3 h-3" />
-                            </div>
-                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 border border-slate-200 text-xs font-semibold uppercase hidden sm:flex">
-                              {(email.sender.replace(/<.*>/, "").trim() || '?')[0]}
-                            </div>
-                            <span 
-                              className={cn("text-xs sm:text-sm truncate", isUnread ? "font-semibold text-slate-900" : "font-normal text-slate-700")}
-                              title={email.sender}
-                            >
-                              {email.sender.replace(/<.*>/, "").trim() || email.sender}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-0.5 sm:gap-4 pl-9 sm:pl-0">
-                            <div className="truncate text-[11px] sm:text-sm min-w-0 flex-1">
-                              <span className={cn(isUnread ? "font-semibold text-slate-900" : "font-normal text-slate-700")}>
-                                {email.subject || '(No Subject)'}
-                              </span>
-                              <span className="text-slate-400 font-normal truncate mx-1 hidden sm:inline">-</span>
-                              <span className="text-slate-400 font-normal truncate">
-                                {email.snippet}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 sm:gap-3 shrink-0 justify-start sm:justify-end mt-1 sm:mt-0">
-                              {(email.sizeEstimate || 0) > 1048576 && (
-                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                  {((email.sizeEstimate || 0) / 1024 / 1024).toFixed(1)} MB
-                                </span>
-                              )}
-                              <span className={cn("text-[10px] sm:text-[11px] whitespace-nowrap", isUnread ? "font-semibold text-slate-700" : "font-normal text-slate-500")}>
-                                {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </span>
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
         <div className="h-full overflow-y-auto p-4 sm:p-6 bg-slate-50/40 custom-scrollbar">
           {/* Tab Switcher */}
           <div className="mb-5 flex items-center justify-between flex-wrap gap-3">
@@ -681,216 +522,82 @@ export function HealthScoreModal({
                 </div>
 
                 <div className="space-y-2.5">
-                  {/* Item 1: Unread */}
-                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                        <MailOpen className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">Unread Inbox Messages</h4>
-                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {metrics.unreadInbox.toLocaleString()} unread
-                          </span>
+                  {remediationRows.map(row => (
+                    <div
+                      key={row.id}
+                      className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl shadow-2xs transition-colors flex flex-col sm:flex-row sm:items-center gap-3"
+                    >
+                      <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                          {row.icon}
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Unopened emails in inbox (max -35 pts)</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.unreadPenalty} pts</span>
-                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => startInspect('Unread Emails', 'is:unread in:inbox -in:chats', 'unread', liveBreakdown.unreadPenalty)}
-                          disabled={metrics.unreadInbox === 0}
-                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Inspect
-                        </button>
-                        <button
-                          onClick={() => handleFix('unread', liveBreakdown.unreadPenalty)}
-                          disabled={metrics.unreadInbox === 0 || activeAction !== null}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {activeAction === 'unread' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Mark Read
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 2: Spam & Trash */}
-                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                        <Trash2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">Spam & Trash Items</h4>
-                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {metrics.spamAndTrash.toLocaleString()} items
-                          </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-semibold text-slate-900">{row.title}</h4>
+                            <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
+                              {row.badge}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{row.desc}</p>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Junk messages consuming storage (max -25 pts)</p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.spamPenalty} pts</span>
-                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => startInspect('Spam & Trash', 'in:spam OR in:trash', 'spam', liveBreakdown.spamPenalty)}
-                          disabled={metrics.spamAndTrash === 0}
-                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Inspect
-                        </button>
-                        <button
-                          onClick={() => handleFix('spam', liveBreakdown.spamPenalty)}
-                          disabled={metrics.spamAndTrash === 0 || activeAction !== null}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {activeAction === 'spam' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Empty All
-                        </button>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Item 3: Promo */}
-                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                        <AlertTriangle className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">Stale Promotions (&gt;6 Months)</h4>
-                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {metrics.oldPromotions.toLocaleString()} emails
-                          </span>
+                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                        <span className="text-sm font-bold text-slate-800 w-[64px] text-right tabular-nums shrink-0">
+                          -{row.penalty} pts
+                        </span>
+                        <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                          <button
+                            onClick={() => openInspectPage(row.title, row.query, row.subtitle, row.inspectAction)}
+                            disabled={row.count === 0}
+                            className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            Inspect
+                          </button>
+                          <button
+                            onClick={() => handleFix(row.id, row.penalty)}
+                            disabled={row.count === 0 || activeAction !== null}
+                            className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center justify-center gap-1"
+                          >
+                            {activeAction === row.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {row.actionLabel}
+                          </button>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Expired marketing emails and newsletters (max -20 pts)</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.promoPenalty} pts</span>
-                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => startInspect('Old Promotions', 'category:promotions older_than:6m -in:trash', 'promo', liveBreakdown.promoPenalty)}
-                          disabled={metrics.oldPromotions === 0}
-                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Inspect
-                        </button>
-                        <button
-                          onClick={() => handleFix('promo', liveBreakdown.promoPenalty)}
-                          disabled={metrics.oldPromotions === 0 || activeAction !== null}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {activeAction === 'promo' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Clean All
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
 
-                  {/* Item 4: Large Attachments */}
-                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                        <HardDrive className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">Large Attachments (&gt;5MB)</h4>
-                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {metrics.largeFiles.toLocaleString()} files
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Heavy files taking up storage quota (storage bloat, max -10 pts combined)</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.largeFilesPenalty} pts</span>
-                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => startInspect('Large Attachments', HEALTH_SCORE_QUERIES.largeFiles, 'large', liveBreakdown.largeFilesPenalty)}
-                          disabled={metrics.largeFiles === 0}
-                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Inspect Files
-                        </button>
-                        <button
-                          onClick={() => handleFix('large', liveBreakdown.largeFilesPenalty)}
-                          disabled={metrics.largeFiles === 0 || activeAction !== null}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {activeAction === 'large' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Clean All
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 5: Old Mail */}
-                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                        <Clock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">Old Mail (&gt;1 Year)</h4>
-                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {(metrics.oldMail || 0).toLocaleString()} emails
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Messages you haven't needed in over a year (storage bloat)</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.oldMailPenalty} pts</span>
-                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => startInspect('Old Mail', HEALTH_SCORE_QUERIES.oldMail, 'oldMail', liveBreakdown.oldMailPenalty)}
-                          disabled={(metrics.oldMail || 0) === 0}
-                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Inspect
-                        </button>
-                        <button
-                          onClick={() => handleFix('oldMail', liveBreakdown.oldMailPenalty)}
-                          disabled={(metrics.oldMail || 0) === 0 || activeAction !== null}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {activeAction === 'oldMail' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Clean All
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Positive Bonus Breakdown Card */}
-                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-center gap-3">
+                  {/* Positive Bonus row — same shell so it lines up with the rest */}
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-2xs flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
                       <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
                         <ShieldCheck className="w-4 h-4" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-sm font-semibold text-slate-900">Automations & Unsubscribe Bonus</h4>
-                          <span className="text-xs font-semibold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200">
+                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
                             +{liveBreakdown.totalBonus} pts
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {metrics.unsubscribedCount || 0} newsletter unsubscriptions (+{liveBreakdown.unsubBonus} pts) • {metrics.activeFiltersCount || 0} active filter rules (+{liveBreakdown.filterBonus} pts)
+                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                          {metrics.unsubscribedCount || 0} unsubscriptions (+{liveBreakdown.unsubBonus} pts) &bull; {metrics.activeFiltersCount || 0} filter rules (+{liveBreakdown.filterBonus} pts)
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <button
-                        onClick={() => { window.location.hash = '#subscriptions'; }}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer"
-                      >
-                        Manage Subscriptions
-                      </button>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                      <span className="text-sm font-bold text-slate-800 w-[64px] text-right tabular-nums shrink-0">
+                        +{liveBreakdown.totalBonus} pts
+                      </span>
+                      <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                        <button
+                          onClick={() => { window.location.hash = '#subscriptions'; }}
+                          className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          Manage Subs
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1181,7 +888,7 @@ export function HealthScoreModal({
                       Simulate Clean (+{Math.round(liveBreakdown.bloatPenalty)} pts)
                     </button>
                     <button
-                      onClick={() => startInspect('Large Attachments', 'larger:5M -in:trash', 'large', liveBreakdown.bloatPenalty)}
+                      onClick={() => openInspectPage('Large Attachments', HEALTH_SCORE_QUERIES.largeFiles, 'Messages carrying attachments over 5MB', 'trash')}
                       disabled={metrics.largeFiles === 0}
                       className="text-xs font-medium px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
                     >
@@ -1293,7 +1000,6 @@ export function HealthScoreModal({
             </div>
           )}
         </div>
-      )}
     </div>
   );
 

@@ -17,6 +17,8 @@ export interface FilterPageParams {
   folder?: string;
   sort?: "date" | "size" | "sender";
   source?: string;
+  /** The operation this page exists to perform, emphasised in the toolbar. */
+  action?: 'markRead' | 'trash' | 'deleteForever';
 }
 
 interface FilteredEmailPageProps {
@@ -28,7 +30,10 @@ interface FilteredEmailPageProps {
   onToggleSelect: (id: string) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  /** Permanent, unrecoverable delete. Must never be labelled "Trash". */
   onDeleteSelected: () => void;
+  /** Recoverable move to Trash. */
+  onTrashSelected: () => void;
   onArchiveSelected: () => void;
   onMarkReadSelected: () => void;
   onStarSelected: () => void;
@@ -85,6 +90,7 @@ export function FilteredEmailPage({
   onSelectAll,
   onClearSelection,
   onDeleteSelected,
+  onTrashSelected,
   onArchiveSelected,
   onMarkReadSelected,
   onStarSelected,
@@ -142,6 +148,81 @@ export function FilteredEmailPage({
   // Derived from the route the user actually arrived from, so the label always
   // matches where the button sends them.
   const backLabel = `Back to ${routeLabel(params.source)}`;
+
+  /**
+   * Bulk actions are ordered by the job this page was opened for: the task's own
+   * action leads as the single filled button, the rest stay available but quiet.
+   *
+   * Naming here is deliberate. onDeleteSelected calls Gmail's batchDelete, which is
+   * permanent and unrecoverable, so it is only ever labelled "Delete forever" — it
+   * used to be shown as "Trash", which promised a recoverable move it did not do.
+   * "Trash" now genuinely moves to Trash via onTrashSelected.
+   */
+  type BulkAction = {
+    key: string;
+    label: string;
+    title: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    loadingKey: string;
+    destructive?: boolean;
+  };
+
+  const trashAction: BulkAction = {
+    key: 'trash',
+    label: 'Move to Trash',
+    title: 'Move selected messages to Trash (recoverable for 30 days)',
+    icon: <Trash2 className="w-3.5 h-3.5" />,
+    onClick: onTrashSelected,
+    loadingKey: 'trash',
+  };
+
+  const deleteForeverAction: BulkAction = {
+    key: 'deleteForever',
+    label: 'Delete forever',
+    title: 'Permanently delete selected messages — this cannot be undone',
+    icon: <Trash2 className="w-3.5 h-3.5" />,
+    onClick: onDeleteSelected,
+    loadingKey: 'delete',
+    destructive: true,
+  };
+
+  const markReadAction: BulkAction = {
+    key: 'markRead',
+    label: 'Mark Read',
+    title: 'Mark selected messages as read',
+    icon: <Mail className="w-3.5 h-3.5" />,
+    onClick: onMarkReadSelected,
+    loadingKey: 'read',
+  };
+
+  const archiveAction: BulkAction = {
+    key: 'archive',
+    label: 'Archive',
+    title: 'Archive selected messages',
+    icon: <Archive className="w-3.5 h-3.5" />,
+    onClick: onArchiveSelected,
+    loadingKey: 'archive',
+  };
+
+  // Only offer permanent deletion where it makes sense — on spam/trash scoped views,
+  // or when the task explicitly asks for it. Elsewhere Trash is the safe default.
+  const isJunkScope = params.action === 'deleteForever'
+    || params.folder === 'spam+trash'
+    || params.folder === 'trash'
+    || params.folder === 'spam';
+
+  const allActions: BulkAction[] = isJunkScope
+    ? [deleteForeverAction, trashAction, markReadAction, archiveAction]
+    : [trashAction, archiveAction, markReadAction];
+
+  const primaryKey = params.action === 'markRead' ? 'markRead'
+    : params.action === 'deleteForever' ? 'deleteForever'
+    : params.action === 'trash' ? 'trash'
+    : allActions[0].key;
+
+  const primaryAction = allActions.find(a => a.key === primaryKey) || allActions[0];
+  const secondaryActions = allActions.filter(a => a.key !== primaryAction.key);
 
   return (
     <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
@@ -308,45 +389,46 @@ export function FilteredEmailPage({
           {/* Bulk Actions when selected */}
           {selectedIds.size > 0 ? (
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <button
-                onClick={onDeleteSelected}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Move selected to Trash"
-              >
-                {actionLoading === 'delete' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                <span>Trash ({selectedIds.size})</span>
-              </button>
+              {/* The task's own action leads and is the only filled button, so the
+                  right move is obvious on a page opened for a specific job. */}
+              {primaryAction && (
+                <button
+                  onClick={primaryAction.onClick}
+                  disabled={actionLoading !== null}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 min-h-[32px]",
+                    primaryAction.destructive
+                      ? "bg-rose-600 text-white hover:bg-rose-700"
+                      : "bg-slate-900 text-white hover:bg-slate-800"
+                  )}
+                  title={primaryAction.title}
+                >
+                  {actionLoading === primaryAction.loadingKey
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : primaryAction.icon}
+                  <span>{primaryAction.label} ({selectedIds.size})</span>
+                </button>
+              )}
 
-              <button
-                onClick={onArchiveSelected}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Archive selected messages"
-              >
-                {actionLoading === 'archive' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
-                <span>Archive</span>
-              </button>
-
-              <button
-                onClick={onMarkReadSelected}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Mark selected as read"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                <span>Mark Read</span>
-              </button>
-
-              <button
-                onClick={onStarSelected}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Star selected messages"
-              >
-                <Star className="w-3.5 h-3.5" />
-                <span>Star</span>
-              </button>
+              {secondaryActions.map(action => (
+                <button
+                  key={action.key}
+                  onClick={action.onClick}
+                  disabled={actionLoading !== null}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 min-h-[32px]",
+                    action.destructive
+                      ? "bg-white border border-rose-200 text-rose-700 hover:bg-rose-50"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  )}
+                  title={action.title}
+                >
+                  {actionLoading === action.loadingKey
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : action.icon}
+                  <span>{action.label}</span>
+                </button>
+              ))}
             </div>
           ) : (
             <div className="flex items-center gap-2">

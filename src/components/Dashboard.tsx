@@ -621,7 +621,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           subtitle: params.get('sub') || undefined,
           folder: params.get('folder') || 'anywhere',
           sort: (params.get('sort') as any) || undefined,
-          source: params.get('source') || 'health'
+          source: params.get('source') || 'health',
+          action: (params.get('action') as any) || undefined
         };
         setFilterPageParams(filterParams);
         
@@ -1488,6 +1489,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             }}
             onClearSelection={() => setSelectedIds(new Set())}
             onDeleteSelected={handleDeleteSelected}
+            onTrashSelected={() => handleBulkAction("trash")}
             onArchiveSelected={() => handleBulkAction("archive")}
             onMarkReadSelected={() => handleBulkAction("read")}
             onStarSelected={() => {}}
