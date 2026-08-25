@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -15,7 +15,7 @@ import { SenderAnalyticsModal } from './SenderAnalyticsModal';
 import { StorageBreakdownBar } from './StorageBreakdownBar';
 import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking, currentHash }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean, currentHash?: string }) {
   const [stats, setStats] = useState<any>(null);
   const [sizes, setSizes] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -24,7 +24,14 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
   const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
-  const [isSenderAnalyticsOpen, setIsSenderAnalyticsOpen] = useState(false);
+  // Derived from the route, not local state: InboxHealth now stays mounted across
+  // navigation, so a local flag would keep the modal open when the user navigates
+  // to plain #health (and would be out of sync when returning to #sender-analytics).
+  const isSenderAnalyticsOpen = currentHash === 'sender-analytics';
+  const isVisible = currentHash === 'health' || currentHash === 'sender-analytics';
+  const isVisibleRef = useRef(isVisible);
+  const pendingReconcileRef = useRef(false);
+  const hasLoadedClustersRef = useRef(false);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
@@ -95,22 +102,59 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
   }, []);
 
+  // This component now stays mounted across navigation, so its data would otherwise
+  // never refetch and would drift from the real inbox. Track mutations that happen
+  // while it is hidden and reconcile silently (no loader) the next time it is shown:
+  // the user gets instant back-navigation, with the numbers corrected in the
+  // background rather than a full blocking reload on every visit.
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
+
+  useEffect(() => {
+    const markStale = () => {
+      if (!isVisibleRef.current) pendingReconcileRef.current = true;
+    };
+    window.addEventListener('inbox_metrics_updated', markStale);
+    return () => window.removeEventListener('inbox_metrics_updated', markStale);
+  }, []);
+
+  useEffect(() => {
+    if (isVisible && pendingReconcileRef.current) {
+      pendingReconcileRef.current = false;
+      setReloadTrigger(prev => prev + 1);
+    }
+  }, [isVisible]);
+
   // Keep Sender Analytics counts in sync after trash/delete actions taken while
   // inspecting a sender/domain, without re-running the full cluster analysis.
   useEffect(() => {
     const handleSenderEmailsRemoved = (e: any) => {
-      const { query, count } = e.detail || {};
+      const { query, count, removedIds } = e.detail || {};
       if (!query || !count) return;
       const match = query.match(/^from:\(?([^)]+?)\)?$/i);
       if (!match) return;
       const identifier = match[1].toLowerCase();
 
+      // A sender identifier also rolls up into its domain cluster, so clearing
+      // mail from foo@bar.com must decrement the bar.com row too.
+      const affectedDomain = identifier.includes('@')
+        ? extractRootDomain(identifier.split('@')[1])
+        : extractRootDomain(identifier);
+
       setTopSenders(prev => prev
         .map(s => s.email.toLowerCase() === identifier ? { ...s, count: Math.max(0, s.count - count) } : s)
         .filter(s => s.count > 0));
       setTopDomains(prev => prev
-        .map(d => d.domain.toLowerCase() === identifier ? { ...d, count: Math.max(0, d.count - count) } : d)
+        .map(d => d.domain.toLowerCase() === affectedDomain ? { ...d, count: Math.max(0, d.count - count) } : d)
         .filter(d => d.count > 0));
+
+      // Drop the removed threads from the inline accordion lists as well, otherwise
+      // expanding a sender still shows messages that were just trashed.
+      if (Array.isArray(removedIds) && removedIds.length > 0) {
+        const removed = new Set(removedIds);
+        setRecentEmailsState(prev => prev.filter(em => !removed.has(em.id)));
+      }
     };
 
     window.addEventListener('sender_analytics_emails_removed', handleSenderEmailsRemoved);
@@ -160,7 +204,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     }
     
     async function fetchClusters() {
-      setIsLoadingEmails(true);
+      // Only block the view with the loader on the very first load; later reconciles
+      // run silently in the background over the already-rendered data.
+      if (!hasLoadedClustersRef.current) setIsLoadingEmails(true);
       const normalizedUser = (userEmail || '').toLowerCase().trim();
       const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
 
@@ -214,6 +260,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       } catch (err: any) {
         console.error("Pattern analysis error:", err);
       } finally {
+        hasLoadedClustersRef.current = true;
         setIsLoadingEmails(false);
       }
     }
@@ -407,7 +454,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
             </div>
             
             <button
-              onClick={() => setIsSenderAnalyticsOpen(true)}
+              onClick={() => { window.location.hash = '#sender-analytics'; }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer w-full sm:w-auto justify-center"
             >
               <span>View Analytics</span>
@@ -421,7 +468,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       <SenderAnalyticsModal 
         isOpen={isSenderAnalyticsOpen}
         emails={recentEmailsState}
-        onClose={() => setIsSenderAnalyticsOpen(false)}
+        onClose={() => { window.location.hash = '#health'; }}
         topSenders={topSenders}
         topDomains={topDomains}
         openFilterPage={openFilterPage}

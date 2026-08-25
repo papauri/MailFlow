@@ -643,8 +643,10 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         detail: { type: 'spam', count: ids.length, isPartial: true }
       }));
       if (filterPageParams?.source === 'sender-analytics') {
+        // Sender/domain counts come from countEmails(), which counts MESSAGES, while
+        // `ids` are thread ids — decrement by the expanded message count, not threads.
         window.dispatchEvent(new CustomEvent('sender_analytics_emails_removed', {
-          detail: { query: filterPageParams.query, count: ids.length }
+          detail: { query: filterPageParams.query, count: allMessageIds.length, removedIds: ids }
         }));
       }
 
@@ -752,7 +754,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         }));
         if (filterPageParams?.source === 'sender-analytics') {
           window.dispatchEvent(new CustomEvent('sender_analytics_emails_removed', {
-            detail: { query: filterPageParams.query, count: ids.length }
+            detail: { query: filterPageParams.query, count: allMessageIds.length, removedIds: ids }
           }));
         }
       } else if (action === "archive") {
@@ -1046,20 +1048,20 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <button 
             onClick={() => { 
-              window.location.hash = ['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+              window.location.hash = ['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
                 ? '#dashboard' 
                 : '#health'; 
             }}
             className={cn(
               "px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer",
-              ['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+              ['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
                 ? "bg-slate-800 text-white" 
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
             )}
             title="Inbox Health & Storage Visualizer"
           >
             <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" /> 
-            <span>{['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) ? "Dashboard" : "Health"}</span>
+            <span>{['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) ? "Dashboard" : "Health"}</span>
           </button>
 
           <button 
@@ -1241,7 +1243,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             </>
           )}
 
-          {currentHash !== 'health' && !['category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules', 'filter-view', 'inspect'].includes(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
+          {currentHash !== 'health' && !['sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules', 'filter-view', 'inspect'].includes(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
             <>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
               <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
@@ -1262,7 +1264,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           <div className={(currentHash === 'health' || currentHash === 'sender-analytics') ? '' : 'hidden'}>
           <InboxHealth
              userEmail={user?.email}
-             aiSettings={aiSettings} 
+             currentHash={currentHash}
+             aiSettings={aiSettings}
              userLabels={userLabels}
              isAiWorking={connectionStatus === 'success'}
              onRefresh={() => handleSearch()}

@@ -485,11 +485,17 @@ export function getUserManagementCounts(): { unsubscribedCount: number; activeFi
   let activeFiltersCount = 0;
   try {
     const storedUnsubs = localStorage.getItem('ais_unsub_log') || localStorage.getItem('unsubscribed_senders_v1');
-    if (storedUnsubs) unsubscribedCount = JSON.parse(storedUnsubs).length;
+    if (storedUnsubs) {
+      const parsed = JSON.parse(storedUnsubs);
+      if (Array.isArray(parsed)) unsubscribedCount = parsed.length;
+    }
   } catch { }
   try {
     const storedRules = localStorage.getItem('inbox_created_rules_log_v1') || localStorage.getItem('ais_saved_rules_history');
-    if (storedRules) activeFiltersCount = JSON.parse(storedRules).length;
+    if (storedRules) {
+      const parsed = JSON.parse(storedRules);
+      if (Array.isArray(parsed)) activeFiltersCount = parsed.length;
+    }
   } catch { }
   return { unsubscribedCount, activeFiltersCount };
 }

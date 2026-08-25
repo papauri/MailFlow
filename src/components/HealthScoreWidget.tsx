@@ -57,6 +57,10 @@ export function HealthScoreWidget({
         
         setMetrics(initialMetrics);
         setScore(calculatedScore);
+        // Re-baseline the gain tracker to the freshly fetched score. Without this it
+        // stays pinned to the stale sessionStorage value and the next action reports
+        // a bogus "+N" that includes drift since the last session.
+        prevScoreRef.current = calculatedScore;
         try {
           sessionStorage.setItem('ais_cached_health_score', String(calculatedScore));
         } catch { }

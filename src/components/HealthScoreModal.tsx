@@ -1254,8 +1254,15 @@ export function HealthScoreModal({
               <Sparkles className="w-8 h-8" />
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">{celebration.message}</h3>
-            <p className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-              +{celebration.pts} Points Recovered
+            <p className={cn(
+              "text-sm font-semibold px-3 py-1 rounded-full border",
+              celebration.pts > 0
+                ? "text-emerald-600 bg-emerald-50 border-emerald-200"
+                : "text-slate-600 bg-slate-50 border-slate-200"
+            )}>
+              {celebration.pts > 0
+                ? `+${celebration.pts} Points Recovered`
+                : "Cleaned up — score already at its best for this category"}
             </p>
           </div>
         )}
