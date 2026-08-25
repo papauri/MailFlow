@@ -19,6 +19,7 @@ import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { RuleSuggester } from "./RuleSuggester";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
 import { SenderAnalyticsPage } from "./SenderAnalyticsPage";
+import { ExportCenter } from "./ExportCenter";
 import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes";
 import { ManageInboxPortal } from "./ManageInboxPortal";
 import { SmartAutomationsPortal } from "./SmartAutomationsPortal";
@@ -1289,6 +1290,14 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
               }}
             />
+        )}
+
+        {currentHash === 'export' && (
+          <ExportCenter
+            userEmail={user?.email}
+            userLabels={userLabels}
+            onBack={() => { window.location.hash = '#health'; }}
+          />
         )}
 
         {currentHash === 'sender-analytics' && (

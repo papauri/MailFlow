@@ -21,6 +21,7 @@ export const HEALTH_SECTION_ROUTES = [
   'folder-optimizer',
   'rule-suggester',
   'rules',
+  'export',
 ] as const;
 
 /** Message-list views reached by drilling into a metric. */
@@ -57,6 +58,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   'folder-optimizer': 'Folder Optimizer',
   'rule-suggester': 'Automated Rules',
   'rules': 'Automated Rules',
+  'export': 'Export Center',
   'dashboard': 'Dashboard',
 };
 

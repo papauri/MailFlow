@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCachedResource, mutateCachedResource } from '../lib/useCachedResource';
+import { buildRecommendations } from '../lib/recommendations';
+import { formatBytes } from '../lib/csvExport';
 import {
   fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult
 } from '../lib/inboxAnalytics';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { TypingLoader } from "./TypingLoader";
@@ -56,22 +58,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     window.location.hash = `#filter-view?${params.toString()}`;
   };
 
-  const scrollToAndFlash = (id: string) => {
-    if (id.startsWith('card-')) {
-      setShowOverview(true);
-    }
-    
-    // Allow state update to render elements before scrolling
-    setTimeout(() => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('animate-flash');
-        setTimeout(() => el.classList.remove('animate-flash'), 1200);
-      }
-    }, 50);
-  };
-
 
   const [showOverview, setShowOverview] = useState(true);
   const [showQuickFilters, setShowQuickFilters] = useState(true);
@@ -104,37 +90,15 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
   }, [userEmail]);
 
-  const exportHealthReport = () => {
-    let csv = "Section,Metric,Value\n";
-    
-    // Stats
-    if (stats) {
-      csv += `Overview,Important Unread,${stats.importantUnread || 0}\n`;
-      csv += `Overview,Updates & Social,${stats.updatesAndSocial || 0}\n`;
-      csv += `Overview,With Attachments,${stats.withAttachments || 0}\n`;
-      csv += `Overview,Older Than 1 Year,${stats.oldMail || 0}\n`;
-    }
-    
-    // Top Senders
-    topSenders.forEach(s => {
-      csv += `Top Sender,${s.email},${s.count}\n`;
-    });
-    
-    // Top Domains
-    topDomains.forEach(d => {
-      csv += `Top Domain,${d.domain},${d.count}\n`;
-    });
-    
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mailflow_health_report_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  // Personalised, ranked next steps derived from this inbox's real numbers.
+  const recommendations = useMemo(
+    () => buildRecommendations(stats, sizes, topSenders),
+    [stats, sizes, topSenders]
+  );
+  const totalReclaimable = useMemo(
+    () => recommendations.reduce((sum, r) => sum + r.bytesReclaimed, 0),
+    [recommendations]
+  );
 
   if (loading || isLoadingEmails) {
     return <TypingLoader title="Analyzing Inbox Health" messages={["Scanning folders...", "Calculating storage sizes...", "Running email distribution analysis...", "Identifying large attachments...", "Categorizing subscriptions..."]} />;
@@ -143,77 +107,68 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   return (
     <div className="flex flex-col gap-6">
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs relative overflow-hidden mb-4 sm:mb-6">
-        <div className="absolute top-0 right-0 p-4 pointer-events-none opacity-[0.03]">
-          <Sparkles className="w-48 h-48 text-blue-900" />
-        </div>
-        
         <div className="flex items-start gap-4 relative z-10">
-          <div className="bg-blue-600/10 text-blue-600 p-2.5 rounded-xl shrink-0 hidden sm:block">
-            <HelpCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+          <div className="bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shrink-0 hidden sm:block">
+            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-slate-900 text-sm sm:text-base mb-1">Not sure where to start?</h3>
-            <p className="text-slate-600 text-xs sm:text-sm mb-4 leading-relaxed max-w-3xl">
-              Follow these three proven steps to rescue your inbox. The automated tools below will handle the heavy lifting for you.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-white/80 backdrop-blur-xs border border-blue-100/50 rounded-xl p-3.5 shadow-xs hover:shadow-sm transition-shadow">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="bg-amber-100 text-amber-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</div>
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Free up storage</h4>
-                </div>
-                <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-                  <p><strong className="text-slate-800">Action:</strong> <span onClick={() => scrollToAndFlash('storage-breakdown')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Click any colored segment in the Storage Breakdown bar</span> directly below.</p>
-                  <p><strong className="text-slate-800">Result:</strong> Instantly isolate huge attachments, old trash, and forgotten promos to delete them in bulk.</p>
-                </div>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xs border border-blue-100/50 rounded-xl p-3.5 shadow-xs hover:shadow-sm transition-shadow">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="bg-blue-100 text-blue-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</div>
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Stop future noise</h4>
-                </div>
-                <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-                  <p><strong className="text-slate-800">Action:</strong> Open <span onClick={() => scrollToAndFlash('card-manage-inbox')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Manage Inbox</span> from the Overview tools.</p>
-                  <p><strong className="text-slate-800">Result:</strong> Identify who sends you the most emails, bulk-unsubscribe from lists, and manage your labels.</p>
-                </div>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xs border border-blue-100/50 rounded-xl p-3.5 shadow-xs hover:shadow-sm transition-shadow">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="bg-emerald-100 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</div>
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Automate your inbox</h4>
-                </div>
-                <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-                  <p><strong className="text-slate-800">Action:</strong> Run <span onClick={() => scrollToAndFlash('card-smart-automations')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Smart Automations</span> from the Overview tools.</p>
-                  <p><strong className="text-slate-800">Result:</strong> Automatically group recurring senders, optimize folders, and create rules in a few clicks.</p>
-                </div>
-              </div>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                {recommendations.length > 0 ? 'Start here' : "You're all caught up"}
+              </h3>
+              {totalReclaimable > 0 && (
+                <span className="text-[11px] font-semibold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200">
+                  {formatBytes(totalReclaimable)} reclaimable
+                </span>
+              )}
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
-        <div className="flex items-center gap-3 sm:gap-5">
-          
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-0.5">Inbox Health & Tools</h2>
-            <p className="text-slate-500 text-xs sm:text-sm font-medium">
-              Automated insights to help organize your inbox and free up space.
+            <p className="text-slate-600 text-xs sm:text-sm mb-4 leading-relaxed max-w-3xl">
+              {recommendations.length > 0
+                ? 'Ranked by what each one is actually worth to your inbox right now — highest impact first.'
+                : 'No clutter worth acting on was found. Your inbox is in good shape.'}
             </p>
-          </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={exportHealthReport}
-            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all shrink-0 hover:shadow-xs cursor-pointer"
-            title="Export health data to CSV"
-          >
-            <span>Export CSV</span>
-          </button>
+            {recommendations.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {recommendations.slice(0, 3).map((rec, i) => (
+                  <button
+                    key={rec.id}
+                    onClick={() => { window.location.hash = rec.hash; }}
+                    className="text-left bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3.5 shadow-xs hover:shadow-sm transition-all cursor-pointer flex flex-col group"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={cn(
+                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                        rec.severity === 'high' ? "bg-rose-100 text-rose-700"
+                          : rec.severity === 'medium' ? "bg-amber-100 text-amber-700"
+                          : "bg-slate-100 text-slate-600"
+                      )}>{i + 1}</div>
+                      <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide truncate">{rec.title}</h4>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed mb-2.5 flex-1">{rec.detail}</p>
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {rec.pointsGain > 0 && (
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                            +{rec.pointsGain} pts
+                          </span>
+                        )}
+                        {rec.bytesReclaimed > 0 && (
+                          <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                            {formatBytes(rec.bytesReclaimed)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-700 group-hover:text-slate-900 flex items-center gap-1 shrink-0">
+                        {rec.actionLabel}
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -257,12 +212,20 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
                 actionText="Open Manager"
                 onAction={() => { window.location.hash = '#manage-inbox'; }}
               />
-              <HealthCard 
+              <HealthCard
                 title="Inbox Score"
                 count={stats?.unread}
                 desc="See how healthy your inbox is based on unread counts and clutter."
                 actionText="Check Score"
                 onAction={() => { window.location.hash = '#health-score'; }}
+              />
+              <HealthCard
+                id="card-export"
+                title="Export Center"
+                count="Export"
+                desc="Download senders, attachments, old mail, labels and more as CSV."
+                actionText="Open Exports"
+                onAction={() => { window.location.hash = '#export'; }}
               />
             </div>
           </div>
