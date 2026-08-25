@@ -98,12 +98,12 @@ export default function LoginScreen({
     };
 
     const particleColors = [
-      '#4285F4', // Google Blue
-      '#EA4335', // Google Red
-      '#FBBC05', // Google Yellow
-      '#34A853', // Google Green
-      '#94A3B8', // Slate
-      '#CBD5E1'  // Light Slate
+      '#1A56C4', // Deep blue
+      '#B3261E', // Deep red
+      '#B8860B', // Deep amber — plain yellow disappears on white
+      '#1E7B34', // Deep green
+      '#475569', // Slate 600
+      '#334155'  // Slate 700
     ];
 
     const particleCount = Math.min(Math.floor((width * height) / 12000), 75);
@@ -112,7 +112,7 @@ export default function LoginScreen({
     for (let i = 0; i < particleCount; i++) {
       const x = Math.random() * width;
       const y = Math.random() * height;
-      const baseAlpha = 0.25 + Math.random() * 0.45;
+      const baseAlpha = 0.45 + Math.random() * 0.4;
       particles.push({
         x,
         y,
@@ -229,12 +229,9 @@ export default function LoginScreen({
         className="pointer-events-none absolute inset-0 z-0 w-full h-full"
       />
 
-      {/* Subtle Top Bar */}
-      <header className="relative z-10 w-full px-6 sm:px-10 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold tracking-tight text-slate-800">MailFlow</span>
-        </div>
-      </header>
+      {/* Spacer where the small wordmark used to sit. The name is already set at
+          7xl in the middle of the page, so repeating it here just said it twice. */}
+      <div className="relative z-10 w-full py-6" />
 
       {/* Main Plain Centered Content */}
       <main className="relative z-10 flex-1 w-full max-w-xl mx-auto px-6 flex flex-col items-center justify-center -mt-8 text-center">
