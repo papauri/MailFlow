@@ -474,6 +474,39 @@ export function computeInboxHealthScore(metrics: HealthScoreMetrics): number {
   return computeInboxHealthBreakdown(metrics).score;
 }
 
+/**
+ * Single source of truth for the user-management bonus inputs (unsubscribes & filter
+ * rules created in-app). Reads the same localStorage keys the features actually write
+ * to, so every Health Score surface (top bar widget, Inbox Health Score modal, etc.)
+ * computes an identical bonus from identical data.
+ */
+export function getUserManagementCounts(): { unsubscribedCount: number; activeFiltersCount: number } {
+  let unsubscribedCount = 0;
+  let activeFiltersCount = 0;
+  try {
+    const storedUnsubs = localStorage.getItem('ais_unsub_log') || localStorage.getItem('unsubscribed_senders_v1');
+    if (storedUnsubs) unsubscribedCount = JSON.parse(storedUnsubs).length;
+  } catch { }
+  try {
+    const storedRules = localStorage.getItem('inbox_created_rules_log_v1') || localStorage.getItem('ais_saved_rules_history');
+    if (storedRules) activeFiltersCount = JSON.parse(storedRules).length;
+  } catch { }
+  return { unsubscribedCount, activeFiltersCount };
+}
+
+/**
+ * Canonical Gmail search queries backing each Health Score metric. Every surface that
+ * computes the score must use these exact queries, or the same inbox will produce
+ * different counts (and therefore different scores) in different places.
+ */
+export const HEALTH_SCORE_QUERIES = {
+  unread: "is:unread in:inbox -in:chats",
+  spamAndTrash: "in:spam OR in:trash",
+  oldPromotions: "category:promotions older_than:6m -in:trash",
+  largeFiles: "larger:5M -in:trash",
+  oldMail: "older_than:1y -in:trash -in:spam",
+} as const;
+
 // -------------------------------------------------------------
 // RFC 2369 / RFC 8058 List-Unsubscribe Header Parser
 // -------------------------------------------------------------

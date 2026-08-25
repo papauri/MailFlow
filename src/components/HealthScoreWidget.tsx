@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { countEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
-import { computeInboxHealthScore, HealthScoreMetrics } from '../lib/emailUtils';
+import { computeInboxHealthScore, getUserManagementCounts, HEALTH_SCORE_QUERIES, HealthScoreMetrics } from '../lib/emailUtils';
 
 export function HealthScoreWidget({ 
   onApplyQuery, 
@@ -31,24 +31,17 @@ export function HealthScoreWidget({
     async function calculateScore() {
       try {
         const [unread, junk, promo, large, oldMail] = await Promise.all([
-          countEmails("is:unread in:inbox").catch(() => 0),
-          countEmails("in:spam OR in:trash").catch(() => 0),
-          countEmails("category:promotions older_than:6m").catch(() => 0),
-          countEmails("larger:5M -in:trash").catch(() => 0),
-          countEmails("older_than:1y -in:trash").catch(() => 0)
+          countEmails(HEALTH_SCORE_QUERIES.unread).catch(() => 0),
+          countEmails(HEALTH_SCORE_QUERIES.spamAndTrash).catch(() => 0),
+          countEmails(HEALTH_SCORE_QUERIES.oldPromotions).catch(() => 0),
+          countEmails(HEALTH_SCORE_QUERIES.largeFiles).catch(() => 0),
+          countEmails(HEALTH_SCORE_QUERIES.oldMail).catch(() => 0)
         ]);
-        
+
         const parseCount = (val: any) => typeof val === 'number' ? val : (parseInt(String(val).replace(/\D/g, '')) || 0);
-        
+
         // Get user management actions
-        let unsubscribedCount = 0;
-        let activeFiltersCount = 0;
-        try {
-          const storedUnsubs = localStorage.getItem('ais_unsub_log') || localStorage.getItem('unsubscribed_senders_v1');
-          if (storedUnsubs) unsubscribedCount = JSON.parse(storedUnsubs).length;
-          const storedRules = localStorage.getItem('inbox_created_rules_log_v1') || localStorage.getItem('ais_saved_rules_history');
-          if (storedRules) activeFiltersCount = JSON.parse(storedRules).length;
-        } catch { }
+        const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
 
         const initialMetrics: HealthScoreMetrics = {
           unreadInbox: parseCount(unread),

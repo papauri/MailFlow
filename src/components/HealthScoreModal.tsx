@@ -9,11 +9,13 @@ import {
   countEmails, markAllAsReadByQuery, emptyAllTrash, searchEmails, 
   batchDeleteEmails, batchTrashEmails, batchMarkAsRead, EmailData 
 } from '../lib/gmail';
-import { 
-  computeInboxHealthScore, 
-  computeInboxHealthBreakdown, 
-  HealthScoreMetrics, 
-  HealthScoreBreakdown 
+import {
+  computeInboxHealthScore,
+  computeInboxHealthBreakdown,
+  getUserManagementCounts,
+  HEALTH_SCORE_QUERIES,
+  HealthScoreMetrics,
+  HealthScoreBreakdown
 } from '../lib/emailUtils';
 
 interface HealthScoreModalProps {
@@ -64,20 +66,21 @@ export function HealthScoreModal({
     setLoading(true);
     try {
       const [unread, spam, promo, large, old] = await Promise.all([
-        countEmails("is:unread in:inbox -in:chats"),
-        countEmails("in:spam OR in:trash"),
-        countEmails("category:promotions older_than:6m -in:trash"),
-        countEmails("larger:5M -in:trash"),
-        countEmails("older_than:1y -in:trash -in:spam")
+        countEmails(HEALTH_SCORE_QUERIES.unread),
+        countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
+        countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
+        countEmails(HEALTH_SCORE_QUERIES.largeFiles),
+        countEmails(HEALTH_SCORE_QUERIES.oldMail)
       ]);
+      const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
       const fetchedMetrics: HealthScoreMetrics = {
         unreadInbox: unread,
         spamAndTrash: spam,
         oldPromotions: promo,
         largeFiles: large,
         oldMail: old,
-        unsubscribedCount: parseInt(localStorage.getItem('unsub_count') || '0'),
-        activeFiltersCount: parseInt(localStorage.getItem('rules_count') || '0')
+        unsubscribedCount,
+        activeFiltersCount
       };
       setMetrics(fetchedMetrics);
       // Reset simulator targets to live metrics
@@ -97,12 +100,13 @@ export function HealthScoreModal({
   const fetchMetricsSilent = async () => {
     try {
       const [unread, spam, promo, large, old] = await Promise.all([
-        countEmails("is:unread in:inbox -in:chats"),
-        countEmails("in:spam OR in:trash"),
-        countEmails("category:promotions older_than:6m -in:trash"),
-        countEmails("larger:5M -in:trash"),
-        countEmails("older_than:1y -in:trash -in:spam")
+        countEmails(HEALTH_SCORE_QUERIES.unread),
+        countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
+        countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
+        countEmails(HEALTH_SCORE_QUERIES.largeFiles),
+        countEmails(HEALTH_SCORE_QUERIES.oldMail)
       ]);
+      const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
       setMetrics(prev => ({
         ...prev,
         unreadInbox: unread,
@@ -110,8 +114,8 @@ export function HealthScoreModal({
         oldPromotions: promo,
         largeFiles: large,
         oldMail: old,
-        unsubscribedCount: parseInt(localStorage.getItem('unsub_count') || '0'),
-        activeFiltersCount: parseInt(localStorage.getItem('rules_count') || '0')
+        unsubscribedCount,
+        activeFiltersCount
       }));
     } catch (e) {
       console.error(e);
@@ -188,7 +192,6 @@ export function HealthScoreModal({
   const handleFix = async (type: 'unread' | 'spam' | 'promo' | 'large', currentPts: number, selectedIds?: string[]) => {
     setActiveAction(type);
     try {
-      let ptsGained = Math.round(currentPts);
       let message = "";
       
       const isPartial = Boolean(selectedIds && selectedIds.length > 0);
@@ -203,7 +206,7 @@ export function HealthScoreModal({
           await batchMarkAsRead(targetIds);
           message = `${selectedIds!.length} emails marked as read!`;
         } else {
-          await markAllAsReadByQuery("is:unread in:inbox -in:chats");
+          await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread);
           message = "Inbox zero achieved (unread)!";
         }
       } else if (type === 'spam') {
@@ -211,7 +214,7 @@ export function HealthScoreModal({
           await batchDeleteEmails(targetIds);
           message = `${selectedIds!.length} spam & trash items removed!`;
         } else {
-          await emptyAllTrash("in:trash OR in:spam");
+          await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash);
           message = "Spam and trash emptied!";
         }
       } else if (type === 'promo') {
@@ -219,7 +222,7 @@ export function HealthScoreModal({
           await batchTrashEmails(targetIds);
           message = `${selectedIds!.length} old promotions cleaned!`;
         } else {
-          const pEmails = await searchEmails("category:promotions older_than:6m -in:trash", 500);
+          const pEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldPromotions, 500);
           const promoIds = pEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
           if (promoIds.length > 0) {
             await batchTrashEmails(promoIds);
@@ -243,8 +246,8 @@ export function HealthScoreModal({
          }
       }
       
-      const countToSubtract = isPartial 
-        ? selectedIds!.length 
+      const countToSubtract = isPartial
+        ? selectedIds!.length
         : (inspectingView && previewEmails.length > 0 ? previewEmails.length : (
             type === 'unread' ? metrics.unreadInbox :
             type === 'spam' ? metrics.spamAndTrash :
@@ -253,29 +256,29 @@ export function HealthScoreModal({
           ));
 
       // INSTANT OPTIMISTIC SCORE REFRESH:
-      // Update local metrics immediately so score and deductions update with zero lag
-      let updatedMetricsState: HealthScoreMetrics | null = null;
-      setMetrics(prev => {
-        const next = { ...prev };
-        if (type === 'unread') {
-          next.unreadInbox = isPartial ? Math.max(0, prev.unreadInbox - countToSubtract) : 0;
-        } else if (type === 'spam') {
-          next.spamAndTrash = isPartial ? Math.max(0, prev.spamAndTrash - countToSubtract) : 0;
-        } else if (type === 'promo') {
-          next.oldPromotions = isPartial ? Math.max(0, prev.oldPromotions - countToSubtract) : 0;
-        } else if (type === 'large') {
-          next.largeFiles = isPartial ? Math.max(0, prev.largeFiles - countToSubtract) : 0;
-        }
-        
-        // Sync simulator sliders
-        setSimUnread(next.unreadInbox);
-        setSimSpam(next.spamAndTrash);
-        setSimPromo(next.oldPromotions);
-        setSimLarge(next.largeFiles);
+      // Compute the actual next metrics and derive points gained from the real score
+      // delta — never assume the full category penalty, since a partial fix (only
+      // some selected emails) only clears part of it.
+      const nextMetrics: HealthScoreMetrics = { ...metrics };
+      if (type === 'unread') {
+        nextMetrics.unreadInbox = isPartial ? Math.max(0, metrics.unreadInbox - countToSubtract) : 0;
+      } else if (type === 'spam') {
+        nextMetrics.spamAndTrash = isPartial ? Math.max(0, metrics.spamAndTrash - countToSubtract) : 0;
+      } else if (type === 'promo') {
+        nextMetrics.oldPromotions = isPartial ? Math.max(0, metrics.oldPromotions - countToSubtract) : 0;
+      } else if (type === 'large') {
+        nextMetrics.largeFiles = isPartial ? Math.max(0, metrics.largeFiles - countToSubtract) : 0;
+      }
 
-        updatedMetricsState = next;
-        return next;
-      });
+      const ptsGained = computeInboxHealthScore(nextMetrics) - computeInboxHealthScore(metrics);
+
+      setMetrics(nextMetrics);
+      setSimUnread(nextMetrics.unreadInbox);
+      setSimSpam(nextMetrics.spamAndTrash);
+      setSimPromo(nextMetrics.oldPromotions);
+      setSimLarge(nextMetrics.largeFiles);
+
+      const updatedMetricsState = nextMetrics;
 
       // Update inspected emails view state
       if (isPartial) {
