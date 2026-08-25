@@ -1046,6 +1046,104 @@ Instructions:
     }
   });
   
+  /**
+   * Rewords findings the client has already computed locally.
+   *
+   * Takes aggregate statistics only — sender name, counts, ratios — and never
+   * subjects, snippets or message bodies, so enabling AI does not start shipping
+   * mail contents to a model provider.
+   *
+   * It cannot add, remove or re-rank findings: it returns wording keyed by the ids
+   * it was given, and anything unrecognised is dropped by the caller. If the model
+   * is unavailable, rate limited or misbehaves, the client keeps its own wording and
+   * the feature is unchanged apart from the label.
+   */
+  app.post("/api/enrich-suggestions", async (req, res) => {
+    try {
+      const { findings, settings } = req.body;
+      if (!Array.isArray(findings) || findings.length === 0) {
+        return res.status(400).json({ error: "findings array is required" });
+      }
+
+      // Hard cap: bounded prompt regardless of how much the client sends.
+      const capped = findings.slice(0, 25).map((f: any) => ({
+        id: String(f.id || ''),
+        kind: String(f.kind || ''),
+        subject: String(f.subject || ''),
+        destination: String(f.destination || ''),
+        stats: String(f.stats || ''),
+      }));
+
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING, description: "Echo the id exactly as supplied." },
+                title: { type: Type.STRING, description: "Short, concrete title, max 60 chars. No invented numbers." },
+                rationale: { type: Type.STRING, description: "One or two plain sentences explaining the recommendation using ONLY the supplied statistics." },
+                folderName: { type: Type.STRING, description: "For new-folder items only, a concise folder name (1-2 words). Empty otherwise." }
+              },
+              required: ["id", "title", "rationale"]
+            }
+          }
+        },
+        required: ["items"]
+      };
+
+      const lines = capped.map(f =>
+        `id=${f.id} | type=${f.kind} | subject=${f.subject}` +
+        (f.destination ? ` | destination=${f.destination}` : '') +
+        ` | stats: ${f.stats}`
+      ).join('\n');
+
+      const prompt = `You are rewording inbox cleanup findings that have ALREADY been decided by a local statistical model. You are a copywriter here, not an analyst.
+
+STRICT RULES:
+- Do NOT invent, add, remove, merge or reorder findings. Return exactly one item per id supplied.
+- Do NOT invent numbers. Use only the statistics given for that id.
+- Do NOT speculate about message contents; you have not been shown any.
+- Keep it plain and specific. No marketing tone, no exclamation marks.
+
+Findings:
+${lines}
+
+For each id, write a clearer title and a rationale that explains, in plain language, why this is worth doing based on its statistics.`;
+
+      let result: any = null;
+      try {
+        result = await generateAIContent(prompt, schema, settings);
+      } catch (aiErr: any) {
+        console.warn("[AI] Suggestion enrichment unavailable, client keeps local wording:", aiErr.message || aiErr);
+        return res.status(503).json({ error: "enrichment_unavailable" });
+      }
+
+      if (!result || !Array.isArray(result.items)) {
+        return res.status(503).json({ error: "enrichment_unavailable" });
+      }
+
+      // Only pass back wording for ids we actually sent — never let the model
+      // introduce entries the local model did not produce.
+      const allowed = new Set(capped.map(f => f.id));
+      const items = result.items
+        .filter((i: any) => i && allowed.has(String(i.id)))
+        .map((i: any) => ({
+          id: String(i.id),
+          title: String(i.title || '').slice(0, 120),
+          rationale: String(i.rationale || '').slice(0, 400),
+          folderName: String(i.folderName || '').slice(0, 40),
+        }));
+
+      res.json({ items });
+    } catch (e: any) {
+      console.error("Suggestion enrichment error:", e);
+      res.status(503).json({ error: "enrichment_unavailable" });
+    }
+  });
+
   app.post("/api/check-quota", async (req, res) => {
     try {
       const { settings } = req.body;

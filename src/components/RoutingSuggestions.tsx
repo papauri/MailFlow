@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Loader2, FolderTree, ChevronDown, ChevronUp, Filter, CheckCircle2,
   AlertTriangle, X, Brain
@@ -7,11 +7,12 @@ import { cn } from '../lib/utils';
 import { createLabel, createFilter, batchModifyEmails } from '../lib/gmail';
 import { RoutingSuggestion } from '../lib/foldingModel';
 import { recordDecision, memoryStats } from '../lib/suggestionMemory';
+import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 
 interface Props {
   suggestions: RoutingSuggestion[];
   sendersAnalysed: number;
-  aiAssisted?: boolean;
+  aiSettings?: any;
   onInspect: (query: string, title: string) => void;
   onApplied: (suggestion: RoutingSuggestion) => void;
   onLabelsChanged?: () => void;
@@ -25,14 +26,36 @@ interface Props {
  * app reads the same way regardless of which model produced it.
  */
 export function RoutingSuggestions({
-  suggestions, sendersAnalysed, aiAssisted = false, onInspect, onApplied, onLabelsChanged
+  suggestions, sendersAnalysed, aiSettings, onInspect, onApplied, onLabelsChanged
 }: Props) {
+  const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Map<string, string>>(new Map());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const stats = memoryStats();
+
+  // Wording only — the routing decisions are already made and on screen.
+  useEffect(() => {
+    let cancelled = false;
+    if (suggestions.length === 0) return;
+    enrichSuggestions(
+      suggestions.slice(0, 12).map(s => ({
+        id: s.id,
+        kind: s.kind,
+        subject: s.senderName,
+        destination: s.labelName,
+        stats: `${s.filed} of ${s.volume} already filed there, ${Math.round(s.purity * 100)}% consistent, ${s.unfiled} unfiled`,
+      })),
+      aiSettings
+    ).then(map => {
+      if (!cancelled && map.size > 0) setEnriched(map);
+    });
+    return () => { cancelled = true; };
+  }, [suggestions, aiSettings]);
+
+  const isEnhanced = enriched.size > 0;
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -94,7 +117,7 @@ export function RoutingSuggestions({
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h3 className="font-bold text-slate-900 text-sm sm:text-base">Where your mail should go</h3>
               <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                {aiAssisted ? 'AI-assisted' : 'On-device analysis'}
+                {isEnhanced ? 'Enhanced analysis' : 'Pattern analysis'}
               </span>
             </div>
             <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
@@ -159,7 +182,7 @@ export function RoutingSuggestions({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{s.rationale}</p>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{enriched.get(s.id)?.rationale || s.rationale}</p>
                       <button
                         onClick={() => toggle(s.id)}
                         className="mt-1.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"

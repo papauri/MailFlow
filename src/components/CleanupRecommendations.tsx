@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Loader2, Sparkles, ShieldCheck, Archive, Trash2, ChevronDown, ChevronUp,
   Filter, TrendingUp, CheckCircle2, AlertTriangle
@@ -6,6 +6,7 @@ import {
 import { cn } from '../lib/utils';
 import { trashAllByQuery, archiveAllByQuery } from '../lib/gmail';
 import { CleanupAnalysis, CleanupRecommendation, formatCleanupBytes } from '../lib/cleanupModel';
+import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 
 interface Props {
   analysis: CleanupAnalysis;
@@ -13,8 +14,7 @@ interface Props {
   /** Opens the matching messages as a full page so the user can check before acting. */
   onInspect: (query: string, title: string) => void;
   onCompleted: (rec: CleanupRecommendation, processed: number) => void;
-  /** True when AI supplied the wording; the findings themselves are always local. */
-  aiAssisted?: boolean;
+  aiSettings?: any;
 }
 
 const KIND_META: Record<CleanupRecommendation['kind'], { label: string; icon: React.ReactNode }> = {
@@ -38,8 +38,9 @@ function confidenceLabel(c: number): string {
  * Inspect always precedes acting, and each card reports live progress.
  */
 export function CleanupRecommendations({
-  analysis, categoryName, onInspect, onCompleted, aiAssisted = false
+  analysis, categoryName, onInspect, onCompleted, aiSettings
 }: Props) {
+  const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ id: string; done: number; total: number } | null>(null);
@@ -47,6 +48,27 @@ export function CleanupRecommendations({
   const [error, setError] = useState<string | null>(null);
 
   const { recommendations, pareto, reclaimableBytes, reclaimableVolume, protectedSenders } = analysis;
+
+  // Wording only. Findings are already final and rendered before this resolves, so a
+  // missing key, spent quota or slow model changes nothing except the phrasing.
+  useEffect(() => {
+    let cancelled = false;
+    if (recommendations.length === 0) return;
+    enrichSuggestions(
+      recommendations.slice(0, 12).map(r => ({
+        id: r.id,
+        kind: r.kind,
+        subject: r.title,
+        stats: `${r.volume} messages, ${formatCleanupBytes(r.bytes)}, confidence ${Math.round(r.confidence * 100)}%`,
+      })),
+      aiSettings
+    ).then(map => {
+      if (!cancelled && map.size > 0) setEnriched(map);
+    });
+    return () => { cancelled = true; };
+  }, [recommendations, aiSettings]);
+
+  const isEnhanced = enriched.size > 0;
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -94,7 +116,7 @@ export function CleanupRecommendations({
                 What's driving your {categoryName}
               </h3>
               <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                {aiAssisted ? 'AI-assisted' : 'On-device analysis'}
+                {isEnhanced ? 'Enhanced analysis' : 'Pattern analysis'}
               </span>
             </div>
 
@@ -167,7 +189,7 @@ export function CleanupRecommendations({
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-semibold text-slate-900">{rec.title}</h4>
+                        <h4 className="text-sm font-semibold text-slate-900">{enriched.get(rec.id)?.title || rec.title}</h4>
                         <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
                           {meta.label}
                         </span>
@@ -178,7 +200,7 @@ export function CleanupRecommendations({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{rec.rationale}</p>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{enriched.get(rec.id)?.rationale || rec.rationale}</p>
                       <button
                         onClick={() => toggle(rec.id)}
                         className="mt-1.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
