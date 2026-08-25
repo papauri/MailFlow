@@ -1210,7 +1210,7 @@ export function CategoryDistributionModal({
             <div className="flex flex-col gap-6">
               {/* Priority Review Card */}
               {attentionItems.filter(i => !dismissedAttentionIds.has(i.id) && !handledAttentionIds.has(i.id)).length > 0 && (
-                <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200/90 rounded-2xl p-4 sm:p-5 shadow-xs">
+                <div className="bg-white border border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl shrink-0 shadow-2xs">

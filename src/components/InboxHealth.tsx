@@ -237,7 +237,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden mb-4 sm:mb-6">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs relative overflow-hidden mb-4 sm:mb-6">
         <div className="absolute top-0 right-0 p-4 pointer-events-none opacity-[0.03]">
           <Sparkles className="w-48 h-48 text-blue-900" />
         </div>
@@ -290,7 +290,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-5">
         <div className="flex items-center gap-3 sm:gap-5">
           
           <div>
