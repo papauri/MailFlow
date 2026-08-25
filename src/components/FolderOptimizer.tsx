@@ -25,8 +25,10 @@ import {
 import { cn } from '../lib/utils';
 import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
 import { Search } from 'lucide-react';
-import { 
-  extractSenderDetails, 
+import { RoutingSuggestions } from './RoutingSuggestions';
+import { buildRoutingSuggestions } from '../lib/foldingModel';
+import {
+  extractSenderDetails,
   tokenizeText, 
   buildTFIDFMatrix, 
   computeCosineSimilarity, 
@@ -217,6 +219,17 @@ function saveLearnedPattern(newPattern: LearnedPattern) {
 }
 
 export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, isAiWorking, onReload, isPage }: Omit<Props, 'isOpen' | 'onClose'>) {
+  // Routing model runs on the already-fetched sample, so suggestions appear
+  // immediately on open with no scan and no AI dependency.
+  const routingSuggestions = useMemo(
+    () => buildRoutingSuggestions(emails || [], userLabels || []),
+    [emails, userLabels]
+  );
+  const routingSenderCount = useMemo(
+    () => new Set((emails || []).map((e: any) => (e.sender || '').toLowerCase())).size,
+    [emails]
+  );
+
   const [loading, setLoading] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -808,6 +821,28 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
 
       {isExpanded && (
         <div className="flex flex-col">
+
+      {/* Routing model — shown immediately from already-fetched mail, no scan and
+          no AI required, so the page is useful the moment it opens. */}
+      {routingSuggestions.length > 0 && (
+        <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50/40">
+          <RoutingSuggestions
+            suggestions={routingSuggestions}
+            sendersAnalysed={routingSenderCount}
+            onInspect={(query, title) => {
+              const params = new URLSearchParams();
+              params.set('q', query);
+              params.set('title', title);
+              params.set('badge', 'Suggested routing');
+              params.set('sub', 'Messages this rule would file');
+              params.set('source', 'folder-optimizer');
+              window.location.hash = `#filter-view?${params.toString()}`;
+            }}
+            onApplied={() => { if (onReload) onReload(); }}
+            onLabelsChanged={() => { if (onReload) onReload(); }}
+          />
+        </div>
+      )}
 
       {/* Category Pills */}
       {hasScanned && !loading && !error && recommendations.length > 0 && (

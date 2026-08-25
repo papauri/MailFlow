@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { RoutingSuggestions } from './RoutingSuggestions';
+import { buildRoutingSuggestions } from '../lib/foldingModel';
 import { 
   Loader2, 
   Settings, 
@@ -90,6 +92,17 @@ export function RuleSuggester({
   isPage = false,
   onClose
 }: RuleSuggesterProps) {
+  // Derived from mail already in memory, so rules are on screen immediately
+  // instead of after a multi-request scan — and identical with or without AI.
+  const routingSuggestions = useMemo(
+    () => buildRoutingSuggestions(recentEmails || [], userLabels || []),
+    [recentEmails, userLabels]
+  );
+  const routingSenderCount = useMemo(
+    () => new Set((recentEmails || []).map((e: any) => (e.sender || '').toLowerCase())).size,
+    [recentEmails]
+  );
+
   const [loading, setLoading] = useState(false);
   const [proposals, setProposals] = useState<RuleProposal[]>([]);
   const [activeTab, setActiveTab] = useState<'suggestions' | 'active_rules'>('suggestions');
@@ -442,6 +455,28 @@ export function RuleSuggester({
             </span>
           </div>
         </div>
+      )}
+
+      {/* Learned routing — available on open, before and independent of any scan. */}
+      {routingSuggestions.length > 0 && (
+        <RoutingSuggestions
+          suggestions={routingSuggestions}
+          sendersAnalysed={routingSenderCount}
+          onInspect={(query, title) => {
+            const params = new URLSearchParams();
+            params.set('q', query);
+            params.set('title', title);
+            params.set('badge', 'Suggested routing');
+            params.set('sub', 'Messages this rule would file');
+            params.set('source', isPage ? 'rule-suggester' : 'health');
+            window.location.hash = `#filter-view?${params.toString()}`;
+          }}
+          onApplied={() => {
+            window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+              detail: { type: 'rule', count: 1, isPartial: true }
+            }));
+          }}
+        />
       )}
 
       <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs">
