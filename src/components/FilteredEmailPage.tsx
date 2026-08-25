@@ -32,6 +32,8 @@ interface FilteredEmailPageProps {
   totalCount: number | string | null;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  /** Select or deselect many at once, in one state update. */
+  onSelectMany: (ids: string[], selected: boolean) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   /** Permanent, unrecoverable delete. Must never be labelled "Trash". */
@@ -92,6 +94,7 @@ export function FilteredEmailPage({
   totalCount,
   selectedIds,
   onToggleSelect,
+  onSelectMany,
   onSelectAll,
   onClearSelection,
   onDeleteSelected,
@@ -156,13 +159,10 @@ export function FilteredEmailPage({
   };
 
   const toggleGroupSelection = (ids: string[]) => {
-    const allSelected = ids.every(id => selectedIds.has(id));
-    // Reuses the per-row toggle so selection stays consistent with the parent's model.
-    ids.forEach(id => {
-      const selected = selectedIds.has(id);
-      if (allSelected && selected) onToggleSelect(id);
-      else if (!allSelected && !selected) onToggleSelect(id);
-    });
+    // One write for the whole group. Dispatching a toggle per row batched into a
+    // single stale update, which left most of the group unselected.
+    const allSelected = ids.length > 0 && ids.every(id => selectedIds.has(id));
+    onSelectMany(ids, !allSelected);
   };
 
   const filteredEmails = useMemo(() => {

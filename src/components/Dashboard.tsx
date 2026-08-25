@@ -898,11 +898,35 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     }
   };
 
+  /**
+   * Functional update, not a copy of the closure value. The previous version read
+   * `selectedIds` from the render it was created in, so several toggles dispatched
+   * in the same tick each computed from the same stale Set and the last write won —
+   * selecting a group of four left exactly one selected.
+   */
   const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /**
+   * Bulk selection in a single state update. "Select every message in this group" is
+   * one intent, so it should be one write — looping the single toggle is both
+   * incorrect under batching and N re-renders for no reason.
+   */
+  const setSelection = (ids: string[], selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (selected) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   };
 
   const toggleExpand = (id: string, e?: React.MouseEvent) => {
@@ -1413,6 +1437,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             totalCount={totalCount}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
+            onSelectMany={setSelection}
             onSelectAll={() => {
               if (selectedIds.size === emails.length && emails.length > 0) {
                 setSelectedIds(new Set());
