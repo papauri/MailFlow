@@ -39,7 +39,10 @@ import {
 import { 
   countEmails, 
   fetchGmailAPI, 
-  processInChunks, 
+  processInChunks,
+  listMessageIds,
+  fetchMessagesMetadataBatch,
+
   batchTrashEmails, 
   batchArchiveEmails, 
   batchModifyEmails, 
@@ -122,7 +125,8 @@ export interface CategoryDiagnostic {
 }
 
 /** First, blocking fetch: one detail request per thread, so keep it small. */
-const INITIAL_SAMPLE = 120;
+/** Upper bound on a single category scan, so cost stays predictable. */
+const MAX_SCAN = 3000;
 /** Background rounds: larger, since nobody is waiting on them. */
 const DEEPEN_PAGE = 200;
 
@@ -153,6 +157,7 @@ export function CategoryDistributionModal({
   const [categoryEmails, setCategoryEmails] = useState<EmailData[]>([]);
   /** Cursor for the background pass that keeps deepening the sample after load. */
   const [deepenToken, setDeepenToken] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
 
   /**
    * Keeps loading the rest of the category after the page is already usable.
@@ -345,18 +350,19 @@ export function CategoryDistributionModal({
     }, 50);
 
     try {
-      // 1. Fetch a sample from this category. 100 was far too small: a category
-      //    holding thousands of messages spread over hundreds of senders left every
-      //    sender with a handful of hits, below any threshold worth acting on, so the
-      //    analysis concluded "nothing to clean" from a sliver of the evidence.
-      // Deliberately small. Every thread here costs a separate detail request, so a
-      // 500-thread sample meant 500 calls before anything could render — the page
-      // sat on a loader long enough to look broken, and competed with background
-      // work for the same quota. The background pass below widens this to thousands
-      // without the user waiting on it, which is what it exists for.
-      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=${INITIAL_SAMPLE}`);
-      setDeepenToken(listRes?.nextPageToken || null);
-      if (!listRes || !listRes.threads || listRes.threads.length === 0) {
+      // Scan the whole category, not a sample.
+      //
+      // Previously this fetched one detail request per thread, so covering a
+      // category meant thousands of round trips — slow enough to look broken. The
+      // fix was never a smaller sample: the clustering needs volume, and at 120
+      // messages almost nothing reached a threshold, which is why results appeared
+      // with no action items. Listing ids is one request per 500, and Gmail's batch
+      // endpoint fetches metadata 100 at a time, so a few thousand messages costs
+      // roughly 25 requests instead of thousands.
+      const ids = await listMessageIds(config.query, MAX_SCAN);
+      setDeepenToken(null); // whole category covered here; no background top-up needed
+
+      if (ids.length === 0) {
         setCategoryEmails([]);
         setDiagnostic({
           headline: `${config.name} is completely clear`,
@@ -370,37 +376,12 @@ export function CategoryDistributionModal({
         return;
       }
 
-      // 2. Fetch metadata details in efficient batches
-      const sampledThreads = listRes.threads.slice(0, INITIAL_SAMPLE);
-      const detailedEmails: EmailData[] = (await processInChunks(sampledThreads, 10, async (thread: any) => {
-        try {
-          const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
-          if (!detail.messages || detail.messages.length === 0) return null;
-          const firstMsg = detail.messages[0];
-          const lastMsg = detail.messages[detail.messages.length - 1];
-          const headers = firstMsg.payload?.headers || [];
-          const lastHeaders = lastMsg.payload?.headers || headers;
-
-          const sender = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown Sender';
-          const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '(No Subject)';
-          const dateStr = lastHeaders.find((h: any) => h.name.toLowerCase() === 'date')?.value || new Date().toISOString();
-
-          return {
-            id: thread.id,
-            threadId: thread.id,
-            messageIds: detail.messages.map((m: any) => m.id),
-            snippet: lastMsg.snippet || thread.snippet || '',
-            sender,
-            subject,
-            date: new Date(dateStr),
-            sizeEstimate: detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0),
-            labelIds: [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[],
-            listUnsubscribe: detail.messages.flatMap((m: any) => m.payload?.headers || []).find((h: any) => h.name.toLowerCase() === 'list-unsubscribe')?.value,
-          } as EmailData;
-        } catch {
-          return null;
-        }
-      })).filter(Boolean) as EmailData[];
+      setScanProgress({ done: 0, total: ids.length });
+      const detailedEmails = await fetchMessagesMetadataBatch(
+        ids,
+        (done, total) => setScanProgress({ done, total })
+      ) as EmailData[];
+      setScanProgress(null);
 
       setCategoryEmails(detailedEmails);
 

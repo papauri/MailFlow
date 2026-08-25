@@ -183,10 +183,13 @@ export function SketchLoadingState({
   scene = 'searching',
   title,
   messages = [],
+  progress,
 }: {
   scene?: SketchScene;
   title: string;
   messages?: string[];
+  /** Real counts when the work is measurable, so a long scan reads as progress. */
+  progress?: { done: number; total: number } | null;
 }) {
   const [index, setIndex] = useState(0);
 
@@ -204,6 +207,23 @@ export function SketchLoadingState({
         <p key={index} className="text-xs text-slate-500 animate-in fade-in duration-500 min-h-[1rem]">
           {messages[index]}
         </p>
+      )}
+
+      {progress && progress.total > 0 && (
+        <div className="w-full max-w-[220px] mt-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-medium text-slate-500">Reading your mail</span>
+            <span className="text-[11px] font-medium text-slate-600 tabular-nums">
+              {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-slate-800 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.round((progress.done / progress.total) * 100))}%` }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

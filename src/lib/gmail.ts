@@ -461,3 +461,158 @@ export async function createFilter(query: string, addLabelIds: string[], removeL
     })
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// Batch metadata fetching
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches metadata for many messages in a handful of HTTP calls.
+ *
+ * The analysis views were fetching one request per message, so scanning a category
+ * of a few thousand meant thousands of round trips — slow enough to look broken, and
+ * heavy on the user's quota. Shrinking the sample fixed the wait but starved the
+ * clustering, which needs volume to find anything.
+ *
+ * Gmail's batch endpoint takes up to 100 sub-requests per call, turning 2,000
+ * messages into ~20 requests instead of 2,000. That is what makes scanning a whole
+ * category on load practical.
+ */
+
+const BATCH_URL = 'https://www.googleapis.com/batch/gmail/v1';
+const BATCH_SIZE = 100;
+
+const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe'];
+
+function buildBatchBody(ids: string[], boundary: string): string {
+  const headerQuery = METADATA_HEADERS.map(h => `metadataHeaders=${h}`).join('&');
+  return ids
+    .map(id =>
+      `--${boundary}\r\n` +
+      `Content-Type: application/http\r\n` +
+      `Content-ID: <${id}>\r\n\r\n` +
+      `GET /gmail/v1/users/me/messages/${id}?format=metadata&${headerQuery}\r\n\r\n`
+    )
+    .join('') + `--${boundary}--\r\n`;
+}
+
+/**
+ * Pulls the JSON payloads out of a multipart/mixed batch response.
+ *
+ * Deliberately forgiving: a sub-request that failed (a deleted message, a
+ * permissions edge) is skipped rather than failing the whole batch, since losing one
+ * message from a sample of thousands changes nothing but losing the batch does.
+ */
+function parseBatchResponse(text: string): any[] {
+  const results: any[] = [];
+  for (const part of text.split(/--batch[^\r\n]*/)) {
+    const start = part.indexOf('{');
+    if (start === -1) continue;
+    const end = part.lastIndexOf('}');
+    if (end <= start) continue;
+    try {
+      const parsed = JSON.parse(part.slice(start, end + 1));
+      if (parsed && parsed.id && !parsed.error) results.push(parsed);
+    } catch {
+      // Not a JSON payload (status line, epilogue) — skip.
+    }
+  }
+  return results;
+}
+
+/** Message metadata shaped the way the analysis models expect. */
+function shapeMessage(msg: any): any {
+  const headers = msg.payload?.headers || [];
+  const find = (name: string) =>
+    headers.find((h: any) => h.name?.toLowerCase() === name)?.value;
+
+  const internal = msg.internalDate ? new Date(parseInt(msg.internalDate, 10)) : null;
+  const headerDate = find('date') ? new Date(find('date')!) : null;
+  const date = internal && !isNaN(internal.getTime()) ? internal
+    : (headerDate && !isNaN(headerDate.getTime()) ? headerDate : new Date());
+
+  return {
+    id: msg.id,
+    threadId: msg.threadId,
+    messageIds: [msg.id],
+    snippet: msg.snippet || '',
+    sender: find('from') || 'Unknown Sender',
+    subject: find('subject') || '(No Subject)',
+    date,
+    sizeEstimate: msg.sizeEstimate || 0,
+    labelIds: msg.labelIds || [],
+    listUnsubscribe: find('list-unsubscribe'),
+  };
+}
+
+export async function fetchMessagesMetadataBatch(
+  ids: string[],
+  onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<any[]> {
+  if (ids.length === 0) return [];
+  const token = await getAccessToken();
+  if (!token) throw new Error('Authentication required');
+
+  const out: any[] = [];
+
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    if (signal?.aborted) break;
+    const chunk = ids.slice(i, i + BATCH_SIZE);
+    const boundary = `batch_${Math.random().toString(36).slice(2)}`;
+
+    try {
+      const res = await fetch(BATCH_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': `multipart/mixed; boundary=${boundary}`,
+        },
+        body: buildBatchBody(chunk, boundary),
+        signal,
+      });
+
+      if (!res.ok) {
+        // One failed batch should not lose the rest of the scan.
+        console.warn(`Batch metadata request failed (${res.status}); skipping ${chunk.length} messages.`);
+        continue;
+      }
+
+      out.push(...parseBatchResponse(await res.text()).map(shapeMessage));
+    } catch (err) {
+      if (signal?.aborted) break;
+      console.warn('Batch metadata request errored; continuing.', err);
+    }
+
+    if (onProgress) onProgress(Math.min(i + BATCH_SIZE, ids.length), ids.length);
+  }
+
+  return out;
+}
+
+/** Message ids matching a query, paged. One request per 500 ids. */
+export async function listMessageIds(
+  query: string,
+  limit: number = 2000,
+  signal?: AbortSignal
+): Promise<string[]> {
+  const ids: string[] = [];
+  let pageToken = '';
+
+  while (ids.length < limit) {
+    if (signal?.aborted) break;
+    let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+
+    const res = await fetchGmailAPI(url);
+    const batch = res?.messages || [];
+    if (batch.length === 0) break;
+
+    ids.push(...batch.map((m: any) => m.id));
+    pageToken = res.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  return ids.slice(0, limit);
+}
