@@ -7,6 +7,7 @@ import { cn } from '../lib/utils';
 import { trashAllByQuery, archiveAllByQuery } from '../lib/gmail';
 import { CleanupAnalysis, CleanupRecommendation, formatCleanupBytes } from '../lib/cleanupModel';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
+import { useActionCompletion } from '../lib/useActionCompletion';
 
 interface Props {
   analysis: CleanupAnalysis;
@@ -44,7 +45,7 @@ export function CleanupRecommendations({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ id: string; done: number; total: number } | null>(null);
-  const [finished, setFinished] = useState<Map<string, number>>(new Map());
+  const completion = useActionCompletion();
   const [error, setError] = useState<string | null>(null);
 
   const { recommendations, pareto, reclaimableBytes, reclaimableVolume, protectedSenders } = analysis;
@@ -89,7 +90,9 @@ export function CleanupRecommendations({
         ? await archiveAllByQuery(rec.query, report)
         : await trashAllByQuery(rec.query, report);
 
-      setFinished(prev => new Map(prev).set(rec.id, processed));
+      // Confirm, then take it off the list — the work is done and the row is no
+      // longer actionable, so leaving it there only makes the list longer.
+      completion.complete(rec.id, `${processed.toLocaleString()} cleared`);
       onCompleted(rec, processed);
     } catch (e: any) {
       console.error(e);
@@ -100,7 +103,7 @@ export function CleanupRecommendations({
     }
   };
 
-  const pending = recommendations.filter(r => !finished.has(r.id));
+  const pending = completion.visible(recommendations);
 
   return (
     <div className="flex flex-col gap-4">
@@ -156,7 +159,7 @@ export function CleanupRecommendations({
         </div>
       )}
 
-      {pending.length === 0 && finished.size === 0 ? (
+      {pending.length === 0 && completion.clearedCount === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
           <ShieldCheck className="w-8 h-8 text-slate-300" />
           <p className="text-sm font-semibold text-slate-800">Nothing worth bulk-cleaning here</p>
@@ -167,11 +170,11 @@ export function CleanupRecommendations({
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {recommendations.map(rec => {
+          {completion.visible(recommendations).map(rec => {
             const meta = KIND_META[rec.kind];
             const isOpen = expanded.has(rec.id);
             const isRunning = running === rec.id;
-            const doneCount = finished.get(rec.id);
+            const doneLabel = completion.labelFor(rec.id);
             const showProgress = progress && progress.id === rec.id;
 
             return (
@@ -179,7 +182,7 @@ export function CleanupRecommendations({
                 key={rec.id}
                 className={cn(
                   "bg-white border rounded-xl shadow-2xs transition-colors",
-                  doneCount !== undefined ? "border-slate-200 opacity-70" : "border-slate-200 hover:border-slate-300"
+                  doneLabel ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 hover:border-slate-300"
                 )}
               >
                 <div className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -193,10 +196,10 @@ export function CleanupRecommendations({
                         <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
                           {meta.label}
                         </span>
-                        {doneCount !== undefined && (
+                        {doneLabel && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                             <CheckCircle2 className="w-3 h-3" />
-                            {doneCount.toLocaleString()} done
+                            {doneLabel}
                           </span>
                         )}
                       </div>
@@ -225,7 +228,7 @@ export function CleanupRecommendations({
                       </button>
                       <button
                         onClick={() => execute(rec)}
-                        disabled={isRunning || running !== null || doneCount !== undefined}
+                        disabled={isRunning || running !== null || !!doneLabel}
                         className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center justify-center gap-1"
                       >
                         {isRunning && <Loader2 className="w-3 h-3 animate-spin" />}

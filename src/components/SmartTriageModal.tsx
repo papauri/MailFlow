@@ -770,7 +770,7 @@ export function SmartTriageModal({
       isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs" : "px-5 py-4 border-b border-slate-200"
     )}>
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-xl shrink-0">
+        <div className="p-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-xl shrink-0">
           <Layers className="w-5 h-5" />
         </div>
         <div>
@@ -783,7 +783,7 @@ export function SmartTriageModal({
               value={selectedFolder}
               onChange={(e) => setSelectedFolder(e.target.value)}
               disabled={loading}
-              className="bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer disabled:opacity-50"
+              className="bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-slate-500 cursor-pointer disabled:opacity-50"
             >
               <option value="in:inbox">Inbox</option>
               <option value="anywhere">Everywhere</option>

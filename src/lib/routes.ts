@@ -50,7 +50,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   'sender-analytics': 'Sender Analytics',
   'category-distribution': 'Category Distribution',
   'subscriptions': 'Subscriptions',
-  'smart-triage': 'Smart Triage',
+  'smart-triage': 'Smart Organizer',
   'label-manager': 'Label Manager',
   'health-score': 'Health Score',
   'manage-inbox': 'Manage Inbox',

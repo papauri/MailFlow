@@ -8,6 +8,7 @@ import { createLabel, createFilter, batchModifyEmails } from '../lib/gmail';
 import { RoutingSuggestion } from '../lib/foldingModel';
 import { recordDecision, memoryStats } from '../lib/suggestionMemory';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
+import { useActionCompletion } from '../lib/useActionCompletion';
 
 /**
  * The two tools answer different questions about the same analysis:
@@ -52,7 +53,7 @@ export function RoutingSuggestions({
   const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
-  const [done, setDone] = useState<Map<string, string>>(new Map());
+  const completion = useActionCompletion();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const stats = memoryStats();
@@ -119,7 +120,7 @@ export function RoutingSuggestions({
       }
 
       recordDecision(s.memoryKey, 'accepted');
-      setDone(prev => new Map(prev).set(s.id, displayLabel(s)));
+      completion.complete(s.id, isFolderMode ? `Filed into ${displayLabel(s)}` : 'Rule created');
       onApplied(s);
     } catch (e: any) {
       console.error(e);
@@ -144,7 +145,7 @@ export function RoutingSuggestions({
     ? suggestions.filter(s => s.unfiled > 0).sort((a, b) => b.unfiled - a.unfiled)
     : suggestions;
 
-  const visible = relevant.filter(s => !dismissed.has(s.id));
+  const visible = completion.visible(relevant).filter(s => !dismissed.has(s.id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,12 +238,13 @@ export function RoutingSuggestions({
           {visible.map(s => {
             const isOpen = expanded.has(s.id);
             const isBusy = busy === s.id;
-            const isDone = done.has(s.id);
+            const doneLabel = completion.labelFor(s.id);
+            const isDone = !!doneLabel;
 
             return (
               <div key={s.id} className={cn(
                 "bg-white border rounded-xl shadow-2xs transition-colors",
-                isDone ? "border-slate-200 opacity-70" : "border-slate-200 hover:border-slate-300"
+                isDone ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 hover:border-slate-300"
               )}>
                 <div className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
@@ -260,7 +262,7 @@ export function RoutingSuggestions({
                         {isDone && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                             <CheckCircle2 className="w-3 h-3" />
-                            {isFolderMode ? 'Moved to folder' : 'Rule active'}
+                            {doneLabel}
                           </span>
                         )}
                       </div>

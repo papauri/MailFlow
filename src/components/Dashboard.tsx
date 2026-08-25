@@ -346,8 +346,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     const textQuery = customQuery ?? query;
     // Removed early return so we can load all emails initially
 
-    // Always anchor back to top when a new search is initiated
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Anchor to the top only for a genuinely new search. Background refreshes after
+    // an action reuse the same query, and yanking the page to the top mid-task threw
+    // the user away from the row they had just acted on.
+    const isNewSearch = Boolean(e) || textQuery !== lastExecutedQuery;
+    if (isNewSearch) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     const searchId = ++searchIdRef.current;
     // Seed from the last result for this exact query so moving back and forth
