@@ -9,7 +9,22 @@ import { RoutingSuggestion } from '../lib/foldingModel';
 import { recordDecision, memoryStats } from '../lib/suggestionMemory';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 
+/**
+ * The two tools answer different questions about the same analysis:
+ *
+ *   'folder' — the backlog. "Where should the mail I already have live?"
+ *              Files existing messages. Changes nothing about future mail.
+ *   'rule'   — the future. "What should happen to mail that arrives from now on?"
+ *              Creates a Gmail filter. Leaves the backlog alone unless asked.
+ *
+ * They previously shared one panel that did both at once, which meant Folder
+ * Optimizer and Automated Sorting Rules opened the same screen and a single click
+ * silently did two irreversible things.
+ */
+export type RoutingMode = 'folder' | 'rule';
+
 interface Props {
+  mode: RoutingMode;
   suggestions: RoutingSuggestion[];
   sendersAnalysed: number;
   /** Training sample still being fetched. */
@@ -31,7 +46,7 @@ interface Props {
  * app reads the same way regardless of which model produced it.
  */
 export function RoutingSuggestions({
-  suggestions, sendersAnalysed, loading = false, filedCount = 0, sampleSize = 0,
+  mode, suggestions, sendersAnalysed, loading = false, filedCount = 0, sampleSize = 0,
   aiSettings, onInspect, onApplied, onLabelsChanged
 }: Props) {
   const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
@@ -72,6 +87,8 @@ export function RoutingSuggestions({
     });
   };
 
+  const isFolderMode = mode === 'folder';
+
   /** AI may improve the name of a folder we're about to create — never an existing one. */
   const displayLabel = (s: RoutingSuggestion) =>
     (s.kind === 'new_folder' ? enriched.get(s.id)?.folderName?.trim() : '') || s.labelName;
@@ -89,14 +106,17 @@ export function RoutingSuggestions({
         if (onLabelsChanged) onLabelsChanged();
       }
 
-      // File what is already sitting loose, so the result is visible immediately
-      // rather than only applying to mail that arrives later.
-      if (s.ids.length > 0) {
-        await batchModifyEmails(s.ids, [labelId], ['INBOX']);
+      if (isFolderMode) {
+        // Backlog only. Deliberately creates no filter: the user asked to organise
+        // what exists, not to change what happens to mail they haven't received.
+        if (s.ids.length > 0) {
+          await batchModifyEmails(s.ids, [labelId], ['INBOX']);
+        }
+      } else {
+        // Future only, which is what a rule means. The backlog is left alone so this
+        // stays reversible — deleting the filter fully undoes it.
+        await createFilter(s.query, [labelId], ['INBOX']);
       }
-
-      // Then make it automatic from here on.
-      await createFilter(s.query, [labelId], ['INBOX']);
 
       recordDecision(s.memoryKey, 'accepted');
       setDone(prev => new Map(prev).set(s.id, displayLabel(s)));
@@ -114,7 +134,17 @@ export function RoutingSuggestions({
     setDismissed(prev => new Set(prev).add(s.id));
   };
 
-  const visible = suggestions.filter(s => !dismissed.has(s.id));
+  /**
+   * Foldering only has something to say where mail is actually sitting loose, and
+   * ranks by how much — a sender with 200 unfiled messages is the bigger tidy-up.
+   * Rules care about recurrence instead, so they keep the model's own ranking and
+   * include senders whose backlog is already clean but who keep sending.
+   */
+  const relevant = isFolderMode
+    ? suggestions.filter(s => s.unfiled > 0).sort((a, b) => b.unfiled - a.unfiled)
+    : suggestions;
+
+  const visible = relevant.filter(s => !dismissed.has(s.id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,15 +155,23 @@ export function RoutingSuggestions({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base">Where your mail should go</h3>
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+              {isFolderMode ? 'Tidy up the mail you already have' : 'Automate what arrives next'}
+            </h3>
               <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
                 {isEnhanced ? 'Enhanced analysis' : 'Pattern analysis'}
               </span>
             </div>
             <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-              Learned from <strong className="text-slate-900">{filedCount.toLocaleString()} filed messages</strong>{' '}
-              across <strong className="text-slate-900">{sendersAnalysed.toLocaleString()} senders</strong>. Each rule
-              files the mail sitting loose right now, then keeps doing it automatically.
+              {isFolderMode ? (
+                <>Files messages sitting loose in your mailbox into folders. Nothing changes about mail that
+                arrives later — set up a rule for that. Read from{' '}
+                <strong className="text-slate-900">{sendersAnalysed.toLocaleString()} senders</strong>.</>
+              ) : (
+                <>Creates Gmail filters so future mail files itself. Your existing mail is left where it is —
+                use the Folder Optimizer to tidy that up. Learned from{' '}
+                <strong className="text-slate-900">{filedCount.toLocaleString()} filed messages</strong>.</>
+              )}
             </p>
             {stats.patterns > 0 && (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg mt-3">
@@ -182,11 +220,16 @@ export function RoutingSuggestions({
       ) : visible.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
           <CheckCircle2 className="w-8 h-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-800">No consistent pattern yet</p>
+          <p className="text-sm font-semibold text-slate-800">
+            {isFolderMode ? 'Nothing loose worth filing' : 'No consistent pattern yet'}
+          </p>
           <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            Checked {filedCount.toLocaleString()} filed messages across {sendersAnalysed.toLocaleString()} senders.
-            None goes to one folder reliably enough to automate safely — a rule built on a mixed pattern would
-            misfile your mail.
+            {isFolderMode
+              ? `Checked ${sendersAnalysed.toLocaleString()} senders — nothing is sitting loose in large enough
+                 numbers to be worth filing in bulk.`
+              : `Checked ${filedCount.toLocaleString()} filed messages across ${sendersAnalysed.toLocaleString()}
+                 senders. None goes to one folder reliably enough to automate safely — a rule built on a mixed
+                 pattern would misfile your mail.`}
           </p>
         </div>
       ) : (
@@ -216,7 +259,8 @@ export function RoutingSuggestions({
                         </span>
                         {isDone && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            <CheckCircle2 className="w-3 h-3" /> Rule active
+                            <CheckCircle2 className="w-3 h-3" />
+                            {isFolderMode ? 'Moved to folder' : 'Rule active'}
                           </span>
                         )}
                       </div>
@@ -249,7 +293,9 @@ export function RoutingSuggestions({
                         className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center justify-center gap-1"
                       >
                         {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}
-                        {isDone ? 'Done' : 'Set up'}
+                        {isDone
+                          ? (isFolderMode ? 'Filed' : 'Rule on')
+                          : (isFolderMode ? `File ${s.unfiled}` : 'Create rule')}
                       </button>
                     </div>
                     {!isDone && (

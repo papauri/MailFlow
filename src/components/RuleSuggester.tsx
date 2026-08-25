@@ -120,7 +120,7 @@ export function RuleSuggester({
             <div>
               <h1 className="text-base sm:text-lg font-bold text-slate-900">Automated Sorting Rules</h1>
               <p className="text-xs text-slate-500">
-                Rules that file mail for you, learned from how you already sort it.
+Filters that sort future mail automatically. To tidy up existing mail, use the Folder Optimizer.
               </p>
             </div>
           </div>
@@ -150,6 +150,7 @@ export function RuleSuggester({
 
       {activeTab === 'suggestions' ? (
         <RoutingSuggestions
+          mode="rule"
           suggestions={suggestions}
           sendersAnalysed={senderCount}
           loading={sample.loading}

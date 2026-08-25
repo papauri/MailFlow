@@ -78,7 +78,7 @@ export function FolderOptimizer({
           <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-bold text-slate-800">Folder Optimizer</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Suggests where recurring mail belongs, based on how you already file it.
+Suggests where the mail already in your mailbox should be filed.
             </p>
           </div>
         </div>
@@ -110,6 +110,7 @@ export function FolderOptimizer({
         <div className="p-4 sm:p-6 bg-slate-50/40">
           {(
             <RoutingSuggestions
+              mode="folder"
               suggestions={suggestions}
               sendersAnalysed={senderCount}
               loading={sample.loading}
