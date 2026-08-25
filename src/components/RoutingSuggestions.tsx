@@ -72,6 +72,10 @@ export function RoutingSuggestions({
     });
   };
 
+  /** AI may improve the name of a folder we're about to create — never an existing one. */
+  const displayLabel = (s: RoutingSuggestion) =>
+    (s.kind === 'new_folder' ? enriched.get(s.id)?.folderName?.trim() : '') || s.labelName;
+
   const apply = async (s: RoutingSuggestion) => {
     setBusy(s.id);
     setError(null);
@@ -79,7 +83,7 @@ export function RoutingSuggestions({
       // Reuse the existing folder when there is one; only create when genuinely new.
       let labelId = s.labelId;
       if (!labelId) {
-        const created = await createLabel(s.labelName);
+        const created = await createLabel(displayLabel(s));
         labelId = created?.id;
         if (!labelId) throw new Error('Could not create the folder.');
         if (onLabelsChanged) onLabelsChanged();
@@ -95,11 +99,11 @@ export function RoutingSuggestions({
       await createFilter(s.query, [labelId], ['INBOX']);
 
       recordDecision(s.memoryKey, 'accepted');
-      setDone(prev => new Map(prev).set(s.id, s.labelName));
+      setDone(prev => new Map(prev).set(s.id, displayLabel(s)));
       onApplied(s);
     } catch (e: any) {
       console.error(e);
-      setError(`Couldn't set up "${s.labelName}". ${e?.message || 'Please try again.'}`);
+      setError(`Couldn't set up "${displayLabel(s)}". ${e?.message || 'Please try again.'}`);
     } finally {
       setBusy(null);
     }
@@ -205,7 +209,7 @@ export function RoutingSuggestions({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="text-sm font-semibold text-slate-900">
-                          {s.senderName} → {s.labelName}
+                          {s.senderName} → {displayLabel(s)}
                         </h4>
                         <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
                           {s.kind === 'new_folder' ? 'New folder' : 'Existing folder'}
@@ -233,7 +237,7 @@ export function RoutingSuggestions({
                     </span>
                     <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
                       <button
-                        onClick={() => onInspect(s.query, `${s.senderName} → ${s.labelName}`)}
+                        onClick={() => onInspect(s.query, `${s.senderName} → ${displayLabel(s)}`)}
                         disabled={isBusy}
                         className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
                       >

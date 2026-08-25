@@ -1,4 +1,4 @@
-import { extractSenderDetails } from './emailUtils';
+import { extractSenderDetails, KNOWN_BRAND_MAP } from './emailUtils';
 import { patternKey, priorFor, isSuppressed } from './suggestionMemory';
 
 /**
@@ -52,6 +52,8 @@ export interface RoutingSuggestion {
   ids: string[];
   score: number;
   memoryKey: string;
+  /** Sender keys a themed folder speaks for, so it can supersede their own cards. */
+  coveredSenders?: string[];
 }
 
 interface SenderStats {
@@ -115,6 +117,92 @@ function collectSenderStats(emails: any[], labelIdToName: Map<string, string>): 
   }
 
   return stats;
+}
+
+/**
+ * Cold start.
+ *
+ * The routing model above learns from filing the user has already done — which is
+ * worth nothing to someone who has never made a folder, exactly the person who most
+ * needs the feature. There is no training set to fall back on and inventing one from
+ * their mail would just be the keyword table again.
+ *
+ * Instead this leans on structure already present: who a sender *is*. The curated
+ * brand map (68 domains, 9 categories) is an existing model that needs no data from
+ * this user at all, so Stripe and PayPal are recognisably Finance on a brand-new
+ * account. Senders are themed into one folder per category rather than one folder
+ * per sender, because twenty single-sender folders is not organisation.
+ *
+ * Confidence is capped below the learned path throughout: a reasonable guess about
+ * where mail belongs is not the same as evidence of where this user puts it, and the
+ * wording says so.
+ */
+function buildColdStartSuggestions(
+  stats: Map<string, SenderStats>,
+  minVolume: number
+): RoutingSuggestion[] {
+  const themes = new Map<string, { senders: SenderStats[]; volume: number }>();
+
+  stats.forEach(sender => {
+    if (sender.total < minVolume) return;
+    if (sender.labelCounts.size > 0) return; // already filed — the learned path owns it
+    const known = KNOWN_BRAND_MAP[sender.domain];
+    const theme = known?.category;
+    if (!theme) return;
+
+    let entry = themes.get(theme);
+    if (!entry) { entry = { senders: [], volume: 0 }; themes.set(theme, entry); }
+    entry.senders.push(sender);
+    entry.volume += sender.total;
+  });
+
+  const suggestions: RoutingSuggestion[] = [];
+
+  themes.forEach((entry, theme) => {
+    // One sender alone is not a theme; the per-sender path already covers that.
+    if (entry.senders.length < 2 || entry.volume < minVolume * 2) return;
+
+    const key = patternKey('new_folder', `theme:${theme}`, theme);
+    if (isSuppressed(key)) return;
+
+    const names = entry.senders.map(s => s.name);
+    const shown = names.slice(0, 3).join(', ');
+    const rest = names.length > 3 ? ` and ${names.length - 3} more` : '';
+    const ids = entry.senders.flatMap(s => s.unlabelledIds);
+    // Domain-scoped so the rule keeps working for future senders at those companies.
+    const query = entry.senders.map(s => `from:${s.domain}`).join(' OR ');
+
+    const evidenceWeight = Math.min(1, Math.log10(1 + entry.volume) / Math.log10(51));
+    const confidence = Math.min(0.7, 0.35 + evidenceWeight * 0.3);
+
+    suggestions.push({
+      id: `theme:${theme}`,
+      kind: 'new_folder',
+      senderKey: `theme:${theme}`,
+      senderName: theme,
+      matchTarget: theme,
+      isDomainRule: true,
+      labelName: theme,
+      volume: entry.volume,
+      filed: 0,
+      unfiled: entry.volume,
+      purity: 1,
+      confidence,
+      rationale: `${shown}${rest} all send you ${theme.toLowerCase()} mail — ${entry.volume} messages in total, none of it filed. One "${theme}" folder keeps them together and out of the inbox.`,
+      evidence: [
+        `${entry.senders.length} recognised senders in this category`,
+        `${entry.volume} messages, none currently filed`,
+        `Based on who these senders are, not on folders you have made`,
+      ],
+      query,
+      ids,
+      score: (0.5 * Math.log10(1 + entry.volume)) * priorFor(key),
+      memoryKey: key,
+      coveredSenders: entry.senders.map(s => s.key),
+    });
+  });
+
+  return suggestions;
 }
 
 export interface RoutingOptions {
@@ -252,6 +340,28 @@ export function buildRoutingSuggestions(
       });
     }
   });
+
+  // With no filing history there is nothing to learn from, so fall back to what can
+  // be inferred from the senders themselves. Also tops up a thin set, since a user
+  // with two folders should still see the rest of their mail addressed.
+  const learnedRoutes = suggestions.filter(s => s.kind === 'route_existing').length;
+  if (learnedRoutes < 3) {
+    const coldStart = buildColdStartSuggestions(stats, minVolume);
+
+    if (coldStart.length > 0) {
+      // A theme speaks for every sender it contains, so drop the per-sender
+      // new-folder proposals it supersedes. Learned routes are never displaced —
+      // real evidence of where the user files something outranks a guess.
+      const absorbed = new Set(coldStart.flatMap(c => c.coveredSenders || []));
+      for (let i = suggestions.length - 1; i >= 0; i--) {
+        const s = suggestions[i];
+        if (s.kind === 'new_folder' && absorbed.has(s.senderKey)) {
+          suggestions.splice(i, 1);
+        }
+      }
+      suggestions.push(...coldStart);
+    }
+  }
 
   return suggestions.sort((a, b) => b.score - a.score);
 }
