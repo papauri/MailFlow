@@ -3,7 +3,7 @@ import {
   ArrowLeft, CheckCircle, CheckCircle2, Loader2, Trash2, Archive, 
   Mail, Star, Tag, Folder, RefreshCw, Download, Filter, 
   ChevronDown, Layers, Target, AlertCircle, Clock, HardDrive, 
-  SlidersHorizontal, Check, Eye
+  SlidersHorizontal, Check, Eye, ArrowUpDown
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EmailData } from '../lib/gmail';
@@ -42,6 +42,9 @@ interface FilteredEmailPageProps {
   onRefresh: () => void;
   onBack: () => void;
   actionLoading: string | null;
+  sortBy: "date" | "size" | "sender";
+  sortDesc: boolean;
+  onSortChange: (field: "date" | "size" | "sender", desc: boolean) => void;
 }
 
 function formatSize(bytes: number) {
@@ -94,7 +97,10 @@ export function FilteredEmailPage({
   isLoadingMore,
   onRefresh,
   onBack,
-  actionLoading
+  actionLoading,
+  sortBy,
+  sortDesc,
+  onSortChange
 }: FilteredEmailPageProps) {
   const [localSearch, setLocalSearch] = useState('');
   const [selectedFolderForMove, setSelectedFolderForMove] = useState('');
@@ -275,6 +281,28 @@ export function FilteredEmailPage({
                 </button>
               )}
             </div>
+
+            {/* Sort controls — a storage cleanup view is useless without size ordering */}
+            <div className="flex items-center gap-1.5 ml-1">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:block" />
+              <select
+                value={sortBy}
+                onChange={e => onSortChange(e.target.value as "date" | "size" | "sender", sortDesc)}
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                title="Sort these results"
+              >
+                <option value="date">Date</option>
+                <option value="size">Size</option>
+                <option value="sender">Sender</option>
+              </select>
+              <button
+                onClick={() => onSortChange(sortBy, !sortDesc)}
+                className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer whitespace-nowrap"
+                title={sortDesc ? 'Sorted descending — click for ascending' : 'Sorted ascending — click for descending'}
+              >
+                {sortDesc ? 'Desc' : 'Asc'}
+              </button>
+            </div>
           </div>
 
           {/* Bulk Actions when selected */}
@@ -342,7 +370,10 @@ export function FilteredEmailPage({
 
         {/* Email Rows */}
         <div className="flex-1 divide-y divide-slate-100 overflow-y-auto">
-          {isSearching ? (
+          {/* Only block on the loader when there is genuinely nothing to show. If a
+              cached list is already on screen it stays put and is replaced in place,
+              so moving between pages doesn't flash empty. */}
+          {isSearching && filteredEmails.length === 0 ? (
             <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
               <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
               <p className="text-sm font-medium text-slate-600">Loading messages matching filter...</p>

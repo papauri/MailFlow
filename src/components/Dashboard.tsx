@@ -65,6 +65,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | string | null>(null);
+  // Mirrors totalCount so the search cache can record it without waiting on a render.
+  const totalCountRef = useRef<number | string | null>(null);
   const [isCounting, setIsCounting] = useState(false);
   const [lastExecutedQuery, setLastExecutedQuery] = useState("");
   const searchIdRef = useRef(0);
@@ -301,20 +303,70 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     if (s.apiKey) setUseAI(true);
   };
 
+  /**
+   * Small LRU of recent result sets, keyed by query + folder scope.
+   *
+   * Nothing in this app is HTTP-cached, so navigating between a metric page and its
+   * message list used to re-run the whole thread fetch and flash an empty list every
+   * time. Keeping the last few results makes back-and-forth feel instant; the fresh
+   * fetch still runs and overwrites, so the list is never stale for long.
+   */
+  const SEARCH_CACHE_LIMIT = 8;
+  const searchCacheRef = useRef<Map<string, { emails: EmailData[]; totalCount: number | string | null; nextPageToken: string | null }>>(new Map());
+
+  useEffect(() => { totalCountRef.current = totalCount; }, [totalCount]);
+
+  const searchCacheKey = (q: string, filters: string[]) => `${q}::${[...filters].sort().join(',')}`;
+
+  const rememberSearch = (key: string, list: EmailData[], token: string | null) => {
+    const cache = searchCacheRef.current;
+    cache.delete(key);
+    cache.set(key, { emails: list, totalCount: totalCountRef.current, nextPageToken: token });
+    while (cache.size > SEARCH_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  };
+
+  /**
+   * Any mutation makes cached lists wrong — drop them rather than risk showing mail
+   * the user just deleted. Hooked to the app-wide mutation event so actions taken in
+   * other components (Health Score, Unsubscribe Manager, Rule Suggester) invalidate
+   * it too, not just bulk actions raised here.
+   */
+  useEffect(() => {
+    const clear = () => searchCacheRef.current.clear();
+    window.addEventListener('inbox_metrics_updated', clear);
+    return () => window.removeEventListener('inbox_metrics_updated', clear);
+  }, []);
+
   const handleSearch = async (e?: FormEvent, customQuery?: string, customFilters?: string[], bypassAI: boolean = false) => {
     if (e) e.preventDefault();
     const textQuery = customQuery ?? query;
     // Removed early return so we can load all emails initially
-    
+
     // Always anchor back to top when a new search is initiated
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     const searchId = ++searchIdRef.current;
+    // Seed from the last result for this exact query so moving back and forth
+    // between pages shows the previous list instantly instead of blanking out,
+    // while the fresh results load behind it and replace them.
+    const cacheKey = searchCacheKey(textQuery, customFilters ?? folderFilters);
+    const cached = searchCacheRef.current.get(cacheKey);
+
     setIsSearching(true);
-    setEmails([]);
+    if (cached) {
+      setEmails(cached.emails);
+      setTotalCount(cached.totalCount);
+      setNextPageToken(cached.nextPageToken);
+    } else {
+      setEmails([]);
+      setNextPageToken(null);
+      setTotalCount(null);
+    }
     setSelectedIds(new Set());
-    setNextPageToken(null);
-    setTotalCount(null);
     setParsedQuery(null);
     setAiError(null);
     setIsCounting(true);
@@ -448,11 +500,14 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           }
         });
         if (searchIdRef.current === searchId) {
-          setEmails(detailed.filter(Boolean) as EmailData[]);
+          const fresh = detailed.filter(Boolean) as EmailData[];
+          setEmails(fresh);
+          rememberSearch(cacheKey, fresh, results.nextPageToken || null);
         }
       } else {
         setEmails([]);
         setNextPageToken(null);
+        rememberSearch(cacheKey, [], null);
       }
     } catch (err) {
       console.error(err);
@@ -611,6 +666,58 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     return () => window.removeEventListener('hashchange', handleHashChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Single entry point for "show me these messages".
+   *
+   * Callers that describe what they're opening (title/badge/subtitle) get a real
+   * page at #filter-view — breadcrumb, named Back button, its own history entry.
+   * Previously this metadata was passed by Storage Breakdown but dropped on the
+   * floor by four separate copies of this handler, dumping the user on the
+   * dashboard with a bare query and no way back.
+   */
+  const handleApplyQuery = (
+    q: string,
+    filter?: string,
+    sortOption?: "date" | "size" | "sender",
+    metadata?: { title?: string; badge?: string; subtitle?: string; source?: string }
+  ) => {
+    if (metadata?.title) {
+      const params = new URLSearchParams();
+      params.set('q', q);
+      params.set('title', metadata.title);
+      if (metadata.badge) params.set('badge', metadata.badge);
+      if (metadata.subtitle) params.set('sub', metadata.subtitle);
+      if (filter) params.set('folder', filter);
+      if (sortOption) params.set('sort', sortOption);
+      params.set('source', metadata.source || 'health');
+      window.location.hash = `#filter-view?${params.toString()}`;
+      return;
+    }
+
+    // No page context supplied — fall back to a plain dashboard search.
+    setQuery(q);
+    if (sortOption) {
+      setSortBy(sortOption);
+      setSortDesc(true);
+    }
+    let newFilters = ['anywhere'];
+    if (filter) {
+      if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+      else if (filter === 'inbox') newFilters = ['inbox'];
+      else newFilters = [filter];
+    }
+    setFolderFilters(newFilters);
+    const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+      ? `#folders=${newFilters.join(',')}`
+      : '#dashboard';
+    if (window.location.hash !== newHash) {
+      window.location.hash = newHash;
+    } else {
+      setShowHealth(false);
+    }
+    setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+  };
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
@@ -1015,30 +1122,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           <h1 onDoubleClick={() => setShowAdminPanel(true)} className="text-base sm:text-xl font-bold tracking-tight text-slate-800 cursor-default select-none">MailFlow</h1>
           <div className="ml-1 sm:ml-2 border-l border-slate-200 pl-1.5 sm:pl-3 flex items-center">
             <HealthScoreWidget 
-              onApplyQuery={(q, filter, sortOption) => {
-                setQuery(q);
-                if (sortOption) {
-                  setSortBy(sortOption);
-                  setSortDesc(true);
-                }
-                let newFilters = ['anywhere'];
-                if (filter) {
-                  if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                  else if (filter === 'inbox') newFilters = ['inbox'];
-                  else if (filter.startsWith('category:')) newFilters = [filter];
-                  else newFilters = [filter];
-                }
-                setFolderFilters(newFilters);
-                const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                  ? `#folders=${newFilters.join(',')}` 
-                  : '#dashboard';
-                if (window.location.hash !== newHash) {
-                  window.location.hash = newHash;
-                } else {
-                  setShowHealth(false);
-                }
-                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
-              }}
+              onApplyQuery={handleApplyQuery}
               onOpenUnsubscribe={() => {
                 window.location.hash = '#health';
                 setShowHealth(true);
@@ -1262,33 +1346,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
              userLabels={userLabels}
              isAiWorking={connectionStatus === 'success'}
              onRefresh={() => handleSearch()}
-             onApplyQuery={(q, filter, sortOption) => {
-               setQuery(q);
-               if (sortOption) {
-                 setSortBy(sortOption);
-                 setSortDesc(true);
-               }
-               let newFilters = ['anywhere'];
-               if (filter) {
-                 if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                 else if (filter === 'inbox') newFilters = ['inbox'];
-                 else if (filter.startsWith('category:')) newFilters = [filter];
-                 else newFilters = [filter];
-               }
-               setFolderFilters(newFilters);
-               
-               const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                 ? `#folders=${newFilters.join(',')}` 
-                 : '#dashboard';
-                 
-               if (window.location.hash !== newHash) {
-                 window.location.hash = newHash;
-               } else {
-                 setShowHealth(false);
-               }
-               
-               setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
-              }}
+             onApplyQuery={handleApplyQuery}
             />
         )}
 
@@ -1361,26 +1419,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
               });
               handleSearch();
             }}
-            onApplyQuery={(q, filter, sortOption) => {
-              setQuery(q);
-              if (sortOption) {
-                setSortBy(sortOption);
-                setSortDesc(true);
-              }
-              let newFilters = ['anywhere'];
-              if (filter) {
-                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                else if (filter === 'inbox') newFilters = ['inbox'];
-                else if (filter.startsWith('category:')) newFilters = [filter];
-                else newFilters = [filter];
-              }
-              setFolderFilters(newFilters);
-              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                ? `#folders=${newFilters.join(',')}` 
-                : '#dashboard';
-              window.location.hash = newHash;
-              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
-            }}
+            onApplyQuery={handleApplyQuery}
           />
         )}
         {currentHash === 'smart-automations' && (
@@ -1405,26 +1444,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             isPage={true}
             isOpen={true}
             onClose={() => { window.location.hash = '#health'; }}
-            onApplyQuery={(q, filter, sortOption) => {
-              setQuery(q);
-              if (sortOption) {
-                setSortBy(sortOption);
-                setSortDesc(true);
-              }
-              let newFilters = ['anywhere'];
-              if (filter) {
-                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                else if (filter === 'inbox') newFilters = ['inbox'];
-                else if (filter.startsWith('category:')) newFilters = [filter];
-                else newFilters = [filter];
-              }
-              setFolderFilters(newFilters);
-              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                ? `#folders=${newFilters.join(',')}` 
-                : '#dashboard';
-              window.location.hash = newHash;
-              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
-            }}
+            onApplyQuery={handleApplyQuery}
             onOpenUnsubscribe={() => { window.location.hash = '#manage-inbox'; }}
           />
         )}
@@ -1454,7 +1474,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         {(currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams && (
           <FilteredEmailPage
             params={filterPageParams}
-            emails={emails}
+            emails={sortedEmails}
             isSearching={isSearching}
             totalCount={totalCount}
             selectedIds={selectedIds}
@@ -1480,6 +1500,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             onRefresh={() => handleSearch(undefined, filterPageParams.query, folderFilters, true)}
             onBack={() => { window.location.hash = '#' + (filterPageParams.source || 'health'); }}
             actionLoading={actionLoading}
+            sortBy={sortBy}
+            sortDesc={sortDesc}
+            onSortChange={(field, desc) => { setSortBy(field); setSortDesc(desc); }}
           />
         )}
         <div style={{ display: isFullPageRoute(currentHash) ? 'none' : 'block' }}>
