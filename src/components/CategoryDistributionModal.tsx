@@ -1,4 +1,6 @@
 import { TypingLoader } from "./TypingLoader";
+import { CleanupRecommendations } from "./CleanupRecommendations";
+import { analyseCleanup } from "../lib/cleanupModel";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
@@ -202,6 +204,15 @@ export function CategoryDistributionModal({
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [categoryEmails, setCategoryEmails] = useState<EmailData[]>([]);
+
+  /**
+   * Behavioural analysis of the scanned messages. Pure and local, so it is always
+   * available regardless of AI quota — recomputed straight from the fetched sample.
+   */
+  const cleanupAnalysis = useMemo(
+    () => (categoryEmails.length > 0 ? analyseCleanup(categoryEmails) : null),
+    [categoryEmails]
+  );
   const [diagnostic, setDiagnostic] = useState<CategoryDiagnostic | null>(null);
   const [actionBundles, setActionBundles] = useState<ActionBundle[]>([]);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
@@ -1208,6 +1219,33 @@ export function CategoryDistributionModal({
             </div>
           ) : diagnostic ? (
             <div className="flex flex-col gap-6">
+              {/* Behavioural cleanup model — leads the page because these are the
+                  bulk decisions that actually clear a category, rather than
+                  per-message chores. Runs entirely on-device. */}
+              {cleanupAnalysis && (
+                <CleanupRecommendations
+                  analysis={cleanupAnalysis}
+                  categoryName={currentCategoryConfig.name}
+                  onInspect={(query, title) => {
+                    const params = new URLSearchParams();
+                    params.set('q', query);
+                    params.set('title', title);
+                    params.set('badge', 'Recommended cleanup');
+                    params.set('sub', `Messages matching this recommendation`);
+                    params.set('source', 'category-distribution');
+                    params.set('action', 'trash');
+                    window.location.hash = `#filter-view?${params.toString()}`;
+                  }}
+                  onCompleted={(rec, processed) => {
+                    setTotalCleanedInSession(prev => prev + processed);
+                    setCategoryEmails(prev => prev.filter(e => !rec.ids.includes(e.id)));
+                    window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+                      detail: { type: 'promo', count: processed, isPartial: true }
+                    }));
+                  }}
+                />
+              )}
+
               {/* Priority Review Card */}
               {attentionItems.filter(i => !dismissedAttentionIds.has(i.id) && !handledAttentionIds.has(i.id)).length > 0 && (
                 <div className="bg-white border border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs">

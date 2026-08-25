@@ -250,6 +250,35 @@ export async function trashAllByQuery(
   return total;
 }
 
+/**
+ * Archives every message matching a query (removes INBOX, keeps the mail).
+ * Scoped with `in:inbox` by the caller so each round drains as messages leave it.
+ */
+export async function archiveAllByQuery(
+  query: string,
+  onProgress?: (archivedSoFar: number) => void,
+  maxRounds: number = 200
+): Promise<number> {
+  const PAGE_SIZE = 500;
+  let total = 0;
+
+  for (let round = 0; round < maxRounds; round++) {
+    const scoped = query.includes('in:inbox') ? query : `${query} in:inbox`;
+    const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(scoped)}&maxResults=${PAGE_SIZE}`);
+    const messages = res?.messages;
+    if (!messages || messages.length === 0) break;
+
+    const ids = messages.map((m: any) => m.id);
+    await batchArchiveEmails(ids);
+
+    total += ids.length;
+    if (onProgress) onProgress(total);
+    if (ids.length < PAGE_SIZE) break;
+  }
+
+  return total;
+}
+
 export async function batchDeleteEmails(ids: string[]) {
   if (ids.length === 0) return;
   const CHUNK_SIZE = 500;
