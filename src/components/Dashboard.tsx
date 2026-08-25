@@ -46,7 +46,7 @@ const InboxHealth = lazy(() => import("./InboxHealth").then(m => ({ default: m.I
 
 /** Keeps a lazy view's arrival from collapsing the page height. */
 function RouteFallback() {
-  return <SketchLoadingState scene="filing" title="Opening…" />;
+  return <SketchLoadingState scene="walking" title="Fetching that page…" />;
 }
 
 export default function Dashboard({ user, onLogout }: { user: any, onLogout?: () => void }) {

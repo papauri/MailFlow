@@ -92,7 +92,11 @@ export function CleanupRecommendations({
 
       // Confirm, then take it off the list — the work is done and the row is no
       // longer actionable, so leaving it there only makes the list longer.
-      completion.complete(rec.id, `${processed.toLocaleString()} cleared`);
+      completion.complete(
+        rec.id,
+        `${processed.toLocaleString()} ${rec.action === 'archive' ? 'archived' : 'cleared'}`,
+        { messages: processed, bytes: rec.bytes }
+      );
       onCompleted(rec, processed);
     } catch (e: any) {
       console.error(e);
@@ -200,6 +204,9 @@ export function CleanupRecommendations({
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                             <CheckCircle2 className="w-3 h-3" />
                             {doneLabel}
+                            {completion.impactFor(rec.id)?.bytes
+                              ? ` · ${formatCleanupBytes(completion.impactFor(rec.id)!.bytes!)} freed`
+                              : ''}
                           </span>
                         )}
                       </div>

@@ -14,6 +14,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const CONFIRM_MS = 1400;
 
+/** What an action actually achieved, so the confirmation can say more than "done". */
+export interface ActionImpact {
+  messages?: number;
+  bytes?: number;
+  /** e.g. "kept out of your inbox from now on" — the lasting effect, not the count. */
+  effect?: string;
+}
+
 export interface CompletionState {
   /** Item finished and is showing its confirmation. */
   isCompleting: (id: string) => boolean;
@@ -23,13 +31,17 @@ export interface CompletionState {
   visible: <T extends { id: string }>(items: T[]) => T[];
   /** Confirmation text, e.g. "Filed 42". */
   labelFor: (id: string) => string | undefined;
-  complete: (id: string, label?: string) => void;
+  impactFor: (id: string) => ActionImpact | undefined;
+  complete: (id: string, label?: string, impact?: ActionImpact) => void;
   /** Number cleared so far, for a running total. */
   clearedCount: number;
+  /** Everything this session's actions have achieved, for a summary line. */
+  totalImpact: ActionImpact;
 }
 
 export function useActionCompletion(confirmMs: number = CONFIRM_MS): CompletionState {
   const [completing, setCompleting] = useState<Map<string, string>>(new Map());
+  const [impacts, setImpacts] = useState<Map<string, ActionImpact>>(new Map());
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const timers = useRef<number[]>([]);
 
@@ -40,8 +52,9 @@ export function useActionCompletion(confirmMs: number = CONFIRM_MS): CompletionS
     return () => { pending.forEach(t => clearTimeout(t)); };
   }, []);
 
-  const complete = useCallback((id: string, label: string = 'Done') => {
+  const complete = useCallback((id: string, label: string = 'Done', impact?: ActionImpact) => {
     setCompleting(prev => new Map(prev).set(id, label));
+    if (impact) setImpacts(prev => new Map(prev).set(id, impact));
     const timer = window.setTimeout(() => {
       setCleared(prev => new Set(prev).add(id));
       setCompleting(prev => {
@@ -53,12 +66,21 @@ export function useActionCompletion(confirmMs: number = CONFIRM_MS): CompletionS
     timers.current.push(timer);
   }, [confirmMs]);
 
+  // Running total across everything actioned in this session.
+  const totalImpact: ActionImpact = { messages: 0, bytes: 0 };
+  impacts.forEach(i => {
+    totalImpact.messages = (totalImpact.messages || 0) + (i.messages || 0);
+    totalImpact.bytes = (totalImpact.bytes || 0) + (i.bytes || 0);
+  });
+
   return {
     isCompleting: (id: string) => completing.has(id),
     isCleared: (id: string) => cleared.has(id),
     visible: <T extends { id: string }>(items: T[]) => items.filter(i => !cleared.has(i.id)),
     labelFor: (id: string) => completing.get(id),
+    impactFor: (id: string) => impacts.get(id),
     complete,
     clearedCount: cleared.size,
+    totalImpact,
   };
 }

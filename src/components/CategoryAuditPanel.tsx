@@ -85,7 +85,12 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
         await batchTrashEmails(ids.slice(i, i + CHUNK));
         setProgress({ id: cluster.id, done: Math.min(i + CHUNK, ids.length), total: ids.length });
       }
-      completion.complete(cluster.id, `${cluster.volume.toLocaleString()} moved to trash`);
+      completion.complete(
+        cluster.id,
+        `${cluster.volume.toLocaleString()} moved to trash`,
+        { messages: cluster.volume, bytes: cluster.bytes,
+          effect: cluster.verdict === 'expired' ? 'expired mail cleared' : 'clutter removed' }
+      );
       onCleared(cluster, cluster.volume);
     } catch (e: any) {
       console.error(e);
@@ -123,6 +128,14 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                 {backgroundStatus} findings update as it goes.
               </p>
             )}
+            {(completion.totalImpact.messages || 0) > 0 && (
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg mt-2">
+                <CheckCircle2 className="w-3 h-3" />
+                Cleared {completion.totalImpact.messages!.toLocaleString()} messages
+                {(completion.totalImpact.bytes || 0) > 0 && ` · ${formatCleanupBytes(completion.totalImpact.bytes!)} freed`} so far
+              </p>
+            )}
+
             <div className="flex flex-wrap items-center gap-2 mt-3">
               {audit.clearableVolume > 0 && (
                 <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">
@@ -230,7 +243,12 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                         </span>
                         {doneLabel && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            <CheckCircle2 className="w-3 h-3" /> {doneLabel}
+                            <CheckCircle2 className="w-3 h-3" />
+                            {doneLabel}
+                            {/* What it achieved, not just that it finished. */}
+                            {completion.impactFor(cluster.id)?.bytes
+                              ? ` · ${formatCleanupBytes(completion.impactFor(cluster.id)!.bytes!)} freed`
+                              : ''}
                           </span>
                         )}
                       </div>

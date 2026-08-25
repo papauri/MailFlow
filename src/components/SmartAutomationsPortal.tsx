@@ -86,6 +86,7 @@ export function SmartAutomationsPortal({
           <SmartTriageModal
             isPage={true}
             isOpen={true}
+            showHeader={false}
             onClose={onClose}
             aiSettings={aiSettings}
             userLabels={userLabels}
@@ -109,8 +110,8 @@ export function SmartAutomationsPortal({
         {activeTab === 'rules' && (
           <RuleSuggester
             isPage={true}
+            showHeader={false}
             userEmail={userEmail}
-            onClose={onClose}
             userLabels={userLabels}
             recentEmails={emails}
             aiSettings={aiSettings}

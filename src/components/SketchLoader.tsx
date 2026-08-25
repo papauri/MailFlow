@@ -11,7 +11,7 @@ import React, { useEffect, useState } from 'react';
  * folder work, binning for cleanup, a magnifying glass for analysis.
  */
 
-export type SketchScene = 'filing' | 'sorting' | 'binning' | 'searching' | 'measuring';
+export type SketchScene = 'filing' | 'sorting' | 'binning' | 'searching' | 'measuring' | 'walking' | 'resting';
 
 interface Props {
   scene?: SketchScene;
@@ -95,6 +95,37 @@ function Scene({ scene }: { scene: SketchScene }) {
         </g>
       );
 
+    case 'walking':
+      // Legs swap and the arms counter-swing; the figure itself is translated
+      // across the frame by .sk-walk on the wrapper.
+      return (
+        <g>
+          <g className="sk-carry">
+            <line x1="50" y1="52" x2="62" y2="46" />
+            <rect className="sk-paper" x="58" y="38" width="13" height="10" rx="1" />
+          </g>
+          <line className="sk-arm-swing" x1="50" y1="52" x2="38" y2="60" />
+          <circle cx="50" cy="34" r="8" />
+          <line x1="50" y1="42" x2="50" y2="70" />
+          <line className="sk-leg-a" x1="50" y1="70" x2="41" y2="88" />
+          <line className="sk-leg-b" x1="50" y1="70" x2="59" y2="88" />
+        </g>
+      );
+
+    case 'resting':
+      // Sitting on a box, one leg swinging. For quiet states rather than work.
+      return (
+        <g>
+          <rect x="40" y="70" width="26" height="20" rx="2" />
+          <circle cx="36" cy="40" r="8" />
+          <line x1="36" y1="48" x2="40" y2="70" />
+          <line x1="38" y1="56" x2="28" y2="64" />
+          <line x1="40" y1="70" x2="56" y2="70" />
+          <line className="sk-leg-swing" x1="56" y1="70" x2="58" y2="88" />
+          <line x1="56" y1="70" x2="50" y2="88" />
+        </g>
+      );
+
     case 'searching':
     default:
       return (
@@ -113,6 +144,7 @@ function Scene({ scene }: { scene: SketchScene }) {
 }
 
 export function SketchLoader({ scene = 'searching', className }: Props) {
+  const isWalking = scene === 'walking';
   return (
     <div className={className} aria-hidden="true">
       <style>{`
@@ -132,6 +164,12 @@ export function SketchLoader({ scene = 'searching', className }: Props) {
                               66% { transform: translate(5px,-3px); } }
         @keyframes sk-stack { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
         @keyframes sk-dash { to { stroke-dashoffset: 0; } }
+        @keyframes sk-walk { 0% { transform: translateX(-42%); } 100% { transform: translateX(42%); } }
+        @keyframes sk-leg-a { 0%,100% { transform: rotate(14deg); } 50% { transform: rotate(-14deg); } }
+        @keyframes sk-leg-b { 0%,100% { transform: rotate(-14deg); } 50% { transform: rotate(14deg); } }
+        @keyframes sk-arm-swing { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+        @keyframes sk-carry { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+        @keyframes sk-leg-swing { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(16deg); } }
 
         .sk-figure { animation: sk-bob 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
         /* Strokes draw themselves in once, so it reads as a sketch being made. */
@@ -146,12 +184,21 @@ export function SketchLoader({ scene = 'searching', className }: Props) {
         .sk-fly-right { animation: sk-fly-right 2.6s ease-in-out infinite .3s; }
         .sk-glass { animation: sk-glass 3s ease-in-out infinite; }
         .sk-stack { animation: sk-stack 2s ease-in-out infinite; }
+        /* The whole figure crosses the frame, so it reads as carrying something
+           somewhere rather than marching on the spot. */
+        .sk-walking { animation: sk-walk 5s linear infinite alternate; }
+        .sk-leg-a { animation: sk-leg-a .6s ease-in-out infinite; transform-origin: 50px 70px; }
+        .sk-leg-b { animation: sk-leg-b .6s ease-in-out infinite; transform-origin: 50px 70px; }
+        .sk-arm-swing { animation: sk-arm-swing .6s ease-in-out infinite; transform-origin: 50px 52px; }
+        .sk-carry { animation: sk-carry .6s ease-in-out infinite; transform-origin: 50px 52px; }
+        .sk-leg-swing { animation: sk-leg-swing 2.6s ease-in-out infinite; transform-origin: 56px 70px; }
 
         /* Respect a stated preference for less motion: the drawing still appears,
            it simply stops moving. */
         @media (prefers-reduced-motion: reduce) {
           .sk-figure, .sk-figure *, .sk-arm-file, .sk-arm-toss, .sk-drop,
-          .sk-fly-left, .sk-fly-right, .sk-glass, .sk-stack {
+          .sk-fly-left, .sk-fly-right, .sk-glass, .sk-stack,
+          .sk-walking, .sk-leg-a, .sk-leg-b, .sk-arm-swing, .sk-carry, .sk-leg-swing {
             animation: none !important;
             stroke-dashoffset: 0 !important;
           }
@@ -160,7 +207,7 @@ export function SketchLoader({ scene = 'searching', className }: Props) {
 
       <svg
         viewBox="0 0 100 100"
-        className="sk-figure w-24 h-24 sm:w-28 sm:h-28 text-slate-400"
+        className={`sk-figure text-slate-400 ${isWalking ? 'sk-walking w-28 h-28 sm:w-32 sm:h-32' : 'w-24 h-24 sm:w-28 sm:h-28'}`}
         fill="none"
         stroke="currentColor"
         strokeWidth="2.2"

@@ -9,6 +9,7 @@ import { RoutingSuggestion } from '../lib/foldingModel';
 import { recordDecision, memoryStats } from '../lib/suggestionMemory';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 import { useActionCompletion } from '../lib/useActionCompletion';
+import { SketchLoader } from './SketchLoader';
 
 /**
  * The two tools answer different questions about the same analysis:
@@ -120,7 +121,13 @@ export function RoutingSuggestions({
       }
 
       recordDecision(s.memoryKey, 'accepted');
-      completion.complete(s.id, isFolderMode ? `Filed into ${displayLabel(s)}` : 'Rule created');
+      completion.complete(
+        s.id,
+        isFolderMode ? `Filed ${s.unfiled.toLocaleString()} into ${displayLabel(s)}` : 'Rule created',
+        isFolderMode
+          ? { messages: s.unfiled, effect: `out of your inbox` }
+          : { effect: `future mail files itself into ${displayLabel(s)}` }
+      );
       onApplied(s);
     } catch (e: any) {
       console.error(e);
@@ -263,6 +270,9 @@ export function RoutingSuggestions({
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                             <CheckCircle2 className="w-3 h-3" />
                             {doneLabel}
+                            {completion.impactFor(s.id)?.effect
+                              ? ` · ${completion.impactFor(s.id)!.effect}`
+                              : ''}
                           </span>
                         )}
                       </div>

@@ -66,6 +66,8 @@ export interface SmartTriageModalProps {
   onRefresh?: () => void;
   onSearchQuery?: (query: string) => void;
   isPage?: boolean;
+  /** False when shown as a tab inside another page, which supplies its own header. */
+  showHeader?: boolean;
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
@@ -120,7 +122,8 @@ export function SmartTriageModal({
   userEmail,
   onRefresh,
   onSearchQuery,
-  isPage = false
+  isPage = false,
+  showHeader = true,
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
@@ -1263,7 +1266,7 @@ export function SmartTriageModal({
   if (isPage) {
     return (
       <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
-        {headerElement}
+        {showHeader && headerElement}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[600px] relative">
           {mainBodyContent}
         </div>

@@ -24,6 +24,8 @@ interface RuleSuggesterProps {
   aiSettings?: any;
   isAiWorking?: boolean;
   isPage?: boolean;
+  /** False when shown as a tab inside another page, which supplies its own header. */
+  showHeader?: boolean;
   onClose?: () => void;
 }
 
@@ -44,6 +46,7 @@ export function RuleSuggester({
   userEmail,
   aiSettings,
   isPage = false,
+  showHeader = true,
   onClose
 }: RuleSuggesterProps) {
   const [createdRulesLog, setCreatedRulesLog] = useState<CreatedRuleRecord[]>([]);
@@ -102,7 +105,7 @@ export function RuleSuggester({
 
   return (
     <div className={cn("flex flex-col gap-4", isPage ? "w-full animate-in fade-in duration-150" : "mt-6 sm:mt-8")}>
-      {isPage && (
+      {isPage && showHeader && (
         <PageHeader
           title="Automated Sorting Rules"
           subtitle="Filters that sort future mail. Use Folder Optimizer for existing mail."
