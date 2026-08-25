@@ -211,6 +211,45 @@ export async function batchTrashEmails(ids: string[]) {
   await batchModifyEmails(ids, ['TRASH'], ['INBOX']);
 }
 
+/**
+ * Moves every message matching a query to Trash, paging until the query is empty.
+ *
+ * Deliberately re-runs the *first* page each round rather than following
+ * nextPageToken: trashing a message removes it from queries scoped with `-in:trash`,
+ * so the cursor from the previous round points into a result set that no longer
+ * exists. Refetching page one and stopping when it comes back empty is the only
+ * correct way to drain it.
+ *
+ * The caller supplies the query, so this inherits whatever scope it carries — it
+ * never widens it. `maxRounds` is a runaway guard: if a message somehow keeps
+ * matching after being trashed we stop instead of looping forever.
+ */
+export async function trashAllByQuery(
+  query: string,
+  onProgress?: (trashedSoFar: number) => void,
+  maxRounds: number = 200
+): Promise<number> {
+  const PAGE_SIZE = 500;
+  let total = 0;
+
+  for (let round = 0; round < maxRounds; round++) {
+    const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(query)}&maxResults=${PAGE_SIZE}`);
+    const messages = res?.messages;
+    if (!messages || messages.length === 0) break;
+
+    const ids = messages.map((m: any) => m.id);
+    await batchTrashEmails(ids);
+
+    total += ids.length;
+    if (onProgress) onProgress(total);
+
+    // A short page means we just drained the tail.
+    if (ids.length < PAGE_SIZE) break;
+  }
+
+  return total;
+}
+
 export async function batchDeleteEmails(ids: string[]) {
   if (ids.length === 0) return;
   const CHUNK_SIZE = 500;
@@ -245,61 +284,54 @@ export async function emptyAllTrash(
   const query = typeof queryOrProgress === 'string' ? queryOrProgress : "in:trash OR in:spam";
   const onProgress = typeof queryOrProgress === 'function' ? queryOrProgress : optionalProgress;
 
-  let pageToken = "";
+  // Same drain-by-refetch reasoning as markAllAsReadByQuery: deleted messages leave
+  // the result set, so a previously-taken nextPageToken would skip over survivors.
+  const PAGE_SIZE = 500;
+  const MAX_ROUNDS = 400;
   let totalDeleted = 0;
-  let hasMore = true;
 
-  while (hasMore) {
-    let url = `/messages?q=${encodeURIComponent(query)}&maxResults=1000`;
-    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
-    
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const url = `/messages?q=${encodeURIComponent(query)}&maxResults=${PAGE_SIZE}`;
     const listResult = await fetchGmailAPI(url);
-    if (!listResult || !listResult.messages || listResult.messages.length === 0) {
-      break;
-    }
-    
-    const ids = listResult.messages.map((m: any) => m.id);
+    const messages = listResult?.messages;
+    if (!messages || messages.length === 0) break;
+
+    const ids = messages.map((m: any) => m.id);
     await batchDeleteEmails(ids);
-    
+
     totalDeleted += ids.length;
-    if (onProgress) {
-      onProgress(totalDeleted);
-    }
-    
-    pageToken = listResult.nextPageToken;
-    if (!pageToken) {
-      hasMore = false;
-    }
+    if (onProgress) onProgress(totalDeleted);
+
+    if (ids.length < PAGE_SIZE) break;
   }
   return totalDeleted;
 }
 
-export async function markAllAsReadByQuery(query: string, onProgress?: (markedCount: number) => void) {
-  let pageToken = "";
+export async function markAllAsReadByQuery(
+  query: string,
+  onProgress?: (markedCount: number) => void,
+  maxRounds: number = 200
+) {
+  // Drains by re-running the first page, not by following nextPageToken: marking a
+  // message read removes it from the `is:unread` set, so a cursor taken before the
+  // mutation points into a result set that no longer exists and silently skips
+  // messages. maxResults is 500 because that is the API's real ceiling.
+  const PAGE_SIZE = 500;
   let totalMarked = 0;
-  let hasMore = true;
 
-  while (hasMore) {
-    let url = `/messages?q=${encodeURIComponent(query + ' is:unread')}&maxResults=1000`;
-    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
-    
+  for (let round = 0; round < maxRounds; round++) {
+    const url = `/messages?q=${encodeURIComponent(query + ' is:unread')}&maxResults=${PAGE_SIZE}`;
     const listResult = await fetchGmailAPI(url);
-    if (!listResult || !listResult.messages || listResult.messages.length === 0) {
-      break;
-    }
-    
-    const ids = listResult.messages.map((m: any) => m.id);
+    const messages = listResult?.messages;
+    if (!messages || messages.length === 0) break;
+
+    const ids = messages.map((m: any) => m.id);
     await batchMarkAsRead(ids);
-    
+
     totalMarked += ids.length;
-    if (onProgress) {
-      onProgress(totalMarked);
-    }
-    
-    pageToken = listResult.nextPageToken;
-    if (!pageToken) {
-      hasMore = false;
-    }
+    if (onProgress) onProgress(totalMarked);
+
+    if (ids.length < PAGE_SIZE) break;
   }
   return totalMarked;
 }

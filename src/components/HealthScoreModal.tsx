@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
-  countEmails, markAllAsReadByQuery, emptyAllTrash, searchEmails, batchTrashEmails
+  countEmails, markAllAsReadByQuery, emptyAllTrash, trashAllByQuery
 } from '../lib/gmail';
 import {
   computeInboxHealthScore,
@@ -18,6 +18,14 @@ import {
 } from '../lib/emailUtils';
 
 type FixableMetric = 'unread' | 'spam' | 'promo' | 'large' | 'oldMail';
+
+const FIX_PROGRESS_LABELS: Record<FixableMetric, string> = {
+  unread: 'Marking messages as read',
+  spam: 'Emptying spam & trash',
+  promo: 'Clearing stale promotions',
+  large: 'Moving large attachments to trash',
+  oldMail: 'Clearing mail older than a year',
+};
 
 interface HealthScoreModalProps {
   isOpen?: boolean;
@@ -48,6 +56,7 @@ export function HealthScoreModal({
   const [activeTab, setActiveTab] = useState<'breakdown' | 'simulator'>('breakdown');
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<{message: string, pts: number} | null>(null);
+  const [fixProgress, setFixProgress] = useState<{ label: string; current: number; total: number } | null>(null);
   
   // Granular simulation controls
   const [simUnread, setSimUnread] = useState<number>(0);
@@ -186,40 +195,44 @@ export function HealthScoreModal({
 
   const handleFix = async (type: FixableMetric, _currentPts?: number) => {
     setActiveAction(type);
+
+    // Denominator for the progress bar. These sweeps run to completion now, so a
+    // 5,000-message backlog reports real progress instead of silently doing 500.
+    const expectedTotal =
+      type === 'unread' ? metrics.unreadInbox :
+      type === 'spam' ? metrics.spamAndTrash :
+      type === 'promo' ? metrics.oldPromotions :
+      type === 'oldMail' ? (metrics.oldMail || 0) :
+      metrics.largeFiles;
+
+    setFixProgress({ label: FIX_PROGRESS_LABELS[type], current: 0, total: expectedTotal });
+    const report = (done: number) =>
+      setFixProgress({ label: FIX_PROGRESS_LABELS[type], current: done, total: expectedTotal });
+
+    let processed = 0;
     try {
       let message = "";
 
       if (type === 'unread') {
-        await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread);
+        processed = await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread, report);
         message = "Inbox zero achieved (unread)!";
       } else if (type === 'spam') {
-        await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash);
+        processed = await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash, report);
         message = "Spam and trash emptied!";
       } else if (type === 'promo') {
-        const pEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldPromotions, 500);
-        const promoIds = pEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-        if (promoIds.length > 0) await batchTrashEmails(promoIds);
-        message = "Old promotions cleaned!";
+        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.oldPromotions, report);
+        message = `${processed.toLocaleString()} old promotions cleaned!`;
       } else if (type === 'large') {
-        const lEmails = await searchEmails(HEALTH_SCORE_QUERIES.largeFiles, 500);
-        const largeIds = lEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-        if (largeIds.length > 0) await batchTrashEmails(largeIds);
-        message = `${lEmails.length} large attachments moved to trash!`;
+        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.largeFiles, report);
+        message = `${processed.toLocaleString()} large attachments moved to trash!`;
       } else if (type === 'oldMail') {
-        // Bounded to one page like the promotions sweep — clearing a decade of mail
-        // in one unbounded pass would hammer the API and can't be undone in bulk.
-        const oldEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldMail, 500);
-        const oldIds = oldEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
-        if (oldIds.length > 0) await batchTrashEmails(oldIds);
-        message = `${oldEmails.length} messages older than a year cleaned!`;
+        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.oldMail, report);
+        message = `${processed.toLocaleString()} messages older than a year cleaned!`;
       }
 
-      const countToSubtract =
-        type === 'unread' ? metrics.unreadInbox :
-        type === 'spam' ? metrics.spamAndTrash :
-        type === 'promo' ? metrics.oldPromotions :
-        type === 'oldMail' ? (metrics.oldMail || 0) :
-        metrics.largeFiles;
+      // Report what the sweep actually processed, falling back to the expected
+      // total for the helpers that don't return a count.
+      const countToSubtract = processed || expectedTotal;
 
       // Derive points gained from the real before/after score rather than assuming
       // the full category penalty, so the number shown is what was actually earned.
@@ -254,6 +267,7 @@ export function HealthScoreModal({
       console.error(error);
     } finally {
       setActiveAction(null);
+      setFixProgress(null);
     }
   };
 
@@ -520,6 +534,36 @@ export function HealthScoreModal({
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Breakdown & Remediation</h3>
                 </div>
+
+                {/* Sweeps now run to completion, so show real progress rather than
+                    leaving the user guessing during a multi-thousand message clear. */}
+                {fixProgress && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs mb-2.5">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600 shrink-0" />
+                        <span className="text-xs font-semibold text-slate-800 truncate">{fixProgress.label}</span>
+                      </div>
+                      <span className="text-xs font-medium text-slate-600 tabular-nums shrink-0">
+                        {fixProgress.current.toLocaleString()}
+                        {fixProgress.total > 0 && ` / ${fixProgress.total.toLocaleString()}`}
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-slate-800 rounded-full transition-all duration-300"
+                        style={{
+                          width: fixProgress.total > 0
+                            ? `${Math.min(100, Math.round((fixProgress.current / fixProgress.total) * 100))}%`
+                            : '100%'
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Working through every matching message — this can take a while on a large backlog.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-2.5">
                   {remediationRows.map(row => (
