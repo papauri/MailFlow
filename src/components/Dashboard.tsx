@@ -1179,165 +1179,93 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
 
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6">
         
-        {/* Breadcrumbs Navigation */}
+        {/* Breadcrumbs.
+            Rooted at whichever section the user is actually in: inside Inbox Health
+            the trail starts there rather than hanging every page off Dashboard, which
+            implied a step back through a page they never came from. Labels come from
+            the shared route map so a crumb cannot drift from where it navigates. */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500 mb-[-12px] flex-wrap">
-          <button 
-            onClick={() => { window.location.hash = '#dashboard'; }} 
-            className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer font-medium"
-          >
-            <Inbox className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
-            <span>Dashboard</span>
-          </button>
-          
-          {currentHash === 'health' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </span>
-            </>
-          )}
+          {(() => {
+            const inHealth = isHealthSectionRoute(currentHash)
+              || ((currentHash === 'filter-view' || currentHash === 'inspect')
+                  && isHealthSectionRoute(filterPageParams?.source || 'health'));
 
-          {currentHash === 'category-distribution' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Category Breakdown</span>
-            </>
-          )}
+            const rootHash = inHealth ? 'health' : 'dashboard';
+            const rootLabel = inHealth ? 'Inbox Health' : 'Dashboard';
+            const rootIcon = inHealth
+              ? <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
+              : <Inbox className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />;
 
-          {currentHash === 'subscriptions' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Subscriptions Manager</span>
-            </>
-          )}
+            // Trail between root and current page. A drill-down opened from a sub-page
+            // keeps that sub-page as its parent, so Back and the crumb agree.
+            const middle: { hash: string; label: string }[] = [];
+            if (inHealth && (currentHash === 'filter-view' || currentHash === 'inspect')) {
+              const src = filterPageParams?.source || 'health';
+              if (src !== 'health') middle.push({ hash: src, label: routeLabel(src) });
+            }
 
-          {currentHash === 'smart-triage' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Smart Batch Organizer</span>
-            </>
-          )}
+            const isRoot = currentHash === rootHash || (!inHealth && currentHash === 'dashboard');
 
-          {currentHash === 'label-manager' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Folders & Labels</span>
-            </>
-          )}
+            const leafLabel = (currentHash === 'filter-view' || currentHash === 'inspect')
+              ? (filterPageParams?.title || 'Filtered Messages')
+              : routeLabel(currentHash);
 
-          {currentHash === 'health-score' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Inbox Health Score</span>
-            </>
-          )}
-
-          {currentHash === 'folder-optimizer' && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Folder Optimizer & Rules</span>
-            </>
-          )}
-
-          {(currentHash === 'rule-suggester' || currentHash === 'rules') && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => { window.location.hash = '#health'; }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                Inbox Health
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold">Automated Sorting Rules</span>
-            </>
-          )}
-
-          {(currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <button 
-                onClick={() => {
-                  window.location.hash = '#' + (filterPageParams.source || 'health');
-                }} 
-                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                {routeLabel(filterPageParams.source)}
-              </button>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-900 font-semibold truncate max-w-[220px] sm:max-w-none">
-                {filterPageParams.title}
-              </span>
-            </>
-          )}
-
-          {!isFullPageRoute(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
-                {folderFilters.length === 1 ? (
-                  <>
-                    {folderFilters[0] === 'trash' ? <Trash2 className="w-3.5 h-3.5" /> : null}
-                    {folderFilters[0].replace('category:', '')}
-                  </>
+            return (
+              <>
+                {isRoot ? (
+                  <span className="text-slate-900 font-semibold flex items-center gap-1">
+                    {rootIcon}
+                    <span>{rootLabel}</span>
+                  </span>
                 ) : (
-                  <span>Multiple Folders</span>
+                  <button
+                    onClick={() => { window.location.hash = `#${rootHash}`; }}
+                    className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                  >
+                    {rootIcon}
+                    <span>{rootLabel}</span>
+                  </button>
                 )}
-              </span>
-            </>
-          )}
+
+                {middle.map(crumb => (
+                  <React.Fragment key={crumb.hash}>
+                    <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+                    <button
+                      onClick={() => { window.location.hash = `#${crumb.hash}`; }}
+                      className="hover:text-slate-900 transition-colors cursor-pointer"
+                    >
+                      {crumb.label}
+                    </button>
+                  </React.Fragment>
+                ))}
+
+                {!isRoot && (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+                    <span className="text-slate-900 font-semibold truncate max-w-[220px] sm:max-w-none">
+                      {leafLabel}
+                    </span>
+                  </>
+                )}
+
+                {!isFullPageRoute(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+                    <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
+                      {folderFilters.length === 1 ? (
+                        <>
+                          {folderFilters[0] === 'trash' ? <Trash2 className="w-3.5 h-3.5" /> : null}
+                          {folderFilters[0].replace('category:', '')}
+                        </>
+                      ) : (
+                        <span>Multiple Folders</span>
+                      )}
+                    </span>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {currentHash === 'health' && (

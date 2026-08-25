@@ -213,7 +213,12 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     const sample = sampleConfidence(c.volume);
 
     // 1. Bulk mail you reliably ignore — the clearest unsubscribe-and-purge case.
-    if (c.bulkRatio >= 0.5 && c.readRate <= 0.25 && c.volume >= 6) {
+    // readRate was <= 0.25, i.e. 75%+ unread. That is a much rarer state than it
+    // sounds — plenty of marketing mail gets opened once or auto-marked read, and
+    // requiring near-total neglect meant obvious junk from active senders never
+    // qualified. Ignoring more than half of a bulk sender is signal enough; the
+    // confidence score carries the remaining uncertainty.
+    if (c.bulkRatio >= 0.5 && c.readRate <= 0.45 && c.volume >= 4) {
       const confidence = Math.min(0.98, 0.5 + sample * 0.3 + (1 - c.readRate) * 0.2);
       recs.push({
         id: `unsub:${c.key}`,
@@ -239,7 +244,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     }
 
     // 2. Gone quiet and never engaged with — safe to clear in bulk.
-    if (c.daysSinceLast >= 180 && c.volume >= 4 && c.readRate <= 0.6) {
+    if (c.daysSinceLast >= 120 && c.volume >= 3 && c.readRate <= 0.7) {
       const confidence = Math.min(0.95, 0.45 + sample * 0.3 + Math.min(0.2, c.daysSinceLast / 1825));
       recs.push({
         id: `dormant:${c.key}`,
@@ -267,7 +272,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     // 3. Heavy attachments that are either ignored or long stale. Deliberately does
     //    NOT flag large mail you read and still receive — that is someone sending you
     //    files you actually use, and proposing deletion there would be destructive.
-    if (c.avgBytes >= 2 * MB && c.bytes >= 20 * MB && (c.readRate <= 0.7 || c.daysSinceLast >= 90)) {
+    if (c.avgBytes >= 1 * MB && c.bytes >= 10 * MB && (c.readRate <= 0.7 || c.daysSinceLast >= 90)) {
       const confidence = Math.min(0.9, 0.4 + sample * 0.25 + Math.min(0.25, c.bytes / (500 * MB)));
       recs.push({
         id: `storage:${c.key}`,
@@ -292,7 +297,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     }
 
     // 4. Steady one-way notifications: worth filing automatically rather than deleting.
-    if (c.conversationRatio < 0.05 && c.volume >= 15 && c.cadence >= 0.5 && c.readRate <= 0.6) {
+    if (c.conversationRatio < 0.05 && c.volume >= 8 && c.cadence >= 0.3 && c.readRate <= 0.7) {
       const confidence = Math.min(0.9, 0.4 + sample * 0.35);
       recs.push({
         id: `archive:${c.key}`,

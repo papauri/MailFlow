@@ -287,8 +287,11 @@ export function CategoryDistributionModal({
     }, 50);
 
     try {
-      // 1. Fetch sample emails from this specific category (up to 100 threads)
-      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=100`);
+      // 1. Fetch a sample from this category. 100 was far too small: a category
+      //    holding thousands of messages spread over hundreds of senders left every
+      //    sender with a handful of hits, below any threshold worth acting on, so the
+      //    analysis concluded "nothing to clean" from a sliver of the evidence.
+      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=400`);
       if (!listRes || !listRes.threads || listRes.threads.length === 0) {
         setCategoryEmails([]);
         setDiagnostic({
@@ -321,10 +324,12 @@ export function CategoryDistributionModal({
           return {
             id: thread.id,
             threadId: thread.id,
+            messageIds: detail.messages.map((m: any) => m.id),
             snippet: lastMsg.snippet || thread.snippet || '',
             sender,
             subject,
             date: new Date(dateStr),
+            sizeEstimate: detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0),
             labelIds: [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[],
             listUnsubscribe: detail.messages.flatMap((m: any) => m.payload?.headers || []).find((h: any) => h.name.toLowerCase() === 'list-unsubscribe')?.value,
           } as EmailData;
