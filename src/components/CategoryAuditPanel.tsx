@@ -9,6 +9,7 @@ import { CategoryAudit, TemplateCluster } from '../lib/categoryAudit';
 import { formatCleanupBytes } from '../lib/cleanupModel';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 import { useActionCompletion } from '../lib/useActionCompletion';
+import { useBackgroundStatus } from '../lib/useBackgroundTask';
 
 interface Props {
   audit: CategoryAudit;
@@ -39,6 +40,7 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
   const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [showAllAttention, setShowAllAttention] = useState(false);
   const completion = useActionCompletion();
+  const backgroundStatus = useBackgroundStatus();
 
   const actionable = audit.clusters.filter(c => c.verdict !== 'keep');
   const kept = audit.clusters.filter(c => c.verdict === 'keep');
@@ -113,6 +115,14 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
               Grouped {audit.totalAnalysed.toLocaleString()} messages by what they actually are —
               not who sent them — so near-identical mail becomes one decision instead of hundreds of rows.
             </p>
+            {/* Background work is visible rather than silent: the numbers below move
+                on their own as more mail is read, which is confusing unnoticed. */}
+            {backgroundStatus && (
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg mt-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {backgroundStatus} findings update as it goes.
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2 mt-3">
               {audit.clearableVolume > 0 && (
                 <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">

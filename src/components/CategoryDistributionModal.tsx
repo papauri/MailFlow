@@ -3,6 +3,8 @@ import { CleanupRecommendations } from "./CleanupRecommendations";
 import { analyseCleanup } from "../lib/cleanupModel";
 import { CategoryAuditPanel } from "./CategoryAuditPanel";
 import { auditCategory } from "../lib/categoryAudit";
+import { fetchCategoryPage } from "../lib/inboxAnalytics";
+import { useBackgroundTask } from "../lib/useBackgroundTask";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
@@ -143,6 +145,44 @@ export function CategoryDistributionModal({
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [categoryEmails, setCategoryEmails] = useState<EmailData[]>([]);
+  /** Cursor for the background pass that keeps deepening the sample after load. */
+  const [deepenToken, setDeepenToken] = useState<string | null>(null);
+
+  /**
+   * Keeps loading the rest of the category after the page is already usable.
+   *
+   * A first fetch can only reasonably cover a few hundred messages, so a category
+   * holding thousands was judged on a fraction of itself and the counts understated
+   * the real picture. This walks the remaining pages one at a time in the
+   * background, re-running the audit as each lands, so the findings sharpen while
+   * the user reads them rather than making them wait up front.
+   */
+  const DEEPEN_LIMIT = 2500;
+  useBackgroundTask(
+    deepenToken && categoryEmails.length < DEEPEN_LIMIT
+      ? {
+          id: `deepen:${selectedCategory}`,
+          label: `Analysing more of ${CATEGORY_CONFIG.find(c => c.id === selectedCategory)?.name || 'this category'}…`,
+          priority: 10,
+          step: async (signal) => {
+            const config = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
+            const page = await fetchCategoryPage(config.query, deepenToken, 300);
+            if (signal.aborted) return false;
+
+            if (page.emails.length > 0) {
+              setCategoryEmails(prev => {
+                // The user may have cleared messages while this page was in flight,
+                // so merge on id rather than blindly appending.
+                const seen = new Set(prev.map(e => e.id));
+                return [...prev, ...page.emails.filter((e: any) => !seen.has(e.id))];
+              });
+            }
+            setDeepenToken(page.nextPageToken);
+            return Boolean(page.nextPageToken);
+          },
+        }
+      : null
+  );
 
   /**
    * Behavioural analysis of the scanned messages. Pure and local, so it is always
@@ -304,6 +344,7 @@ export function CategoryDistributionModal({
       //    sender with a handful of hits, below any threshold worth acting on, so the
       //    analysis concluded "nothing to clean" from a sliver of the evidence.
       const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=500`);
+      setDeepenToken(listRes?.nextPageToken || null);
       if (!listRes || !listRes.threads || listRes.threads.length === 0) {
         setCategoryEmails([]);
         setDiagnostic({

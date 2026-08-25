@@ -1,4 +1,4 @@
-import { countEmails, searchEmails, estimateQuerySize } from './gmail';
+import { countEmails, searchEmails, estimateQuerySize, fetchGmailAPI, processInChunks } from './gmail';
 import { extractSenderDetails, GENERIC_FREEMAIL_DOMAINS } from './emailUtils';
 
 /**
@@ -170,5 +170,65 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
       oldMail: oldMailSize,
       updatesAndSocial: updatesAndSocialSize,
     },
+  };
+}
+
+
+/**
+ * One page of a category, mapped to the shape the analysis models expect.
+ *
+ * Extracted so the initial load and the background deepening pass share exactly one
+ * mapping. When these were separate the background copy could quietly omit a field —
+ * sizeEstimate went missing that way once already, which silently disabled every
+ * storage-based finding.
+ */
+export async function fetchCategoryPage(
+  query: string,
+  pageToken?: string | null,
+  pageSize: number = 500
+): Promise<{ emails: any[]; nextPageToken: string | null }> {
+  let url = `/threads?q=${encodeURIComponent(query)}&maxResults=${pageSize}`;
+  if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+
+  const listRes = await fetchGmailAPI(url);
+  const threads = listRes?.threads || [];
+  if (threads.length === 0) return { emails: [], nextPageToken: null };
+
+  const mapped = await processInChunks(threads, 10, async (thread: any) => {
+    try {
+      const detail = await fetchGmailAPI(
+        `/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`
+      );
+      if (!detail?.messages?.length) return null;
+
+      const firstMsg = detail.messages[0];
+      const lastMsg = detail.messages[detail.messages.length - 1];
+      const headers = firstMsg.payload?.headers || [];
+      const lastHeaders = lastMsg.payload?.headers || headers;
+      const find = (hs: any[], name: string) =>
+        hs.find((h: any) => h.name?.toLowerCase() === name)?.value;
+
+      return {
+        id: thread.id,
+        threadId: thread.id,
+        messageIds: detail.messages.map((m: any) => m.id),
+        snippet: lastMsg.snippet || thread.snippet || '',
+        sender: find(headers, 'from') || 'Unknown Sender',
+        subject: find(headers, 'subject') || '(No Subject)',
+        date: new Date(find(lastHeaders, 'date') || Date.now()),
+        sizeEstimate: detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0),
+        labelIds: [...new Set(detail.messages.flatMap((m: any) => m.labelIds || []))] as string[],
+        listUnsubscribe: detail.messages
+          .flatMap((m: any) => m.payload?.headers || [])
+          .find((h: any) => h.name?.toLowerCase() === 'list-unsubscribe')?.value,
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  return {
+    emails: mapped.filter(Boolean),
+    nextPageToken: listRes?.nextPageToken || null,
   };
 }
