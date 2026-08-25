@@ -243,21 +243,21 @@ export default function LoginScreen({
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="flex flex-col items-center mb-2 sm:mb-3"
+          className="flex flex-col items-center mb-3"
         >
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-normal tracking-[-0.04em] text-slate-900 leading-none select-none">
+          <h1 className="text-7xl font-normal tracking-[-0.04em] text-slate-900 leading-none select-none">
             MailFlow
           </h1>
         </motion.div>
 
         {/* Typing Headline */}
-        <div className="h-10 sm:h-12 flex items-center justify-center mb-8 sm:mb-10">
-          <p className="text-base sm:text-lg md:text-xl font-normal text-slate-400 tracking-tight flex items-center justify-center">
+        <div className="h-12 flex items-center justify-center mb-10">
+          <p className="text-xl font-normal text-slate-400 tracking-tight flex items-center justify-center">
             <span>{typedText}</span>
             <motion.span 
               animate={{ opacity: [1, 0] }} 
               transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-              className="inline-block w-[1.5px] sm:w-[2px] h-[18px] sm:h-[22px] bg-slate-400 ml-1.5 align-middle"
+              className="inline-block w-[2px] h-[22px] bg-slate-400 ml-1.5 align-middle"
             />
           </p>
         </div>

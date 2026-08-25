@@ -15,3 +15,8 @@ For complete, detailed technical architecture and feature documentation, see **[
 5. **Smart Folder Optimizer**: Uses AI and local behavioral heuristics to group unorganized emails and outliers, offering 1-click batch filing into existing or new Gmail labels.
 6. **Two-Pane Label Manager**: Interactive sidebar with live message counts, drag-and-drop email assignment, and safe label deletion that automatically preserves contained emails in the inbox.
 7. **Multi-Model AI Gateway (BYOK)**: Supports dynamic model selection and user-provided API keys across Google Gemini, OpenAI, Anthropic Claude, DeepSeek, Groq, Mistral, and Zhipu AI.
+
+---
+
+## AI Agent Development Note
+This repository contains an `AGENTS.md` file at the root. All future AI models and coding agents working on this repository **must** read `AGENTS.md` to understand the core structural UI/UX paradigms (such as using inline expandable accordions instead of modals for list reviews) and the strict client-side/server-side boundaries.

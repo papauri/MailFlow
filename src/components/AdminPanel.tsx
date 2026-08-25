@@ -23,7 +23,10 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
     setLoading(true);
     try {
       const docRef = doc(db, 'appConfig', 'global');
-      const docSnap = await getDoc(docRef);
+      const docSnap = await Promise.race([
+        getDoc(docRef),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 3000))
+      ]);
       if (docSnap.exists()) {
         setSettings({ ...settings, ...docSnap.data() });
       } else {
@@ -43,7 +46,10 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
     setSaving(true);
     try {
       const docRef = doc(db, 'appConfig', 'global');
-      await setDoc(docRef, settings, { merge: true });
+      await Promise.race([
+        setDoc(docRef, settings, { merge: true }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 3000))
+      ]);
       localStorage.setItem('globalAdminSettings', JSON.stringify(settings));
     } catch (e) {
       console.warn('Firestore error, saving to local storage only', e);

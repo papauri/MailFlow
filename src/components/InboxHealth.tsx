@@ -11,6 +11,7 @@ import { FolderOptimizer } from "./FolderOptimizer";
 import { RuleSuggester } from './RuleSuggester';
 import { SmartTriageModal } from './SmartTriageModal';
 import { HealthScoreModal } from './HealthScoreModal';
+import { SenderAnalyticsModal } from './SenderAnalyticsModal';
 import { StorageBreakdownBar } from './StorageBreakdownBar';
 import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
 
@@ -23,6 +24,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
   const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
+  const [isSenderAnalyticsOpen, setIsSenderAnalyticsOpen] = useState(false);
   const [topSenders, setTopSenders] = useState<any[]>([]);
   const [topDomains, setTopDomains] = useState<any[]>([]);
   const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
@@ -268,19 +270,19 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
                   <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Stop future noise</h4>
                 </div>
                 <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-                  <p><strong className="text-slate-800">Action:</strong> Open the <span onClick={() => scrollToAndFlash('card-subscriptions')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Subscriptions</span> manager from the Inbox Overview tools.</p>
-                  <p><strong className="text-slate-800">Result:</strong> Identify who sends you the most emails and bulk-unsubscribe from lists you never read.</p>
+                  <p><strong className="text-slate-800">Action:</strong> Open <span onClick={() => scrollToAndFlash('card-manage-inbox')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Manage Inbox</span> from the Overview tools.</p>
+                  <p><strong className="text-slate-800">Result:</strong> Identify who sends you the most emails, bulk-unsubscribe from lists, and manage your labels.</p>
                 </div>
               </div>
 
               <div className="bg-white/80 backdrop-blur-xs border border-blue-100/50 rounded-xl p-3.5 shadow-xs hover:shadow-sm transition-shadow">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="bg-emerald-100 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</div>
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Organize the mess</h4>
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wide">Automate your inbox</h4>
                 </div>
                 <div className="text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-                  <p><strong className="text-slate-800">Action:</strong> Run the <span onClick={() => scrollToAndFlash('card-batch-organizer')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Batch Organizer</span> from the Inbox Overview tools.</p>
-                  <p><strong className="text-slate-800">Result:</strong> Automatically clusters recurring senders so you can archive thousands of related emails in one click.</p>
+                  <p><strong className="text-slate-800">Action:</strong> Run <span onClick={() => scrollToAndFlash('card-smart-automations')} className="cursor-pointer hover:underline text-blue-700 font-semibold transition-colors">Smart Automations</span> from the Overview tools.</p>
+                  <p><strong className="text-slate-800">Result:</strong> Automatically group recurring senders, optimize folders, and create rules in a few clicks.</p>
                 </div>
               </div>
             </div>
@@ -307,326 +309,140 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           >
             <span>Export CSV</span>
           </button>
-          
-          <button
-            onClick={() => { window.location.hash = '#category-distribution'; }}
-            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all shrink-0 hover:shadow-xs cursor-pointer"
-            title="View email distribution by category"
-          >
-            <span>Category Breakdown</span>
-          </button>
         </div>
       </div>
 
       <div id="storage-breakdown" className="mb-4 sm:mb-6 rounded-2xl"><StorageBreakdownBar onApplyQuery={onApplyQuery} /></div>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
-          <div className="p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div className="p-4 sm:p-5 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900">Inbox Overview</h3>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900">Inbox Health Modules</h3>
                 </div>
-                <p className="text-xs text-slate-500 hidden sm:block">Quickly access and manage other inbox categories and tools.</p>
+                <p className="text-xs text-slate-500 hidden sm:block">Deep-dive into specific areas of your inbox to organize and automate.</p>
               </div>
-              <div className="flex items-center gap-2 self-end sm:self-center">
-                <button
-                  onClick={() => setShowOverview(!showOverview)}
-                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
-                >
-                  <span>{showOverview ? "Collapse Details" : "View Overview"}</span>
-                  {showOverview ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
+            </div>
+          </div>
+          
+          <div className="p-4 sm:p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <HealthCard 
+                id="card-category-breakdown"
+                title="Category Breakdown"
+                count="Analyze"
+                desc="Visualize what takes up the most space and volume in your inbox."
+                actionText="View Breakdown"
+                onAction={() => { window.location.hash = '#category-distribution'; }}
+              />
+              <HealthCard 
+                id="card-smart-automations"
+                title="Smart Automations"
+                count="Automate"
+                desc="Batch organize recurring senders, optimize folders, and create rules."
+                actionText="Open Automations"
+                onAction={() => { window.location.hash = '#smart-automations'; }}
+              />
+              <HealthCard 
+                id="card-manage-inbox"
+                title="Manage Inbox"
+                count="Manage"
+                desc="Manage your newsletters, subscriptions, custom labels, and folders."
+                actionText="Open Manager"
+                onAction={() => { window.location.hash = '#manage-inbox'; }}
+              />
+              <HealthCard 
+                title="Inbox Score"
+                count={stats?.unread}
+                desc="See how healthy your inbox is based on unread counts and clutter."
+                actionText="Check Score"
+                onAction={() => { window.location.hash = '#health-score'; }}
+              />
+            </div>
+          </div>
+      </div>
+
+
+
+
+      
+      {/* Compact Sender Analytics Card */}
+      {topSenders.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
+          <div className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                <Target className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">Sender Analytics</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  You have <span className="font-semibold text-slate-700">{topSenders.length} frequent senders</span> and <span className="font-semibold text-slate-700">{topDomains.length} domain clusters</span>.
+                </p>
               </div>
             </div>
             
-            {showOverview && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 mt-4 pt-4 border-t border-slate-100">
-                <HealthCard 
-                  id="card-subscriptions"
-                  title="Subscriptions"
-                  count="Manage"
-                  desc="Manage newsletters & promo senders in bulk."
-                  actionText="Open Manager"
-                  onAction={() => { window.location.hash = '#subscriptions'; }}
-                />
-                <HealthCard 
-                  title="Inbox Overload"
-                  count={stats?.unread}
-                  desc="Unread emails sitting around demanding your attention."
-                  actionText="Triage Unread"
-                  onAction={() => openFilterPage("is:unread", "Inbox Overload", "Unread Triage", "Unread emails sitting in your inbox", "inbox")}
-                />
-                <HealthCard 
-                  title="Folders & Labels"
-                  count="Manage"
-                  desc="Create, rename, delete custom labels, and organize emails into folders."
-                  actionText="Manage Folders"
-                  onAction={() => { window.location.hash = '#label-manager'; }}
-                />
-                <HealthCard 
-                  id="card-batch-organizer"
-                  title="Batch Organizer"
-                  count="Group"
-                  desc="Cluster recurring senders and organize inbox in bulk."
-                  actionText="Run Organizer"
-                  onAction={() => { window.location.hash = '#smart-triage'; }}
-                />
-                <HealthCard 
-                  id="card-folder-optimizer"
-                  title="Folder Optimizer"
-                  count="Rules"
-                  desc="AI-driven pattern detection & automatic Gmail rule creation."
-                  actionText="Optimize Rules"
-                  onAction={() => { window.location.hash = '#folder-optimizer'; }}
-                />
-                <HealthCard 
-                  id="card-rule-suggester"
-                  title="Automated Rules"
-                  count="Automation"
-                  desc="AI Smart triage & pattern suggestions to auto-route mail."
-                  actionText="View Rules"
-                  onAction={() => { window.location.hash = '#rule-suggester'; }}
-                />
-              </div>
-            )}
+            <button
+              onClick={() => setIsSenderAnalyticsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer w-full sm:w-auto justify-center"
+            >
+              <span>View Analytics</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
-      {isSmartTriageOpen && (
-        <SmartTriageModal
-          isOpen={isSmartTriageOpen}
-          onClose={() => {
-             setIsSmartTriageOpen(false);
-             if (onRefresh) onRefresh();
-          }}
-          aiSettings={aiSettings}
-          userLabels={userLabels}
-          userEmail={userEmail}
-          onRefresh={onRefresh}
-          onSearchQuery={(q) => onApplyQuery(q)}
-        />
       )}
 
-      
-      
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-slate-900">Quick Filters</h3>
-              </div>
-              <p className="text-xs text-slate-500 hidden sm:block">One-click searches to quickly inspect specific emails.</p>
-            </div>
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <button
-                onClick={() => setShowQuickFilters(!showQuickFilters)}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <span>{showQuickFilters ? "Collapse Details" : "View Filters"}</span>
-                {showQuickFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
-          
-          {showQuickFilters && (
-            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-              <button 
-                onClick={() => openFilterPage("is:unread is:important -category:promotions -in:trash", "Important Unread", "Quick Filter", "High-priority unread emails in your inbox", "anywhere")}
-                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
-              >
-                <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-500" />
-                <span>Important Unread</span>
-                <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs ml-1 shrink-0">{stats?.importantUnread || 0}</span>
-              </button>
-              
-              <button 
-                onClick={() => openFilterPage("category:updates OR category:social -in:trash", "Updates & Social", "Quick Filter", "Automated notifications, updates, and social alerts", "anywhere", "size")}
-                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
-              >
-                <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-500" />
-                <span>Updates & Social</span>
-                <div className="flex items-center gap-1 ml-1 shrink-0">
-                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.updatesAndSocial || 0}</span>
-                  {sizes?.updatesAndSocial > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.updatesAndSocial)}</span>}
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => openFilterPage("has:attachment -in:trash", "With Attachments", "Quick Filter", "Emails containing file attachments and media", "anywhere", "size")}
-                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-500" />
-                <span>With Attachments</span>
-                <div className="flex items-center gap-1 ml-1 shrink-0">
-                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.withAttachments || 0}</span>
-                  {sizes?.withAttachments > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.withAttachments)}</span>}
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => openFilterPage("older_than:1y -in:trash", "Older Than 1 Year", "Quick Filter", "Historical archive messages older than 12 months", "anywhere", "size")}
-                className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer"
-              >
-                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-slate-400" />
-                <span>Older Than 1 Year</span>
-                <div className="flex items-center gap-1 ml-1 shrink-0">
-                  <span className="bg-white border border-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] sm:text-xs">{stats?.oldMail || 0}</span>
-                  {sizes?.oldMail > 0 && <span className="text-[10px] bg-slate-200/60 px-1.5 rounded-full text-slate-500 py-0.5">~{formatSize(sizes.oldMail)}</span>}
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-
-      
-      {/* Local Aggregations */}
-      {topSenders.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-slate-900">Sender Analytics</h3>
-              </div>
-              <p className="text-xs text-slate-500 hidden sm:block">Analyze most frequent senders and domain clusters.</p>
-            </div>
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <button
-                onClick={() => setShowAnalytics(!showAnalytics)}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <span>{showAnalytics ? "Collapse Details" : "View Analytics"}</span>
-                {showAnalytics ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
-          
-          {showAnalytics && (
-            <div className="flex flex-col gap-6 sm:grid sm:grid-cols-2 mt-4 pt-4 border-t border-slate-100">
-              {/* Top Senders */}
-              <div className="flex flex-col gap-3 sm:gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg shrink-0">
-                    <Target className="w-4 h-4 text-slate-700" />
-                  </div>
-                  <div className="flex flex-col">
-                    <h3 className="text-sm font-bold text-slate-800">Top Senders</h3>
-                    <p className="text-[11px] text-slate-500">Most frequent contacts in recent history</p>
-                  </div>
-                </div>
-                <div className="bg-slate-50 rounded-xl shadow-xs border border-slate-200 overflow-hidden">
-                  {topSenders.map((sender, i) => {
-                    const maxCount = Math.max(...topSenders.map(s => s.count), 1);
-                    const percent = Math.round((sender.count / maxCount) * 100);
-                    return (
-                    <div 
-                      key={i} 
-                      onClick={() => openFilterPage(`from:${sender.email}`, sender.name || sender.email, "Top Sender", `All messages from ${sender.email}`, "anywhere")}
-                      className="flex flex-col justify-center p-2.5 sm:p-3 border-b border-slate-200/60 last:border-0 hover:bg-white transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-2">
-                        <div className="flex-1 min-w-0 pr-1 sm:pr-3">
-                          <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate group-hover:text-blue-600 transition-colors">{sender.name}</p>
-                          <p className="text-[11px] sm:text-xs text-slate-500 truncate">{sender.email}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                          <span className="text-xs sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 px-1.5 sm:px-2 py-0.5 rounded-full">{sender.count}</span>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openFilterPage(`from:${sender.email}`, sender.name || sender.email, "Top Sender", `All messages from ${sender.email}`, "anywhere");
-                            }}
-                            className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white cursor-pointer"
-                            title="Inspect messages from sender"
-                          >
-                            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="w-full bg-slate-200/50 rounded-full h-1.5 mb-1">
-                        <div className="bg-slate-800 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
-                      </div>
-                    </div>
-                  )
-                  })}
-                </div>
-              </div>
-              
-              {/* Top Domains */}
-              <div className="flex flex-col gap-3 sm:gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg shrink-0">
-                    <Layers className="w-4 h-4 text-slate-700" />
-                  </div>
-                  <div className="flex flex-col">
-                    <h3 className="text-sm font-bold text-slate-800">Domain Clusters</h3>
-                    <p className="text-[11px] text-slate-500">Companies emailing you the most</p>
-                  </div>
-                </div>
-                <div className="bg-slate-50 rounded-xl shadow-xs border border-slate-200 overflow-hidden">
-                  {topDomains.map((domainObj, i) => {
-                    const maxDomainCount = Math.max(...topDomains.map(d => d.count), 1);
-                    const percent = Math.round((domainObj.count / maxDomainCount) * 100);
-                    return (
-                    <div 
-                      key={i} 
-                      onClick={() => openFilterPage(`from:${domainObj.domain}`, `@${domainObj.domain}`, "Domain Cluster", `All messages from domain @${domainObj.domain}`, "anywhere")}
-                      className="flex flex-col justify-center p-2.5 sm:p-3 border-b border-slate-200/60 last:border-0 hover:bg-white transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-2">
-                        <div className="flex-1 min-w-0 pr-1 sm:pr-3 flex items-center gap-2 sm:gap-3">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-xs sm:text-sm font-bold text-slate-600 uppercase shadow-xs shrink-0">
-                            {domainObj.domain.charAt(0)}
-                          </div>
-                          <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate group-hover:text-indigo-600 transition-colors">@{domainObj.domain}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                          <span className="text-xs sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 px-1.5 sm:px-2 py-0.5 rounded-full">{domainObj.count}</span>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openFilterPage(`from:${domainObj.domain}`, `@${domainObj.domain}`, "Domain Cluster", `All messages from domain @${domainObj.domain}`, "anywhere");
-                            }}
-                            className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white cursor-pointer"
-                            title="Inspect messages from domain"
-                          >
-                            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="w-full bg-slate-200/50 rounded-full h-1.5 mb-1">
-                        <div className="bg-slate-700 h-1.5 rounded-full" style={{ width: `${percent}%` }}></div>
-                      </div>
-                    </div>
-                  )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-      )}
-
-      <FolderOptimizer 
-        emails={recentEmailsState} 
-        userLabels={userLabels || []}
-        aiSettings={aiSettings}
-        isFetching={isLoadingEmails}
-        isAiWorking={isAiWorking}
-        onReload={() => setReloadTrigger(prev => prev + 1)}
+      {/* Analytics Modal */}
+      <SenderAnalyticsModal 
+        isOpen={isSenderAnalyticsOpen}
+        emails={recentEmailsState}
+        onClose={() => setIsSenderAnalyticsOpen(false)}
+        topSenders={topSenders}
+        topDomains={topDomains}
+        openFilterPage={openFilterPage}
       />
 
-      <RuleSuggester 
-        userLabels={userLabels || []} 
-        recentEmails={recentEmailsState}
-        onApplyQuery={onApplyQuery}
-        aiSettings={aiSettings}
-        isAiWorking={isAiWorking}
-      />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden p-5 flex flex-col h-full hover:border-slate-300 transition-colors group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl">
+              <Folder className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">AI Folder Optimizer</h3>
+          </div>
+          <p className="text-sm text-slate-500 mb-6 flex-1">
+            Automatically group recurring senders, shopping receipts, and newsletters into smart categorized folders using precision clustering.
+          </p>
+          <button 
+            onClick={() => { window.location.hash = '#folder-optimizer'; }}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <span>Optimize Folders</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden p-5 flex flex-col h-full hover:border-slate-300 transition-colors group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl">
+              <Filter className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">Automated Sorting Rules</h3>
+          </div>
+          <p className="text-sm text-slate-500 mb-6 flex-1">
+            Discover inbox patterns and generate permanent Gmail filter rules to route future emails instantly without manual effort.
+          </p>
+          <button 
+            onClick={() => { window.location.hash = '#rule-suggester'; }}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <span>Create Auto-Rules</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </div>
 
       <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
 
@@ -639,19 +455,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           if (onRefresh) onRefresh();
         }}
         onApplyQuery={onApplyQuery}
-      />
-
-      <CategoryDistributionModal
-        isOpen={isChartModalOpen}
-        onClose={() => setIsChartModalOpen(false)}
-        onApplyCategory={onApplyQuery}
-        userLabels={userLabels || []}
-        aiSettings={aiSettings}
-        userEmail={userEmail}
-        onRefresh={() => {
-          setReloadTrigger(prev => prev + 1);
-          if (onRefresh) onRefresh();
-        }}
       />
 
       <HealthScoreModal

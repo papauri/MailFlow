@@ -376,8 +376,8 @@ export function HealthScoreModal({
 
   const headerElement = (
     <div className={cn(
-      "border-slate-100 flex items-center justify-between shrink-0",
-      isPage ? "p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs" : "px-6 py-4 border-b bg-slate-50/70"
+      "flex flex-col sm:flex-row sm:items-center justify-between bg-white shrink-0 gap-4",
+      isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs mb-4" : "px-5 py-4 border-b border-slate-200"
     )}>
       <div className="flex items-center gap-3">
         {isPage && (
@@ -1231,7 +1231,7 @@ export function HealthScoreModal({
 
   if (isPage) {
     return (
-      <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-5xl mx-auto flex flex-col animate-in fade-in duration-150">
         {headerElement}
         {mainBodyContent}
       </div>

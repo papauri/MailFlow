@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from 'framer-motion';
 import { TypingLoader } from "./TypingLoader";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -23,7 +24,6 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
-import { EmailReviewView } from './EmailReviewView';
 import { Search } from 'lucide-react';
 import { 
   extractSenderDetails, 
@@ -43,6 +43,7 @@ interface Props {
   isFetching?: boolean;
   isAiWorking?: boolean;
   onReload?: () => void;
+  isPage?: boolean;
 }
 
 export interface Recommendation {
@@ -215,7 +216,7 @@ function saveLearnedPattern(newPattern: LearnedPattern) {
   }
 }
 
-export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, isAiWorking, onReload }: Omit<Props, 'isOpen' | 'onClose'>) {
+export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, isAiWorking, onReload, isPage }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [loading, setLoading] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -229,7 +230,6 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   const [creatingRuleId, setCreatingRuleId] = useState<number | null>(null);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const [isExpanded, setIsExpanded] = useState(true);
-  const [inspectingRec, setInspectingRec] = useState<{ idx: number, rec: Recommendation } | null>(null);
 
   // Anti-Hallucination & Zero-False-Positive Sanitization Engine
   const validateAndSanitizeRecommendations = (rawRecs: any[], emailPool: any[]): Recommendation[] => {
@@ -747,7 +747,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   }, [recommendations, activeCategoryFilter]);
 
   return (
-    <div className={cn("bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8 relative", inspectingRec ? "min-h-[600px]" : "")}>
+    <div className={cn("bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs relative", isPage ? "" : "mt-6 sm:mt-8", "")}>
       {/* Header */}
       <div 
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 cursor-pointer hover:bg-slate-100/50 transition-colors"
@@ -760,14 +760,14 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
           <div className="min-w-0 pr-2 sm:pr-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
-                Folder & Label Optimizer
+                AI Folder Optimizer
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full uppercase tracking-wider shrink-0">
                 Precision Engine
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5 leading-snug">
-              Statistical sender & topic clustering &bull; Choose between tagging or filing away
+              Automatically groups recurring senders and topics into smart folders.
             </p>
           </div>
         </div>
@@ -974,13 +974,58 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
                   {!isCompleted && (
                     <>
                       {/* Toggle inspect contents */}
-                      <button 
-                        onClick={() => setInspectingRec({ idx, rec })}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-3 transition-colors mt-1 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 w-fit"
-                      >
-                        <Search className="w-3.5 h-3.5" />
-                        Review {rec.emailIds.length} verified emails
-                      </button>
+                      <div className="flex flex-col w-full mb-3">
+                        <button
+                          type="button"
+                          onClick={(e) => { 
+                            e.preventDefault(); 
+                            setExpandedRecs(prev => { 
+                              const next = new Set(prev); 
+                              if (next.has(idx)) next.delete(idx); 
+                              else next.add(idx); 
+                              return next; 
+                            });
+                          }}
+                          className="self-start flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors mb-1"
+                        >
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          <span>{isExpanded ? 'Hide emails' : `Review ${rec.emailIds.length} verified emails`}</span>
+                        </button>
+                        
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden w-full"
+                            >
+                              <div className="flex flex-col gap-1 mt-1 mb-2 max-h-40 overflow-y-auto custom-scrollbar pr-1 border border-slate-100 rounded-lg bg-slate-50/50 p-1">
+                                {rec.emailIds.map(id => {
+                                  const email = emails.find(e => e.id === id);
+                                  if (!email) return null;
+                                  const isDeselected = (rec.deselectedEmailIds || []).includes(id);
+                                  return (
+                                    <div key={id} className={cn("flex items-start gap-2 p-1.5 rounded-md group transition-colors", isDeselected ? "opacity-50" : "bg-white border border-slate-100 shadow-2xs hover:border-slate-200")}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.preventDefault(); toggleEmailSelection(idx, id); }}
+                                        className="mt-0.5 shrink-0 text-slate-400 hover:text-indigo-600 transition-colors"
+                                      >
+                                        {isDeselected ? <div className="w-3.5 h-3.5 rounded border border-slate-300" /> : <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />}
+                                      </button>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={cn("text-[11px] font-medium truncate", isDeselected ? "text-slate-500 line-through" : "text-slate-700")}>{email.subject || '(No Subject)'}</p>
+                                        <p className="text-[10px] text-slate-500 truncate">{email.sender}</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
 
                       {/* Clear Choice Action Buttons: Label vs Move vs Archive vs Trash */}
                       <div className="flex flex-col gap-2 mt-auto pt-3 border-t border-slate-100">
@@ -1041,24 +1086,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
       </div>
       )}
 
-      {inspectingRec && (
-        <EmailReviewView
-          title={inspectingRec.rec.title || inspectingRec.rec.suggestedLabel || 'Review Emails'}
-          subtitle={inspectingRec.rec.categoryTag || ''}
-          emails={emails.filter(e => inspectingRec.rec.emailIds.includes(e.id))}
-          selectedEmailIds={new Set(inspectingRec.rec.emailIds.filter(id => !(inspectingRec.rec.deselectedEmailIds || []).includes(id)))}
-          onToggleSelect={(id) => toggleEmailSelection(inspectingRec.idx, id)}
-          onToggleSelectAll={() => {}}
-          onBack={() => setInspectingRec(null)}
-          onExecute={() => {
-            handleAction(inspectingRec.idx, 'move_archive', inspectingRec.rec);
-            setInspectingRec(null);
-          }}
-          actionLabel={`Move to ${inspectingRec.rec.suggestedLabel} & Archive`}
-          isExecuting={processingKey === `${inspectingRec.idx}-move_archive`}
-          isFullModal={false}
-        />
-      )}
+      
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { TypingLoader } from "./TypingLoader";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
   Loader2, 
@@ -20,7 +21,6 @@ import {
   Search,
   ArrowLeft
 } from 'lucide-react';
-import { EmailReviewView } from './EmailReviewView';
 import { 
   searchEmails, 
   batchModifyEmails, 
@@ -132,7 +132,6 @@ export function SmartTriageModal({
   const [selectedFolder, setSelectedFolder] = useState<string>("in:inbox");
   const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'archive' | 'move' | 'trash' | 'keep'>('all');
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
-  const [inspectingGroup, setInspectingGroup] = useState<SmartGroup | null>(null);
 
   // Execution States
   const [executingGroupId, setExecutingGroupId] = useState<string | null>(null);
@@ -771,16 +770,6 @@ export function SmartTriageModal({
       isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs" : "px-5 py-4 border-b border-slate-200"
     )}>
       <div className="flex items-center gap-3">
-        {isPage && (
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
-            title="Back to Inbox Health"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
-        )}
         <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-xl shrink-0">
           <Layers className="w-5 h-5" />
         </div>
@@ -1041,12 +1030,35 @@ export function SmartTriageModal({
                 const labelExists = !group.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === group.suggestedLabel!.toLowerCase());
 
                 return (
-                  <div
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={
+                      isCompleted 
+                        ? { 
+                            scale: 0.98,
+                            opacity: 0.6,
+                            y: -4,
+                            boxShadow: "0px 10px 30px -10px rgba(52, 211, 153, 0.4)",
+                            borderColor: "rgba(167, 243, 208, 1)",
+                            backgroundColor: "rgba(236, 253, 245, 0.5)",
+                          } 
+                        : { 
+                            scale: 1,
+                            opacity: 1,
+                            y: 0,
+                            boxShadow: "0px 1px 2px 0px rgba(0, 0, 0, 0.05)",
+                            borderColor: "rgba(226, 232, 240, 1)",
+                            backgroundColor: "rgba(255, 255, 255, 1)",
+                          }
+                    }
+                    transition={{
+                      duration: 0.5,
+                      type: "spring",
+                      bounce: 0.2
+                    }}
                     key={group.id}
-                    className={cn(
-                      "bg-white border rounded-xl p-4 shadow-xs transition-all flex flex-col gap-0",
-                      isCompleted ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-slate-200 hover:border-slate-300"
-                    )}
+                    className="border rounded-xl p-4 transition-colors flex flex-col gap-0 hover:border-slate-300"
                   >
                     {/* Header Row: Sender Info & Dismiss */}
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -1090,11 +1102,12 @@ export function SmartTriageModal({
                       {/* Left: Review & Rule */}
                       <div className="flex flex-wrap items-center gap-3 text-xs">
                         <button
-                          onClick={() => setInspectingGroup(group)}
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); toggleExpandGroup(group.id); }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
                         >
-                          <Search className="w-3.5 h-3.5" />
-                          <span>Review {sampleEmails.length} messages</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          <span>{isExpanded ? 'Hide' : 'Review'} {sampleEmails.length} messages</span>
                         </button>
 
                         {group.filterQuery && !isCompleted && (
@@ -1229,37 +1242,14 @@ export function SmartTriageModal({
                         })}
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
           )}
         </div>
 
-        {inspectingGroup && (
-          <EmailReviewView
-            title={inspectingGroup.title}
-            subtitle={inspectingGroup.categoryTag}
-            emails={fetchedEmails.filter(e => inspectingGroup.emailIds.includes(e.id))}
-            selectedEmailIds={new Set(inspectingGroup.emailIds.filter(id => !(inspectingGroup.deselectedEmailIds || []).includes(id)))}
-            onToggleSelect={(id) => toggleEmailInGroup(inspectingGroup.id, id)}
-            onToggleSelectAll={() => {}}
-            onBack={() => setInspectingGroup(null)}
-            onExecute={() => {
-              const labelExists = !inspectingGroup.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === inspectingGroup.suggestedLabel!.toLowerCase());
-              executeGroupAction(inspectingGroup, !labelExists);
-              setInspectingGroup(null);
-            }}
-            actionLabel={
-              inspectingGroup.actionType === 'trash' ? 'Trash' :
-              inspectingGroup.actionType === 'move_to_label' ? `Move to ${inspectingGroup.suggestedLabel || 'Folder'}` :
-              inspectingGroup.actionType === 'star_keep' ? 'Protect' :
-              'Archive'
-            }
-            isExecuting={executingGroupId === inspectingGroup.id}
-            isFullModal={false}
-          />
-        )}
+        
     </>
   );
 

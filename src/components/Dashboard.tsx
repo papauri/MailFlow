@@ -18,6 +18,9 @@ import { CleanupPresetsBar, CleanupPreset } from "./CleanupPresetsBar";
 import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { RuleSuggester } from "./RuleSuggester";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
+import { ManageInboxPortal } from "./ManageInboxPortal";
+import { SmartAutomationsPortal } from "./SmartAutomationsPortal";
+import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
 import { cn } from "../lib/utils";
 
 function formatSize(bytes: number) {
@@ -150,7 +153,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         const { db } = await import('../lib/firebase');
         const { doc, getDoc } = await import('firebase/firestore');
         const docRef = doc(db, 'appConfig', 'global');
-        const docSnap = await getDoc(docRef);
+        
+        // Use Promise.race to timeout getDoc after 3 seconds
+        const docSnap = await Promise.race([
+          getDoc(docRef),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 3000))
+        ]);
+
         if (docSnap.exists()) {
           setAdminConfig(prev => ({ ...prev, ...docSnap.data() }));
         } else {
@@ -1235,8 +1244,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
         </div>
 
-        {currentHash === 'health' ? (
-           <InboxHealth 
+        {currentHash === 'health' && (
+          <InboxHealth 
              userEmail={user?.email}
              aiSettings={aiSettings} 
              userLabels={userLabels}
@@ -1270,7 +1279,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
               }}
             />
-        ) : currentHash === 'category-distribution' ? (
+        )}
+        
+        {currentHash === 'category-distribution' && (
           <CategoryDistributionModal
             isPage={true}
             isOpen={true}
@@ -1278,78 +1289,36 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             onApplyCategory={(q, filter, sortOption) => {
               setQuery(q);
               if (sortOption) {
-                setSortBy(sortOption);
-                setSortDesc(true);
-              }
-              let newFilters = ['anywhere'];
-              if (filter) {
-                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                else if (filter === 'inbox') newFilters = ['inbox'];
-                else if (filter.startsWith('category:')) newFilters = [filter];
-                else newFilters = [filter];
-              }
-              setFolderFilters(newFilters);
-              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                ? `#folders=${newFilters.join(',')}` 
-                : '#dashboard';
-              window.location.hash = newHash;
-              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+                 setSortBy(sortOption);
+                 setSortDesc(true);
+               }
+               let newFilters = ['anywhere'];
+               if (filter) {
+                 if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                 else if (filter === 'inbox') newFilters = ['inbox'];
+                 else if (filter.startsWith('category:')) newFilters = [filter];
+                 else newFilters = [filter];
+               }
+               setFolderFilters(newFilters);
+               const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                 ? `#folders=${newFilters.join(',')}` 
+                 : '#dashboard';
+               window.location.hash = newHash;
+               setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
             }}
             userLabels={userLabels}
             aiSettings={aiSettings}
             userEmail={user?.email}
             onRefresh={() => handleSearch()}
           />
-        ) : currentHash === 'subscriptions' ? (
-          <UnsubscribeManager
-            isPage={true}
-            isOpen={true}
-            onClose={() => { window.location.hash = '#health'; }}
-            aiSettings={aiSettings}
-            onApplyQuery={(q, filter, sortOption) => {
-              setQuery(q);
-              if (sortOption) {
-                setSortBy(sortOption);
-                setSortDesc(true);
-              }
-              let newFilters = ['anywhere'];
-              if (filter) {
-                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
-                else if (filter === 'inbox') newFilters = ['inbox'];
-                else if (filter.startsWith('category:')) newFilters = [filter];
-                else newFilters = [filter];
-              }
-              setFolderFilters(newFilters);
-              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
-                ? `#folders=${newFilters.join(',')}` 
-                : '#dashboard';
-              window.location.hash = newHash;
-              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
-            }}
-          />
-        ) : currentHash === 'smart-triage' ? (
-          <SmartTriageModal
-            isPage={true}
-            isOpen={true}
-            onClose={() => { window.location.hash = '#health'; }}
-            aiSettings={aiSettings}
+        )}
+        
+        {currentHash === 'manage-inbox' && (
+          <ManageInboxPortal
             userLabels={userLabels}
-            userEmail={user?.email}
-            onRefresh={() => handleSearch()}
-            onSearchQuery={(q) => {
-              setQuery(q);
-              window.location.hash = '#dashboard';
-              setTimeout(() => handleSearch(undefined, q, ['anywhere'], true), 0);
-            }}
-          />
-        ) : currentHash === 'label-manager' ? (
-          <LabelManagerModal
-            isPage={true}
-            isOpen={true}
-            onClose={() => { window.location.hash = '#health'; }}
             aiSettings={aiSettings}
-            userLabels={userLabels}
-            onRefresh={() => {
+            onClose={() => { window.location.hash = '#health'; }}
+            onRefreshLabels={() => {
               fetchGmailAPI('/labels').then(data => {
                 if (data && data.labels) setUserLabels(data.labels);
               });
@@ -1376,7 +1345,25 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
               setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
             }}
           />
-        ) : currentHash === 'health-score' ? (
+        )}
+        {currentHash === 'smart-automations' && (
+          <SmartAutomationsPortal
+            userEmail={user?.email}
+            userLabels={userLabels}
+            emails={emails}
+            aiSettings={aiSettings}
+            isSearching={isSearching}
+            connectionStatus={connectionStatus}
+            onClose={() => { window.location.hash = '#health'; }}
+            onRefresh={() => handleSearch()}
+            onSearchQuery={(q) => {
+              setQuery(q);
+              window.location.hash = '#dashboard';
+              setTimeout(() => handleSearch(undefined, q, ['anywhere'], true), 0);
+            }}
+          />
+        )}
+        {currentHash === 'health-score' && (
           <HealthScoreModal
             isPage={true}
             isOpen={true}
@@ -1401,38 +1388,22 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
               window.location.hash = newHash;
               setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
             }}
-            onOpenUnsubscribe={() => { window.location.hash = '#subscriptions'; }}
+            onOpenUnsubscribe={() => { window.location.hash = '#manage-inbox'; }}
           />
-        ) : currentHash === 'folder-optimizer' ? (
-          <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => { window.location.hash = '#health'; }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
-                  title="Back to Inbox Health"
-                >
-                  Back
-                </button>
-                <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-2xs shrink-0">
-                  <SlidersHorizontal className="w-5 h-5 text-slate-400" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Folder Optimizer & Automated Rules</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Automated detection of recurring email patterns to organize into folders & create Gmail rules</p>
-                </div>
-              </div>
-            </div>
-            <FolderOptimizer
-              emails={emails}
-              userLabels={userLabels}
-              aiSettings={aiSettings}
-              isFetching={isSearching}
-              isAiWorking={connectionStatus === 'success'}
-              onReload={() => handleSearch()}
-            />
-          </div>
-        ) : (currentHash === 'rule-suggester' || currentHash === 'rules') ? (
+        )}
+        
+        {currentHash === 'folder-optimizer' && (
+          <FolderOptimizer
+            emails={emails}
+            userLabels={userLabels}
+            aiSettings={aiSettings}
+            isFetching={isSearching}
+            isAiWorking={connectionStatus === 'success'}
+            onReload={() => handleSearch()}
+          />
+        )}
+        
+        {currentHash === 'rule-suggester' && (
           <RuleSuggester
             isPage={true}
             onClose={() => { window.location.hash = '#health'; }}
@@ -1441,7 +1412,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             aiSettings={aiSettings}
             isAiWorking={connectionStatus === 'success'}
           />
-        ) : (currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams ? (
+        )}
+
+        {(currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams && (
           <FilteredEmailPage
             params={filterPageParams}
             emails={emails}
@@ -1471,8 +1444,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             onBack={() => { window.location.hash = '#' + (filterPageParams.source || 'health'); }}
             actionLoading={actionLoading}
           />
-        ) : (
-        <>
+        )}
+        <div style={{ display: !['health', 'category-distribution', 'manage-inbox', 'smart-automations', 'health-score', 'filter-view', 'inspect', 'folder-optimizer', 'rule-suggester'].includes(currentHash) ? 'block' : 'none' }}>
         <WalkthroughTip 
           storageKey="tip_dashboard" 
           title="Welcome to your MailFlow Workspace" 
@@ -1522,6 +1495,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-30">
+            <QuickFiltersDropdown onApplyPreset={handleApplyPreset} />
             <FolderMultiSelect 
               selected={folderFilters} 
               onChange={(newFilters) => {
@@ -2392,8 +2366,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             )}
           </div>
         </div>
-        </>
-        )}
+        </div>
       </main>
 
       {showDeleteSelectedConfirm && (

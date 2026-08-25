@@ -34,9 +34,10 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
     const err = await response.json().catch(() => ({}));
     const errMsg = err.error?.message || '';
     if (response.status === 401 || errMsg.toLowerCase().includes('invalid authentication credentials') || errMsg.toLowerCase().includes('expired') || (response.status === 403 && (errMsg.toLowerCase().includes('insufficient permission') || errMsg.toLowerCase().includes('insufficient authentication scopes') || errMsg.toLowerCase().includes('insufficient')))) {
-      logout().then(() => {
+      logout().catch(() => {});
+      setTimeout(() => {
         window.location.reload();
-      });
+      }, 500);
       throw new Error("Authentication expired or missing permissions. Please log in again.");
     }
     throw new Error(err.error?.message || `Gmail API Error: ${response.status}`);
