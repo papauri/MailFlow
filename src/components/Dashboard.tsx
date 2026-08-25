@@ -70,6 +70,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const [currentHash, setCurrentHash] = useState<string>("dashboard");
   const [filterPageParams, setFilterPageParams] = useState<FilterPageParams | null>(null);
   const [showHealth, setShowHealth] = useState(false);
+  const [hasVisitedHealth, setHasVisitedHealth] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -551,8 +552,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
 
       setCurrentHash(hashKey);
 
-      if (hashKey === 'health') {
+      if (hashKey === 'health' || hashKey === 'sender-analytics') {
         setShowHealth(true);
+        setHasVisitedHealth(true);
         setFilterPageParams(null);
       } else if (hashKey === 'filter-view' || hashKey === 'inspect') {
         setShowHealth(false);
@@ -640,6 +642,11 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
       window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
         detail: { type: 'spam', count: ids.length, isPartial: true }
       }));
+      if (filterPageParams?.source === 'sender-analytics') {
+        window.dispatchEvent(new CustomEvent('sender_analytics_emails_removed', {
+          detail: { query: filterPageParams.query, count: ids.length }
+        }));
+      }
 
       const newCount = emails.length - ids.length;
       if (newCount < 20 && nextPageToken) {
@@ -743,6 +750,11 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
           detail: { type: 'promo', count: ids.length, isPartial: true }
         }));
+        if (filterPageParams?.source === 'sender-analytics') {
+          window.dispatchEvent(new CustomEvent('sender_analytics_emails_removed', {
+            detail: { query: filterPageParams.query, count: ids.length }
+          }));
+        }
       } else if (action === "archive") {
         await batchArchiveEmails(allMessageIds);
         window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
@@ -1214,10 +1226,12 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                 className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                {filterPageParams.source === 'health-score' 
-                  ? 'Health Score' 
-                  : filterPageParams.source === 'rule-suggester' 
-                  ? 'Automated Rules' 
+                {filterPageParams.source === 'health-score'
+                  ? 'Health Score'
+                  : filterPageParams.source === 'rule-suggester'
+                  ? 'Automated Rules'
+                  : filterPageParams.source === 'sender-analytics'
+                  ? 'Sender Analytics'
                   : 'Inbox Health'}
               </button>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
@@ -1244,8 +1258,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
         </div>
 
-        {currentHash === 'health' && (
-          <InboxHealth 
+        {hasVisitedHealth && (
+          <div className={(currentHash === 'health' || currentHash === 'sender-analytics') ? '' : 'hidden'}>
+          <InboxHealth
              userEmail={user?.email}
              aiSettings={aiSettings} 
              userLabels={userLabels}
@@ -1279,8 +1294,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
               }}
             />
+          </div>
         )}
-        
+
         {currentHash === 'category-distribution' && (
           <CategoryDistributionModal
             isPage={true}

@@ -10,7 +10,7 @@ interface Props {
   topSenders: any[];
   topDomains: any[];
   emails?: any[];
-  openFilterPage: (query: string, name: string, type: string, desc: string, filter: string) => void;
+  openFilterPage: (query: string, name: string, type: string, desc: string, filter: string, sortOption?: "date" | "size" | "sender", source?: string) => void;
 }
 
 export function SenderAnalyticsModal({ isOpen, onClose, topSenders, topDomains, openFilterPage, emails = [] }: Props) {
@@ -76,8 +76,7 @@ export function SenderAnalyticsModal({ isOpen, onClose, topSenders, topDomains, 
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              onClose();
-                              openFilterPage(`from:${sender.email}`, sender.name || sender.email, "Top Sender", `All messages from ${sender.email}`, "anywhere");
+                              openFilterPage(`from:${sender.email}`, sender.name || sender.email, "Top Sender", `All messages from ${sender.email}`, "anywhere", undefined, "sender-analytics");
                             }}
                             className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white cursor-pointer"
                             title="Inspect messages from sender"
@@ -162,8 +161,7 @@ export function SenderAnalyticsModal({ isOpen, onClose, topSenders, topDomains, 
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              onClose();
-                              openFilterPage(`from:${domain.domain}`, domain.domain, "Top Domain", `All messages from ${domain.domain}`, "anywhere");
+                              openFilterPage(`from:${domain.domain}`, domain.domain, "Top Domain", `All messages from ${domain.domain}`, "anywhere", undefined, "sender-analytics");
                             }}
                             className="p-1 sm:p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white cursor-pointer"
                             title="Inspect messages from domain"

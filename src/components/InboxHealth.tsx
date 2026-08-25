@@ -32,12 +32,13 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
   const openFilterPage = (
-    query: string, 
-    title: string, 
-    badge: string, 
-    subtitle?: string, 
-    folder: string = 'anywhere', 
-    sortOption?: "date" | "size" | "sender"
+    query: string,
+    title: string,
+    badge: string,
+    subtitle?: string,
+    folder: string = 'anywhere',
+    sortOption?: "date" | "size" | "sender",
+    source: string = 'health'
   ) => {
     const params = new URLSearchParams();
     params.set('q', query);
@@ -46,7 +47,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     if (subtitle) params.set('sub', subtitle);
     if (folder) params.set('folder', folder);
     if (sortOption) params.set('sort', sortOption);
-    params.set('source', 'health');
+    params.set('source', source);
     window.location.hash = `#filter-view?${params.toString()}`;
   };
 
@@ -92,6 +93,28 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
     window.addEventListener('inbox_metrics_updated', handleMetricsUpdated);
     return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
+  }, []);
+
+  // Keep Sender Analytics counts in sync after trash/delete actions taken while
+  // inspecting a sender/domain, without re-running the full cluster analysis.
+  useEffect(() => {
+    const handleSenderEmailsRemoved = (e: any) => {
+      const { query, count } = e.detail || {};
+      if (!query || !count) return;
+      const match = query.match(/^from:\(?([^)]+?)\)?$/i);
+      if (!match) return;
+      const identifier = match[1].toLowerCase();
+
+      setTopSenders(prev => prev
+        .map(s => s.email.toLowerCase() === identifier ? { ...s, count: Math.max(0, s.count - count) } : s)
+        .filter(s => s.count > 0));
+      setTopDomains(prev => prev
+        .map(d => d.domain.toLowerCase() === identifier ? { ...d, count: Math.max(0, d.count - count) } : d)
+        .filter(d => d.count > 0));
+    };
+
+    window.addEventListener('sender_analytics_emails_removed', handleSenderEmailsRemoved);
+    return () => window.removeEventListener('sender_analytics_emails_removed', handleSenderEmailsRemoved);
   }, []);
 
   useEffect(() => {
