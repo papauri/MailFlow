@@ -21,6 +21,7 @@ import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
 import { SenderAnalyticsPage } from "./SenderAnalyticsPage";
 import { ExportCenter } from "./ExportCenter";
 import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes";
+import { useInboxWarmup } from "../lib/useInboxWarmup";
 import { ManageInboxPortal } from "./ManageInboxPortal";
 import { SmartAutomationsPortal } from "./SmartAutomationsPortal";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
@@ -315,6 +316,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const searchCacheRef = useRef<Map<string, { emails: EmailData[]; totalCount: number | string | null; nextPageToken: string | null }>>(new Map());
 
   useEffect(() => { totalCountRef.current = totalCount; }, [totalCount]);
+
+  useInboxWarmup(user?.email);
 
   const searchCacheKey = (q: string, filters: string[]) => `${q}::${[...filters].sort().join(',')}`;
 

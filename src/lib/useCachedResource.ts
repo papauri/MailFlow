@@ -130,6 +130,51 @@ export function useCachedResource<T>(key: string | null, fetcher: () => Promise<
   };
 }
 
+/** True when the key holds usable, non-stale data. */
+export function isCacheWarm(key: string): boolean {
+  const entry = cache.get(key);
+  return !!entry && entry.data != null && !entry.stale;
+}
+
+/**
+ * Fills a cache entry ahead of the view that needs it.
+ *
+ * Returns false without fetching when the data is already warm, or when a mounted
+ * view has a request in flight for the same key — background warming must never
+ * duplicate work the user is already waiting on, since both would spend the same
+ * quota to produce the same answer.
+ */
+export async function warmCachedResource<T>(
+  key: string,
+  fetcher: () => Promise<T>
+): Promise<boolean> {
+  const entry = getEntry(key);
+  if (entry.data != null && !entry.stale) return false;
+  if (entry.inFlight) return false;
+
+  const request = fetcher()
+    .then(data => {
+      const current = getEntry(key);
+      current.data = data;
+      current.error = null;
+      current.stale = false;
+    })
+    .catch(error => {
+      const current = getEntry(key);
+      current.error = error;
+      current.stale = false;
+    })
+    .finally(() => {
+      const current = getEntry(key);
+      current.inFlight = null;
+      notify(key);
+    });
+
+  entry.inFlight = request;
+  await request;
+  return true;
+}
+
 /**
  * Writes straight into the cache so an optimistic local update survives navigation
  * (e.g. trimming a sender's count right after trashing their mail).
