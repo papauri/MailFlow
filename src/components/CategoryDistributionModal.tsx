@@ -159,7 +159,7 @@ export function CategoryDistributionModal({
    * sender cohort looks small and nothing gets flagged.
    */
   const audit = useMemo(
-    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails) : null),
+    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails, new Date(), { minClusterSize: 3 }) : null),
     [categoryEmails]
   );
   const [diagnostic, setDiagnostic] = useState<CategoryDiagnostic | null>(null);
@@ -303,7 +303,7 @@ export function CategoryDistributionModal({
       //    holding thousands of messages spread over hundreds of senders left every
       //    sender with a handful of hits, below any threshold worth acting on, so the
       //    analysis concluded "nothing to clean" from a sliver of the evidence.
-      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=400`);
+      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=500`);
       if (!listRes || !listRes.threads || listRes.threads.length === 0) {
         setCategoryEmails([]);
         setDiagnostic({
@@ -319,7 +319,7 @@ export function CategoryDistributionModal({
       }
 
       // 2. Fetch metadata details in efficient batches
-      const sampledThreads = listRes.threads.slice(0, 100);
+      const sampledThreads = listRes.threads.slice(0, 500);
       const detailedEmails: EmailData[] = (await processInChunks(sampledThreads, 10, async (thread: any) => {
         try {
           const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);

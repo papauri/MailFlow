@@ -72,11 +72,11 @@ async function callGemini(prompt: string, schema: any, model = 'gemini-3.7-flash
   } catch (error: any) {
     const isRateLimitOrOverload = error.message && (
       error.message.includes("429") || 
-      error.message.includes("quota") || 
-      error.message.includes("rate limit") || 
-      error.message.includes("RESOURCE_EXHAUSTED") ||
+      error.message.toLowerCase().includes("quota") || 
+      error.message.toLowerCase().includes("rate limit") || 
+      error.message.toLowerCase().includes("resource_exhausted") ||
       error.message.includes("503") ||
-      error.message.includes("UNAVAILABLE")
+      error.message.toLowerCase().includes("unavailable")
     );
 
     // If primary model hit quota/overload and wasn't already flash-lite, try gemini-3.1-flash-lite
@@ -481,8 +481,8 @@ async function startServer() {
       res.json(result);
     } catch (error) {
       console.error("AI API Error (Parse):", error);
-      const isRateLimit = error.message && (error.message.includes("429") || error.message.includes("quota") || error.message.includes("rate limit") || error.message.includes("exhausted"));
-      const isOverloaded = error.message && (error.message.includes("503") || error.message.includes("high demand") || error.message.includes("UNAVAILABLE"));
+      const isRateLimit = error.message && (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.toLowerCase().includes("rate limit") || error.message.toLowerCase().includes("exhausted"));
+      const isOverloaded = error.message && (error.message.includes("503") || error.message.toLowerCase().includes("high demand") || error.message.toLowerCase().includes("unavailable"));
       res.status(isRateLimit ? 429 : isOverloaded ? 503 : 500).json({ error: error.message || "Failed to parse query" });
     }
   });
@@ -715,8 +715,8 @@ ${emailText}
       res.json(result);
     } catch (error) {
       console.error("AI API Error (Analyze):", error);
-      const isRateLimit = error.message && (error.message.includes("429") || error.message.includes("quota") || error.message.includes("rate limit") || error.message.includes("exhausted"));
-      const isOverloaded = error.message && (error.message.includes("503") || error.message.includes("high demand") || error.message.includes("UNAVAILABLE"));
+      const isRateLimit = error.message && (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.toLowerCase().includes("rate limit") || error.message.toLowerCase().includes("exhausted"));
+      const isOverloaded = error.message && (error.message.includes("503") || error.message.toLowerCase().includes("high demand") || error.message.toLowerCase().includes("unavailable"));
       res.status(isRateLimit ? 429 : isOverloaded ? 503 : 500).json({ error: error.message || "Failed to analyze inbox" });
     }
   });
