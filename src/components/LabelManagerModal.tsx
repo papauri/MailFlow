@@ -26,7 +26,8 @@ import {
   Check,
   FolderPlus,
   ArrowRight,
-  Filter
+  Filter,
+  ArrowLeft
 } from 'lucide-react';
 import { 
   fetchGmailAPI, 
@@ -43,12 +44,14 @@ import {
 import { cn } from '../lib/utils';
 
 export interface LabelManagerModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   userLabels?: any[];
   onLabelsUpdated?: () => void;
-  onApplyQuery?: (query: string, filter?: string) => void;
+  onRefresh?: () => void;
+  onApplyQuery?: (query: string, filter?: string, sortOption?: "date" | "size" | "sender") => void;
   aiSettings?: any;
+  isPage?: boolean;
 }
 
 interface LabelItem {
@@ -75,11 +78,12 @@ const SYSTEM_LABEL_MAP: Record<string, { name: string; query: string; icon: any;
 };
 
 export function LabelManagerModal({ 
-  isOpen, 
+  isOpen = true, 
   onClose, 
   userLabels = [], 
   onLabelsUpdated,
-  onApplyQuery 
+  onApplyQuery,
+  isPage = false
 }: LabelManagerModalProps) {
   // Folder List State
   const [labels, setLabels] = useState<LabelItem[]>([]);
@@ -490,41 +494,61 @@ export function LabelManagerModal({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [labels, folderSearchQuery]);
 
-  if (!isOpen) return null;
+  if (!isPage && !isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200">
-        
-        {/* Top Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-2xs">
-              <Folder className="w-5 h-5 text-slate-400" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Folders & Labels Manager</h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-full">
-                  Gmail Labels & Folders
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Create, rename, delete custom labels, and organize emails into folders
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={onClose} 
-              className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-500 hover:text-slate-800"
-              title="Close Manager"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+  const headerElement = (
+    <div className={cn(
+      "flex items-center justify-between shrink-0",
+      isPage 
+        ? "p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs" 
+        : "px-5 py-3.5 border-b border-slate-200 bg-slate-50/80"
+    )}>
+      <div className="flex items-center gap-3">
+        {isPage && (
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
+            title="Back to Inbox Health"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+        )}
+        <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-2xs shrink-0">
+          <Folder className="w-5 h-5 text-slate-400" />
         </div>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Folders & Labels Manager</h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-full">
+              Gmail Labels & Folders
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Create, rename, delete custom labels, and organize emails into folders
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {!isPage && (
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-500 hover:text-slate-800 cursor-pointer"
+            title="Close Manager"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const mainBodyContent = (
+    <div className={cn(
+      "bg-white flex flex-col overflow-hidden relative",
+      isPage ? "rounded-2xl border border-slate-200 shadow-2xs h-[78vh] min-h-[600px]" : "flex-1 h-full"
+    )}>
 
         {/* Toast Alert */}
         {toastMessage && (
@@ -1241,7 +1265,7 @@ export function LabelManagerModal({
                 <button
                   onClick={executeDeleteFolder}
                   disabled={deletingLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-medium transition-colors shadow-2xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
                   {deletingLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   <span>Confirm Delete</span>
@@ -1251,6 +1275,23 @@ export function LabelManagerModal({
           </div>
         )}
 
+      </div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
+        {headerElement}
+        {mainBodyContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200">
+        {headerElement}
+        {mainBodyContent}
       </div>
     </div>
   );

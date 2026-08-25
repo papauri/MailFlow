@@ -237,13 +237,19 @@ export async function getLabels() {
   return res?.labels || [];
 }
 
-export async function emptyAllTrash(onProgress?: (deletedCount: number) => void) {
+export async function emptyAllTrash(
+  queryOrProgress?: string | ((deletedCount: number) => void),
+  optionalProgress?: (deletedCount: number) => void
+) {
+  const query = typeof queryOrProgress === 'string' ? queryOrProgress : "in:trash OR in:spam";
+  const onProgress = typeof queryOrProgress === 'function' ? queryOrProgress : optionalProgress;
+
   let pageToken = "";
   let totalDeleted = 0;
   let hasMore = true;
 
   while (hasMore) {
-    let url = `/messages?q=${encodeURIComponent('in:trash')}&maxResults=1000`;
+    let url = `/messages?q=${encodeURIComponent(query)}&maxResults=1000`;
     if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
     
     const listResult = await fetchGmailAPI(url);

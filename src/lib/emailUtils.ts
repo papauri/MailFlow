@@ -394,17 +394,30 @@ export interface HealthScoreMetrics {
   spamAndTrash: number;
   oldPromotions: number;
   largeFiles: number;
-  oldMail: number;
+  oldMail?: number;
   unsubscribedCount?: number;
   activeFiltersCount?: number;
 }
 
+export interface HealthScoreBreakdown {
+  score: number;
+  baseScore: number;
+  unreadPenalty: number;
+  spamPenalty: number;
+  promoPenalty: number;
+  bloatPenalty: number;
+  totalDeductions: number;
+  managementBonus: number;
+  unsubBonus: number;
+  filterBonus: number;
+  totalBonus: number;
+}
+
 /**
- * Multi-Factor Adaptive Inbox Health Index
- * Uses logarithmic dampening to provide balanced, non-linear health ratings
- * from 12% to 100%.
+ * Multi-Factor Adaptive Inbox Health Index Breakdown
+ * Calculates transparent, mathematically precise point deductions and bonuses.
  */
-export function computeInboxHealthScore(metrics: HealthScoreMetrics): number {
+export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): HealthScoreBreakdown {
   const {
     unreadInbox = 0,
     spamAndTrash = 0,
@@ -415,31 +428,50 @@ export function computeInboxHealthScore(metrics: HealthScoreMetrics): number {
     activeFiltersCount = 0
   } = metrics;
 
-  let baseScore = 100;
+  // 1. Unread Pressure: Logarithmic decay (max 35 pts)
+  const unreadPenalty = Math.min(35, unreadInbox > 0 ? (Math.log(1 + unreadInbox) / Math.log(1 + 600)) * 35 : 0);
 
-  // 1. Unread Pressure: Logarithmic decay (max -35 pts)
-  // Reaches ~30 penalty around 300 unread, avoiding collapse on busy inboxes
-  const unreadPenalty = Math.min(35, (Math.log(1 + unreadInbox) / Math.log(1 + 600)) * 35);
-  baseScore -= unreadPenalty;
+  // 2. Clutter Factor: Spam & Trash (max 25 pts)
+  const spamPenalty = Math.min(25, spamAndTrash > 0 ? (Math.log(1 + spamAndTrash) / Math.log(1 + 400)) * 25 : 0);
 
-  // 2. Clutter Factor: Spam & Trash (max -25 pts)
-  const spamPenalty = Math.min(25, (Math.log(1 + spamAndTrash) / Math.log(1 + 400)) * 25);
-  baseScore -= spamPenalty;
+  // 3. Stale Promotions > 6 Months (max 20 pts)
+  const promoPenalty = Math.min(20, oldPromotions > 0 ? (Math.log(1 + oldPromotions) / Math.log(1 + 500)) * 20 : 0);
 
-  // 3. Stale Promotions > 6 Months (max -20 pts)
-  const promoPenalty = Math.min(20, (Math.log(1 + oldPromotions) / Math.log(1 + 500)) * 20);
-  baseScore -= promoPenalty;
-
-  // 4. Bloat Factor: Large Emails > 5MB & Obsolete Mails > 1 Year (max -10 pts)
+  // 4. Bloat Factor: Large Emails > 5MB & Obsolete Mails > 1 Year (max 10 pts)
   const bloatPenalty = Math.min(10, (largeFiles * 0.5) + (Math.min(500, oldMail) * 0.01));
-  baseScore -= bloatPenalty;
+
+  const totalDeductions = unreadPenalty + spamPenalty + promoPenalty + bloatPenalty;
 
   // 5. Positive Management Bonus: Rewards user cleanups & rules (up to +15 pts)
-  const managementBonus = Math.min(15, (unsubscribedCount * 1.5) + (activeFiltersCount * 2));
-  baseScore += managementBonus;
+  const unsubBonus = Math.min(8, (unsubscribedCount || 0) * 1.5);
+  const filterBonus = Math.min(7, (activeFiltersCount || 0) * 2.0);
+  const managementBonus = Math.min(15, unsubBonus + filterBonus);
 
-  // Guaranteed bounds
-  return Math.min(100, Math.max(12, Math.round(baseScore)));
+  const rawScore = 100 - totalDeductions + managementBonus;
+  const score = Math.min(100, Math.max(12, Math.round(rawScore)));
+
+  return {
+    score,
+    baseScore: 100,
+    unreadPenalty: Math.round(unreadPenalty * 10) / 10,
+    spamPenalty: Math.round(spamPenalty * 10) / 10,
+    promoPenalty: Math.round(promoPenalty * 10) / 10,
+    bloatPenalty: Math.round(bloatPenalty * 10) / 10,
+    totalDeductions: Math.round(totalDeductions * 10) / 10,
+    managementBonus: Math.round(managementBonus * 10) / 10,
+    unsubBonus: Math.round(unsubBonus * 10) / 10,
+    filterBonus: Math.round(filterBonus * 10) / 10,
+    totalBonus: Math.round(managementBonus * 10) / 10,
+  };
+}
+
+/**
+ * Multi-Factor Adaptive Inbox Health Index
+ * Uses logarithmic dampening to provide balanced, non-linear health ratings
+ * from 12% to 100%.
+ */
+export function computeInboxHealthScore(metrics: HealthScoreMetrics): number {
+  return computeInboxHealthBreakdown(metrics).score;
 }
 
 // -------------------------------------------------------------

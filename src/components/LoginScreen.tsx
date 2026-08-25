@@ -1,106 +1,279 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2 } from 'lucide-react';
-import { cn } from '../lib/utils';
 
-export default function LoginScreen({ onLogin, isLoggingIn, error }: { onLogin: () => void, isLoggingIn?: boolean, error?: string | null }) {
-  const [typedTitle, setTypedTitle] = useState("");
-  const [typedDesc, setTypedDesc] = useState("");
-  const [showCursorOnTitle, setShowCursorOnTitle] = useState(true);
-  
-  const fullTitle = "MailFlow.";
-  const fullDesc = "Intelligent inbox routing, bulk cleanup, and AI-powered organization.";
+interface Particle {
+  x: number;
+  y: number;
+  originX: number;
+  originY: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  alpha: number;
+  baseAlpha: number;
+  floatAngle: number;
+  floatSpeed: number;
+}
 
+export default function LoginScreen({ 
+  onLogin, 
+  isLoggingIn, 
+  error 
+}: { 
+  onLogin: () => void; 
+  isLoggingIn?: boolean; 
+  error?: string | null; 
+}) {
+  const [typedText, setTypedText] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const phrases = [
+    "Clean your inbox.",
+    "Zero email storage.",
+    "Runs 100% in your browser.",
+    "Reclaim your storage.",
+    "Private by design."
+  ];
+
+  // Typing effect
   useEffect(() => {
-    let titleIndex = 0;
-    let descIndex = 0;
-    
-    const typeDesc = () => {
-      setShowCursorOnTitle(false);
-      const descInterval = setInterval(() => {
-        setTypedDesc(fullDesc.substring(0, descIndex + 1));
-        descIndex++;
-        if (descIndex >= fullDesc.length) {
-          clearInterval(descInterval);
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let timer: NodeJS.Timeout;
+
+    function handleTyping() {
+      const currentPhrase = phrases[phraseIndex];
+
+      if (!isDeleting) {
+        setTypedText(currentPhrase.substring(0, charIndex + 1));
+        charIndex++;
+
+        if (charIndex === currentPhrase.length) {
+          isDeleting = true;
+          timer = setTimeout(handleTyping, 2400);
+        } else {
+          timer = setTimeout(handleTyping, 60);
         }
-      }, 30);
+      } else {
+        setTypedText(currentPhrase.substring(0, charIndex - 1));
+        charIndex--;
+
+        if (charIndex === 0) {
+          isDeleting = false;
+          phraseIndex = (phraseIndex + 1) % phrases.length;
+          timer = setTimeout(handleTyping, 400);
+        } else {
+          timer = setTimeout(handleTyping, 35);
+        }
+      }
+    }
+
+    timer = setTimeout(handleTyping, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Antigravity interactive canvas particle system
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const mouse = {
+      x: width / 2,
+      y: height / 2,
+      targetX: width / 2,
+      targetY: height / 2,
+      isHovered: false,
+      speed: 0,
+      lastX: width / 2,
+      lastY: height / 2,
     };
 
-    const timeout = setTimeout(() => {
-      const titleInterval = setInterval(() => {
-        setTypedTitle(fullTitle.substring(0, titleIndex + 1));
-        titleIndex++;
-        
-        if (titleIndex >= fullTitle.length) {
-          clearInterval(titleInterval);
-          setTimeout(typeDesc, 400); // Pause before typing description
-        }
-      }, 100);
-      return () => clearInterval(titleInterval);
-    }, 300);
+    const particleColors = [
+      '#4285F4', // Google Blue
+      '#EA4335', // Google Red
+      '#FBBC05', // Google Yellow
+      '#34A853', // Google Green
+      '#94A3B8', // Slate
+      '#CBD5E1'  // Light Slate
+    ];
 
-    return () => clearTimeout(timeout);
+    const particleCount = Math.min(Math.floor((width * height) / 12000), 75);
+    const particles: Particle[] = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height;
+      const baseAlpha = 0.25 + Math.random() * 0.45;
+      particles.push({
+        x,
+        y,
+        originX: x,
+        originY: y,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        size: Math.random() * 2.2 + 1.2,
+        color: particleColors[Math.floor(Math.random() * particleColors.length)],
+        alpha: baseAlpha,
+        baseAlpha,
+        floatAngle: Math.random() * Math.PI * 2,
+        floatSpeed: 0.008 + Math.random() * 0.015
+      });
+    }
+
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      mouse.targetX = e.clientX;
+      mouse.targetY = e.clientY;
+      mouse.isHovered = true;
+    };
+
+    const handleMouseLeave = () => {
+      mouse.isHovered = false;
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Smooth mouse interpolation
+      mouse.x += (mouse.targetX - mouse.x) * 0.12;
+      mouse.y += (mouse.targetY - mouse.y) * 0.12;
+
+      const dxMouse = mouse.x - mouse.lastX;
+      const dyMouse = mouse.y - mouse.lastY;
+      mouse.speed = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
+      mouse.lastX = mouse.x;
+      mouse.lastY = mouse.y;
+
+      // Update and draw particles
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // Ambient antigravity float
+        p.floatAngle += p.floatSpeed;
+        p.x += p.vx + Math.cos(p.floatAngle) * 0.35;
+        p.y += p.vy + Math.sin(p.floatAngle) * 0.35;
+
+        // Interaction with mouse cursor
+        if (mouse.isHovered) {
+          const dx = mouse.x - p.x;
+          const dy = mouse.y - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const maxDist = 160;
+
+          if (dist < maxDist && dist > 0) {
+            const force = (1 - dist / maxDist);
+            // Gentle repulsive spring + slight gravitational swirling
+            const angle = Math.atan2(dy, dx);
+            p.x -= Math.cos(angle) * force * 3.5;
+            p.y -= Math.sin(angle) * force * 3.5;
+            p.alpha = Math.min(1, p.baseAlpha + force * 0.5);
+          } else {
+            p.alpha += (p.baseAlpha - p.alpha) * 0.05;
+          }
+        } else {
+          p.alpha += (p.baseAlpha - p.alpha) * 0.05;
+        }
+
+        // Boundary wrap
+        if (p.x < -10) p.x = width + 10;
+        if (p.x > width + 10) p.x = -10;
+        if (p.y < -10) p.y = height + 10;
+        if (p.y > height + 10) p.y = -10;
+
+        // Draw particle sprinkle
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      cancelAnimationFrame(animationFrameId);
+    };
   }, []);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center font-sans text-slate-900 selection:bg-slate-200">
-      <div className="w-full max-w-sm px-6 flex flex-col items-center relative z-10">
-        
-        {/* Minimalist Logo */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
+    <div id="login-container" className="relative min-h-screen bg-white text-slate-900 flex flex-col justify-between font-sans selection:bg-slate-200 overflow-hidden">
+      {/* Interactive HTML5 Canvas Antigravity Sprinkle Background */}
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none absolute inset-0 z-0 w-full h-full"
+      />
+
+      {/* Subtle Top Bar */}
+      <header className="relative z-10 w-full px-6 sm:px-10 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold tracking-tight text-slate-800">MailFlow</span>
+        </div>
+      </header>
+
+      {/* Main Plain Centered Content */}
+      <main className="relative z-10 flex-1 w-full max-w-xl mx-auto px-6 flex flex-col items-center justify-center -mt-8 text-center">
+        {/* MailFlow Big Title */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="w-12 h-12 flex items-center justify-center mb-8"
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-col items-center mb-2 sm:mb-3"
         >
-          <svg className="w-8 h-8 text-slate-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-normal tracking-[-0.04em] text-slate-900 leading-none select-none">
+            MailFlow
+          </h1>
         </motion.div>
 
-        {/* Typed Text */}
-        <div className="h-12 flex items-center mb-2 justify-center w-full">
-          <h1 className="text-3xl font-light tracking-wide text-slate-900 flex items-center">
-            {typedTitle}
-            {showCursorOnTitle && (
-              <motion.span 
-                animate={{ opacity: [1, 0] }} 
-                transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                className="inline-block w-[2px] h-[28px] bg-slate-300 ml-1"
-              />
-            )}
-          </h1>
-        </div>
-
-        <div className="h-16 flex items-start justify-center w-full mb-6">
-          <p className="text-sm text-slate-500 font-normal text-center tracking-wide max-w-[260px]">
-            {typedDesc}
-            {!showCursorOnTitle && (
-              <motion.span 
-                animate={{ opacity: [1, 0] }} 
-                transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                className="inline-block w-[1.5px] h-[14px] bg-slate-300 ml-0.5 align-middle"
-              />
-            )}
+        {/* Typing Headline */}
+        <div className="h-10 sm:h-12 flex items-center justify-center mb-8 sm:mb-10">
+          <p className="text-base sm:text-lg md:text-xl font-normal text-slate-400 tracking-tight flex items-center justify-center">
+            <span>{typedText}</span>
+            <motion.span 
+              animate={{ opacity: [1, 0] }} 
+              transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+              className="inline-block w-[1.5px] sm:w-[2px] h-[18px] sm:h-[22px] bg-slate-400 ml-1.5 align-middle"
+            />
           </p>
         </div>
 
-        {/* Sleek Light Button */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.4, duration: 0.8 }}
-          className="w-full"
-        >
+        {/* Action Button - Fully Transparent */}
+        <div className="w-full max-w-xs flex flex-col items-center gap-3">
           <button
+            id="google-login-btn"
             onClick={onLogin}
             disabled={isLoggingIn}
-            className="group w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl transition-colors hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="group relative flex items-center justify-center gap-2.5 bg-transparent hover:bg-slate-100/70 active:bg-slate-200/50 text-slate-800 py-2.5 px-5 rounded-full transition-all duration-200 active:scale-[0.985] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isLoggingIn ? (
-              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
             ) : (
-              <svg className="w-5 h-5" viewBox="0 0 48 48">
+              <svg className="w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-105" viewBox="0 0 48 48">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
                 <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
                 <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
@@ -108,26 +281,30 @@ export default function LoginScreen({ onLogin, isLoggingIn, error }: { onLogin: 
                 <path fill="none" d="M0 0h48v48H0z" />
               </svg>
             )}
-            <span className="text-[15px] relative overflow-hidden">
-              {isLoggingIn ? "Authenticating..." : "Continue with Google"}
-              <span className="absolute bottom-0 left-0 w-full h-[1px] bg-slate-400 -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out" />
+            <span className="text-sm font-medium tracking-tight text-slate-800">
+              {isLoggingIn ? "Connecting..." : "Continue with Google"}
             </span>
           </button>
-        </motion.div>
 
-        <AnimatePresence>
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0, y: -10 }}
-              animate={{ opacity: 1, height: 'auto', y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -10 }}
-              className="mt-6 text-sm text-rose-600 bg-rose-50 border border-rose-200 p-3.5 rounded-xl w-full text-center"
-            >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg w-full text-center mt-2"
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </main>
+
+      {/* Subtle Minimal Footer */}
+      <footer className="relative z-10 w-full py-6 px-6 text-center text-xs text-slate-400">
+        <span>Private • Secure</span>
+      </footer>
     </div>
   );
 }

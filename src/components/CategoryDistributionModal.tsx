@@ -23,8 +23,11 @@ import {
   ShieldCheck,
   BellRing,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  Search,
+  ArrowLeft
 } from 'lucide-react';
+import { EmailReviewView } from './EmailReviewView';
 import { 
   countEmails, 
   fetchGmailAPI, 
@@ -37,6 +40,11 @@ import {
   EmailData
 } from '../lib/gmail';
 import { cn } from '../lib/utils';
+import { 
+  tokenizeText, 
+  buildTFIDFMatrix, 
+  computeCosineSimilarity 
+} from '../lib/emailUtils';
 
 export interface CategoryItem {
   id: string;
@@ -58,13 +66,14 @@ export const CATEGORY_CONFIG = [
 ];
 
 export interface CategoryDistributionModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   onApplyCategory?: (query: string, filter?: string, sortOption?: "date" | "size" | "sender") => void;
   userLabels?: any[];
   aiSettings?: any;
   userEmail?: string;
   onRefresh?: () => void;
+  isPage?: boolean;
 }
 
 export interface AttentionItem {
@@ -103,14 +112,78 @@ export interface CategoryDiagnostic {
   practicalAdvice?: string;
 }
 
+// Density-Based Clustering (DBSCAN / TF-IDF Cosine Similarity) with adaptive threshold
+function clusterByCosineSimilarity(emails: EmailData[], similarityThreshold = 0.70): any[] {
+  if (emails.length < 2) return [];
+  const docs = emails.map(e => tokenizeText(`${e.subject || ''} ${e.snippet || ''}`));
+  const { vocab, vectors } = buildTFIDFMatrix(docs);
+  if (vocab.length === 0) return [];
+
+  const n = emails.length;
+  const visited = new Set<number>();
+  const clusters: { emailIndices: number[], topKeywords: string[] }[] = [];
+
+  for (let i = 0; i < n; i++) {
+    if (visited.has(i)) continue;
+    
+    // Find neighbors with high cosine similarity
+    const neighbors: number[] = [i];
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      const sim = computeCosineSimilarity(vectors[i], vectors[j]);
+      if (sim >= similarityThreshold) {
+        neighbors.push(j);
+      }
+    }
+
+    if (neighbors.length >= 2) {
+      neighbors.forEach(idx => visited.add(idx));
+      
+      // Extract high-significance centroid keywords
+      const clusterTermScores: Record<string, number> = {};
+      neighbors.forEach(idx => {
+        docs[idx].forEach(t => {
+          clusterTermScores[t] = (clusterTermScores[t] || 0) + 1;
+        });
+      });
+
+      const sortedTerms = Object.entries(clusterTermScores)
+        .sort((a, b) => b[1] - a[1])
+        .map(e => e[0].replace(/_/g, ' '))
+        .slice(0, 3);
+        
+      clusters.push({
+        emailIndices: neighbors,
+        topKeywords: sortedTerms
+      });
+    }
+  }
+
+  return clusters.map(c => {
+    const matchedEmails = c.emailIndices.map(idx => emails[idx]);
+    const leadKeyword = c.topKeywords[0] ? c.topKeywords[0].charAt(0).toUpperCase() + c.topKeywords[0].slice(1) : 'Topic';
+    const subKeyword = c.topKeywords[1] ? ` & ${c.topKeywords[1].charAt(0).toUpperCase() + c.topKeywords[1].slice(1)}` : '';
+    const labelTitle = `${leadKeyword}${subKeyword}`;
+    
+    return {
+      suggestedLabel: leadKeyword,
+      title: `${labelTitle} Cluster`,
+      categoryTag: 'Smart Group',
+      emailIds: matchedEmails.map(e => e.id),
+      reason: `TF-IDF statistical vector match across ${matchedEmails.length} correlated subject threads.`
+    };
+  });
+}
+
 export function CategoryDistributionModal({
-  isOpen,
+  isOpen = true,
   onClose,
   onApplyCategory,
   userLabels = [],
   aiSettings,
   userEmail,
-  onRefresh
+  onRefresh,
+  isPage = false
 }: CategoryDistributionModalProps) {
   // Navigation & View Mode
   const [activeTab, setActiveTab] = useState<'breakdown' | 'cleanup'>('breakdown');
@@ -135,6 +208,7 @@ export function CategoryDistributionModal({
   const [handlingAttentionId, setHandlingAttentionId] = useState<string | null>(null);
   const [protectingAllAttention, setProtectingAllAttention] = useState(false);
   const [expandedBundleIds, setExpandedBundleIds] = useState<Set<string>>(new Set());
+  const [inspectingBundle, setInspectingBundle] = useState<ActionBundle | null>(null);
 
   // Execution & Progress State
   const [executingBundleId, setExecutingBundleId] = useState<string | null>(null);
@@ -145,6 +219,36 @@ export function CategoryDistributionModal({
   const [creatingFilterId, setCreatingFilterId] = useState<string | null>(null);
   const [totalCleanedInSession, setTotalCleanedInSession] = useState<number>(0);
   const [actionFilter, setActionFilter] = useState<'all' | 'trash' | 'move' | 'archive' | 'keep'>('all');
+
+  // Helper to ensure guaranteed unique keys for bundles
+  const ensureUniqueActionIds = (list: ActionBundle[]): ActionBundle[] => {
+    const seen = new Set<string>();
+    return list.map((item, idx) => {
+      let baseId = item.id || `action_${idx}`;
+      let uniqueId = baseId;
+      let counter = 1;
+      while (seen.has(uniqueId)) {
+        uniqueId = `${baseId}_${counter++}`;
+      }
+      seen.add(uniqueId);
+      return { ...item, id: uniqueId };
+    });
+  };
+
+  // Helper to ensure guaranteed unique keys for attention items
+  const ensureUniqueAttentionIds = (list: AttentionItem[]): AttentionItem[] => {
+    const seen = new Set<string>();
+    return list.map((item, idx) => {
+      let baseId = item.id || `attention_${idx}`;
+      let uniqueId = baseId;
+      let counter = 1;
+      while (seen.has(uniqueId)) {
+        uniqueId = `${baseId}_${counter++}`;
+      }
+      seen.add(uniqueId);
+      return { ...item, id: uniqueId };
+    });
+  };
 
   // Fetch Category Distribution Overview
   const fetchCategoryData = useCallback(async () => {
@@ -300,9 +404,9 @@ export function CategoryDistributionModal({
             const result = await res.json();
             if (result && result.summary && result.actions && result.actions.length > 0) {
               setDiagnostic(result.summary);
-              setActionBundles(result.actions);
+              setActionBundles(ensureUniqueActionIds(result.actions));
               if (result.attentionEmails && Array.isArray(result.attentionEmails)) {
-                setAttentionItems(result.attentionEmails);
+                setAttentionItems(ensureUniqueAttentionIds(result.attentionEmails));
               }
               aiSucceeded = true;
             }
@@ -318,8 +422,8 @@ export function CategoryDistributionModal({
       if (!aiSucceeded) {
         const localResult = runLocalCategorization(detailedEmails, config.name, userLabels);
         setDiagnostic(localResult.summary);
-        setActionBundles(localResult.actions);
-        setAttentionItems(localResult.attentionItems);
+        setActionBundles(ensureUniqueActionIds(localResult.actions));
+        setAttentionItems(ensureUniqueAttentionIds(localResult.attentionItems));
       }
 
     } catch (err: any) {
@@ -583,10 +687,9 @@ export function CategoryDistributionModal({
     // 4. Senders with heavy email volume
     senderClusterMap.forEach((ids, senderEmail) => {
       if (ids.length >= 3 && !senderEmail.includes(userEmail || '')) {
-        const senderName = senderEmail.split('@')[0];
         const isMarketing = marketingIds.some(id => ids.includes(id));
         actions.push({
-          id: `action_cluster_${senderName.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          id: `action_cluster_${senderEmail.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}`,
           title: isMarketing 
             ? `Trash ${ids.length} promotional emails from ${senderEmail}`
             : `Archive ${ids.length} notifications from ${senderEmail}`,
@@ -602,6 +705,28 @@ export function CategoryDistributionModal({
         });
       }
     });
+
+    // 4.5 Algorithmic ML models (TF-IDF Cosine Similarity) for unclustered emails
+    const clusteredEmailIds = new Set<string>();
+    actions.forEach(a => a.emailIds.forEach(id => clusteredEmailIds.add(id)));
+    const unclusteredEmails = emails.filter(e => !clusteredEmailIds.has(e.id));
+    
+    if (unclusteredEmails.length >= 4) {
+      const nlpClusters = clusterByCosineSimilarity(unclusteredEmails, 0.72);
+      nlpClusters.forEach((nlpRec, idx) => {
+        if (nlpRec.emailIds.length >= 2) {
+          actions.push({
+            id: `action_nlp_${idx}`,
+            title: `Archive ${nlpRec.emailIds.length} related emails about "${nlpRec.suggestedLabel}"`,
+            actionType: 'archive',
+            emailIds: nlpRec.emailIds,
+            urgency: 'safe_to_archive',
+            categoryTag: nlpRec.categoryTag,
+            description: nlpRec.reason
+          });
+        }
+      });
+    }
 
     // 5. Star important emails
     if (importantIds.length > 0) {
@@ -876,94 +1001,104 @@ export function CategoryDistributionModal({
     window.addEventListener('keydown', handleKeyDown);
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    if (!isPage && isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = originalOverflow;
+      if (!isPage) document.body.style.overflow = originalOverflow;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isPage]);
 
-  if (!isOpen) return null;
+  if (!isPage && !isOpen) return null;
 
   const currentCategoryConfig = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
   const currentCategoryData = data.find(d => d.id === selectedCategory);
 
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 animate-in fade-in duration-150"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="category-distribution-title"
-    >
-      <div
-        className="bg-white w-full max-w-5xl shadow-xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-[90vh] sm:rounded-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 flex flex-wrap justify-between items-center bg-white shrink-0 gap-3">
-          <div className="flex items-center gap-3">
-            
-            <div>
-              <h2 id="category-distribution-title" className="font-semibold text-slate-900 text-base sm:text-lg">
-                Category Breakdown
-              </h2>
-              <p className="text-xs text-slate-500">
-                View volume across categories and review recommended cleanups.
-              </p>
-            </div>
-          </div>
-
-          {/* Tab Selector */}
+  const headerContent = (
+    <div className={cn(
+      "flex flex-wrap justify-between items-center bg-white shrink-0 gap-3",
+      isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs" : "px-5 py-4 border-b border-slate-200"
+    )}>
+      <div className="flex items-center gap-3">
+        {isPage && (
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
+            title="Back to Inbox Health"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+        )}
+        <div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200/60">
-              <button
-                onClick={() => setActiveTab('breakdown')}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  activeTab === 'breakdown'
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                <PieChartIcon className="w-3.5 h-3.5" />
-                <span>Overview</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('cleanup');
-                  if (!diagnostic && !scanLoading) {
-                    runCategoryAudit(selectedCategory);
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  activeTab === 'cleanup'
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Clean Up Category</span>
-              </button>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Close modal"
-              aria-label="Close dialog"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <h2 id="category-distribution-title" className="font-bold text-slate-900 text-base sm:text-lg">
+              Category Breakdown
+            </h2>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+              Overview
+            </span>
           </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            View volume across categories and review recommended cleanups.
+          </p>
+        </div>
+      </div>
+
+      {/* Tab Selector */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200/60">
+          <button
+            onClick={() => setActiveTab('breakdown')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+              activeTab === 'breakdown'
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            <PieChartIcon className="w-3.5 h-3.5" />
+            <span>Overview</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('cleanup');
+              if (!diagnostic && !scanLoading) {
+                runCategoryAudit(selectedCategory);
+              }
+            }}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+              activeTab === 'cleanup'
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Clean Up Category</span>
+          </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6 flex flex-col">
-          
-          {/* TAB 1: OVERVIEW & DONUT BREAKDOWN */}
-          {activeTab === 'breakdown' && (
+        {!isPage && (
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            title="Close modal"
+            aria-label="Close dialog"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const bodyContent = (
+    <>
+      {/* TAB 1: OVERVIEW & DONUT BREAKDOWN */}
+      {activeTab === 'breakdown' && (
             <div className="flex flex-col gap-5 max-w-4xl mx-auto w-full">
               {loadingDistribution ? (
                 <div className="h-80 flex flex-col items-center justify-center gap-2 text-slate-500">
@@ -1584,49 +1719,12 @@ export function CategoryDistributionModal({
                                 {/* Expand/Collapse Email Preview */}
                                 <div className="mt-2.5">
                                   <button
-                                    onClick={() => {
-                                      setExpandedBundleIds(prev => {
-                                        const next = new Set(prev);
-                                        if (next.has(bundle.id)) next.delete(bundle.id);
-                                        else next.add(bundle.id);
-                                        return next;
-                                      });
-                                    }}
-                                    className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                                    onClick={() => setInspectingBundle(bundle)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
                                   >
-                                    {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                    <span>{isExpanded ? "Hide sample list" : `Review ${matchingEmails.length} sample items`}</span>
+                                    <Search className="w-3.5 h-3.5" />
+                                    <span>Review {matchingEmails.length} items</span>
                                   </button>
-
-                                  {isExpanded && (
-                                    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-2 max-h-36 overflow-y-auto custom-scrollbar flex flex-col gap-1 text-xs">
-                                      {matchingEmails.map(e => {
-                                        const isChecked = !(bundle.deselectedEmailIds || []).includes(e.id);
-                                        return (
-                                          <div
-                                            key={e.id}
-                                            onClick={() => !isCompleted && toggleEmailInBundle(bundle.id, e.id)}
-                                            className={cn(
-                                              "flex items-start gap-2 p-1.5 rounded border transition-colors cursor-pointer",
-                                              isChecked ? "bg-white border-slate-200 text-slate-800" : "bg-slate-100 border-transparent text-slate-400 line-through opacity-60"
-                                            )}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              readOnly
-                                              disabled={isCompleted}
-                                              className="mt-0.5 rounded text-slate-900 border-slate-300 focus:ring-slate-500 pointer-events-none shrink-0"
-                                            />
-                                            <div className="min-w-0 flex-1">
-                                              <p className="font-medium truncate text-xs">{e.sender.replace(/<.*>/, '').trim() || e.sender}</p>
-                                              <p className="text-[11px] text-slate-500 truncate">{e.subject}</p>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
 
@@ -1706,6 +1804,59 @@ export function CategoryDistributionModal({
               ) : null}
             </div>
           )}
+
+        {inspectingBundle && (
+          <EmailReviewView
+            title={inspectingBundle.title}
+            subtitle={inspectingBundle.categoryTag}
+            emails={categoryEmails.filter(e => inspectingBundle.emailIds.includes(e.id))}
+            selectedEmailIds={new Set(inspectingBundle.emailIds.filter(id => !(inspectingBundle.deselectedEmailIds || []).includes(id)))}
+            onToggleSelect={(id) => toggleEmailInBundle(inspectingBundle.id, id)}
+            onToggleSelectAll={() => {}}
+            onBack={() => setInspectingBundle(null)}
+            onExecute={() => {
+              handleExecuteBundle(inspectingBundle);
+              setInspectingBundle(null);
+            }}
+            actionLabel={
+              inspectingBundle.actionType === 'trash' ? 'Trash' :
+              inspectingBundle.actionType === 'move_to_label' ? `Move to ${inspectingBundle.suggestedLabel || 'Folder'}` :
+              inspectingBundle.actionType === 'star_keep' ? 'Protect' :
+              'Archive'
+            }
+            isExecuting={executingBundleId === inspectingBundle.id}
+            isFullModal={false}
+          />
+        )}
+    </>
+  );
+
+  if (isPage) {
+    return (
+      <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
+        {headerContent}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs p-4 sm:p-6 overflow-hidden flex flex-col min-h-[600px] relative">
+          {bodyContent}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 animate-in fade-in duration-150"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="category-distribution-title"
+    >
+      <div
+        className="bg-white w-full max-w-5xl shadow-xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-[90vh] sm:rounded-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {headerContent}
+        <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6 flex flex-col relative">
+          {bodyContent}
         </div>
       </div>
     </div>

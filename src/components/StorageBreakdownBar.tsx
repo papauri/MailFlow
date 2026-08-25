@@ -32,7 +32,7 @@ export function StorageBreakdownBar({
   className,
   compact = false
 }: {
-  onApplyQuery: (query: string, folder?: string, sortOption?: "date" | "size" | "sender") => void;
+  onApplyQuery: (query: string, folder?: string, sortOption?: "date" | "size" | "sender", metadata?: { title?: string; badge?: string; subtitle?: string; source?: string }) => void;
   className?: string;
   compact?: boolean;
 }) {
@@ -231,7 +231,12 @@ export function StorageBreakdownBar({
                   type="button"
                   onMouseEnter={() => setHoveredSegment(segment.id)}
                   onMouseLeave={() => setHoveredSegment(null)}
-                  onClick={() => onApplyQuery(segment.query, segment.folder, segment.sort)}
+                  onClick={() => onApplyQuery(segment.query, segment.folder, segment.sort, {
+                    title: segment.name,
+                    badge: 'Storage Breakdown',
+                    subtitle: segment.description,
+                    source: 'health'
+                  })}
                   style={{ width: `${Math.max(percentage, 2)}%` }}
                   title={`${segment.name}: ~${formatSize(segment.sizeBytes)} (${segment.count.toLocaleString()} emails)`}
                   className={cn(
@@ -258,7 +263,12 @@ export function StorageBreakdownBar({
                   type="button"
                   onMouseEnter={() => setHoveredSegment(segment.id)}
                   onMouseLeave={() => setHoveredSegment(null)}
-                  onClick={() => onApplyQuery(segment.query, segment.folder, segment.sort)}
+                  onClick={() => onApplyQuery(segment.query, segment.folder, segment.sort, {
+                    title: segment.name,
+                    badge: 'Storage Breakdown',
+                    subtitle: segment.description,
+                    source: 'health'
+                  })}
                   className={cn(
                     "p-3 rounded-xl border text-left transition-all flex flex-col justify-between group cursor-pointer",
                     segment.colorBg,

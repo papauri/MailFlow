@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Layers, FolderPlus, Tag, Check, Loader2, X, AlertCircle, BarChart2, Trash2, Archive, SlidersHorizontal } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { batchModifyEmails, createLabel, batchTrashEmails, batchArchiveEmails } from '../lib/gmail';
+import { EmailReviewView } from './EmailReviewView';
+import { Search } from 'lucide-react';
 
 interface Props {
   selectedIds: Set<string>;
@@ -21,6 +23,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+  const [inspectingRec, setInspectingRec] = useState<any>(null);
   
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -277,7 +280,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
       )}
 
       {(mode === 'ai' || mode === 'smart') && (
-        <div className="p-3">
+        <div className={cn("p-3", inspectingRec ? "hidden" : "block")}>
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
               {mode === 'ai' ? <Layers className="w-4 h-4 text-slate-600" /> : <BarChart2 className="w-4 h-4 text-slate-600" />}
@@ -309,6 +312,13 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
                     </div>
                   </div>
                   <p className="text-xs text-slate-600 leading-snug">{rec.reason}</p>
+                  <button
+                    onClick={() => setInspectingRec(rec)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors self-start mt-1"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    Review {rec.emailIds.length} emails
+                  </button>
                   <div className="flex flex-col gap-2 mt-2">
                     <button
                       onClick={() => executeAction('label', rec.emailIds, rec.suggestedLabel)}
@@ -346,6 +356,26 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
            <Loader2 className="w-6 h-6 text-slate-600 animate-spin" />
            <span className="text-sm text-slate-600 font-medium">Applying labels...</span>
          </div>
+      )}
+      
+      {inspectingRec && (
+        <div className="h-[500px] w-full flex flex-col relative">
+          <EmailReviewView
+            title={inspectingRec.title}
+            emails={emails.filter(e => inspectingRec.emailIds.includes(e.id))}
+            selectedEmailIds={new Set(inspectingRec.emailIds)}
+            onToggleSelect={() => {}}
+            onToggleSelectAll={() => {}}
+            onBack={() => setInspectingRec(null)}
+            onExecute={() => {
+               executeAction('label', inspectingRec.emailIds, inspectingRec.suggestedLabel);
+               setInspectingRec(null);
+            }}
+            actionLabel={`Label as "${inspectingRec.suggestedLabel}"`}
+            isExecuting={mode === 'applying'}
+            isFullModal={false}
+          />
+        </div>
       )}
     </>
   );

@@ -9,6 +9,7 @@ import {
   ChevronUp, 
   Sparkles, 
   ArrowRight, 
+  ArrowLeft,
   ExternalLink, 
   Tag, 
   Archive, 
@@ -73,12 +74,22 @@ interface RuleSuggesterProps {
   onApplyQuery?: (query: string, filter?: string) => void;
   aiSettings?: any;
   isAiWorking?: boolean;
+  isPage?: boolean;
+  onClose?: () => void;
 }
 
 const SAVED_RULES_STORAGE_KEY = 'inbox_created_rules_log_v1';
 const DISMISSED_RULES_STORAGE_KEY = 'inbox_dismissed_rules_v1';
 
-export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiSettings, isAiWorking }: RuleSuggesterProps) {
+export function RuleSuggester({ 
+  userLabels, 
+  recentEmails = [], 
+  onApplyQuery, 
+  aiSettings, 
+  isAiWorking,
+  isPage = false,
+  onClose
+}: RuleSuggesterProps) {
   const [loading, setLoading] = useState(false);
   const [proposals, setProposals] = useState<RuleProposal[]>([]);
   const [activeTab, setActiveTab] = useState<'suggestions' | 'active_rules'>('suggestions');
@@ -119,6 +130,10 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
       const next = [record, ...createdRulesLog.filter(r => r.id !== record.id)].slice(0, 50);
       setCreatedRulesLog(next);
       localStorage.setItem(SAVED_RULES_STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event('health-score-update'));
+      window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+        detail: { type: 'rule', count: 1, isPartial: true }
+      }));
     } catch (e) {
       console.error(e);
     }
@@ -387,19 +402,63 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
       .filter(p => activeCategoryFilter === 'all' || p.categoryTag.toLowerCase() === activeCategoryFilter.toLowerCase());
   }, [proposals, dismissedRuleIds, createdRulesLog, activeCategoryFilter]);
 
+  const openInspectQuery = (queryStr: string, titleStr: string, reasonStr?: string) => {
+    const params = new URLSearchParams();
+    params.set('q', queryStr);
+    params.set('title', titleStr);
+    params.set('badge', 'Rule Inspection');
+    if (reasonStr) params.set('sub', reasonStr);
+    params.set('source', isPage ? 'rule-suggester' : 'health');
+    window.location.hash = `#filter-view?${params.toString()}`;
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8">
+    <div className={cn("flex flex-col gap-4", isPage ? "w-full animate-in fade-in duration-150" : "mt-6 sm:mt-8")}>
+      {isPage && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (onClose) onClose();
+                else window.location.hash = '#health';
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0 shadow-2xs"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Inbox Health</span>
+            </button>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900">
+                Automated Sorting Rules
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Derives recurring sender & folder patterns to automatically file incoming emails in Gmail
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <span className="text-[11px] font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
+              Statistical Bayesian Routing
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs">
       {/* Header */}
       <div 
-        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 cursor-pointer hover:bg-slate-100/50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 transition-colors",
+          !isPage && "cursor-pointer hover:bg-slate-100/50"
+        )}
+        onClick={() => { if (!isPage) setIsExpanded(!isExpanded); }}
       >
         <div className="flex items-center gap-3">
           
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-slate-800">
-                Automated Sorting Rules
+                {isPage ? "Smart Rule Recommendations" : "Automated Sorting Rules"}
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full uppercase tracking-wider">
                 Statistical Routing
@@ -420,7 +479,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
             <button
               onClick={() => setActiveTab('suggestions')}
               className={cn(
-                "px-3 py-1.5 rounded-md transition-all",
+                "px-3 py-1.5 rounded-md transition-all cursor-pointer",
                 activeTab === 'suggestions' ? "bg-white text-slate-800 shadow-2xs" : "text-slate-600 hover:text-slate-900"
               )}
             >
@@ -429,7 +488,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
             <button
               onClick={() => setActiveTab('active_rules')}
               className={cn(
-                "px-3 py-1.5 rounded-md transition-all",
+                "px-3 py-1.5 rounded-md transition-all cursor-pointer",
                 activeTab === 'active_rules' ? "bg-white text-slate-800 shadow-2xs" : "text-slate-600 hover:text-slate-900"
               )}
             >
@@ -444,7 +503,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
                 runRuleAnalysis();
               }}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
               title="Scan folders and inbox for rule patterns"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
@@ -457,16 +516,18 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
                 runRuleAnalysis();
               }}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
               title="Scan for rule patterns"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
               <span>Discover Rules</span>
             </button>
           )}
-          <div className="p-1 sm:p-2 text-slate-400 hover:bg-slate-200/50 rounded-lg transition-colors ml-1">
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </div>
+          {!isPage && (
+            <div className="p-1 sm:p-2 text-slate-400 hover:bg-slate-200/50 rounded-lg transition-colors ml-1">
+              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          )}
         </div>
       </div>
 
@@ -551,14 +612,12 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
                     </div>
 
                     <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-2">
-                      {onApplyQuery && (
-                        <button
-                          onClick={() => onApplyQuery(rule.query)}
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-                        >
-                          <Search className="w-3.5 h-3.5" /> Test Filter in Search
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openInspectQuery(rule.query, `Active Rule: ${rule.query}`, `Testing filter criteria for active rule routing to "${rule.labelName}"`)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Search className="w-3.5 h-3.5" /> Inspect Matching Emails
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -678,15 +737,13 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
                           {isExpanded ? 'Hide Rule Customization' : 'Customize Rule Actions'}
                         </button>
 
-                        {onApplyQuery && (
-                          <button
-                            onClick={() => onApplyQuery(config.query)}
-                            className="text-xs font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
-                            title="Preview matching emails in main dashboard search"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> Test Query
-                          </button>
-                        )}
+                        <button
+                          onClick={() => openInspectQuery(config.query, proposal.title, proposal.reason)}
+                          className="text-xs font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Preview matching emails on dedicated filter inspection page"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Test Query
+                        </button>
                       </div>
 
                       {/* Expanded Customizer */}
@@ -814,6 +871,7 @@ export function RuleSuggester({ userLabels, recentEmails = [], onApplyQuery, aiS
       </div>
       </div>
       )}
+      </div>
     </div>
   );
 }

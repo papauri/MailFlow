@@ -17,8 +17,10 @@ import {
   FolderPlus,
   Inbox,
   Zap,
-  Search
+  Search,
+  ArrowLeft
 } from 'lucide-react';
+import { EmailReviewView } from './EmailReviewView';
 import { 
   searchEmails, 
   batchModifyEmails, 
@@ -55,13 +57,14 @@ export interface SmartInsight {
 }
 
 export interface SmartTriageModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   aiSettings?: any;
   userLabels?: any[];
   userEmail?: string;
   onRefresh?: () => void;
   onSearchQuery?: (query: string) => void;
+  isPage?: boolean;
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
@@ -108,13 +111,14 @@ function saveDismissedSender(sender: string) {
 }
 
 export function SmartTriageModal({
-  isOpen,
+  isOpen = true,
   onClose,
   aiSettings,
   userLabels = [],
   userEmail,
   onRefresh,
-  onSearchQuery
+  onSearchQuery,
+  isPage = false
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
@@ -128,6 +132,7 @@ export function SmartTriageModal({
   const [selectedFolder, setSelectedFolder] = useState<string>("in:inbox");
   const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'archive' | 'move' | 'trash' | 'keep'>('all');
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
+  const [inspectingGroup, setInspectingGroup] = useState<SmartGroup | null>(null);
 
   // Execution States
   const [executingGroupId, setExecutingGroupId] = useState<string | null>(null);
@@ -758,76 +763,83 @@ export function SmartTriageModal({
 
   const isAllCompleted = groups.length > 0 && completedGroupIds.size === groups.length;
 
-  if (!isOpen) return null;
+  if (!isPage && !isOpen) return null;
 
-  return (
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="smart-organizer-title"
-    >
-      <div 
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 flex flex-wrap justify-between items-center bg-white shrink-0 gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-slate-100 text-slate-700 rounded-lg shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 id="smart-organizer-title" className="font-semibold text-slate-900 text-base sm:text-lg">
-                  Smart Organizer
-                </h2>
-                <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-                <select
-                  value={selectedFolder}
-                  onChange={(e) => setSelectedFolder(e.target.value)}
-                  disabled={loading}
-                  className="bg-slate-50 border border-slate-200 rounded-md py-1 px-2.5 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-slate-400 cursor-pointer disabled:opacity-50"
-                >
-                  <option value="in:inbox">Inbox</option>
-                  <option value="anywhere">Everywhere</option>
-                  <option value="category:updates">Updates</option>
-                  <option value="category:promotions">Promotions</option>
-                  <option value="category:social">Social</option>
-                  <option value="category:forums">Forums</option>
-                  {userLabels?.filter(l => l.type === 'user').map(l => (
-                    <option key={l.id} value={`label:"${l.name}"`}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Identifies recurring senders and bundles them into clean, one-click actions.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => analyzeFolder(selectedFolder)}
-              disabled={loading}
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-              title="Refresh analysis"
-            >
-              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-            </button>
-            <button 
-              onClick={onClose} 
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+  const headerElement = (
+    <div className={cn(
+      "flex flex-wrap justify-between items-center bg-white shrink-0 gap-3",
+      isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs" : "px-5 py-4 border-b border-slate-200"
+    )}>
+      <div className="flex items-center gap-3">
+        {isPage && (
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
+            title="Back to Inbox Health"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+        )}
+        <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-xl shrink-0">
+          <Layers className="w-5 h-5" />
         </div>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 id="smart-organizer-title" className="font-bold text-slate-900 text-base sm:text-lg">
+              Smart Organizer
+            </h2>
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <select
+              value={selectedFolder}
+              onChange={(e) => setSelectedFolder(e.target.value)}
+              disabled={loading}
+              className="bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer disabled:opacity-50"
+            >
+              <option value="in:inbox">Inbox</option>
+              <option value="anywhere">Everywhere</option>
+              <option value="category:updates">Updates</option>
+              <option value="category:promotions">Promotions</option>
+              <option value="category:social">Social</option>
+              <option value="category:forums">Forums</option>
+              {userLabels?.filter(l => l.type === 'user').map(l => (
+                <option key={l.id} value={`label:"${l.name}"`}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Identifies recurring senders and bundles them into clean, one-click actions.
+          </p>
+        </div>
+      </div>
 
-        {/* Macro Insights */}
-        {!loading && insights.length > 0 && !isAllCompleted && (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => analyzeFolder(selectedFolder)}
+          disabled={loading}
+          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+          title="Refresh analysis"
+        >
+          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin text-slate-800")} />
+        </button>
+
+        {!isPage && (
+          <button 
+            onClick={onClose} 
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            title="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const mainBodyContent = (
+    <>
+      {/* Macro Insights */}
+      {!loading && insights.length > 0 && !isAllCompleted && (
           <div className="px-5 pt-4 pb-4 bg-slate-50 border-b border-slate-200 shrink-0">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-blue-600" /> Smart Actions
@@ -1078,11 +1090,11 @@ export function SmartTriageModal({
                       {/* Left: Review & Rule */}
                       <div className="flex flex-wrap items-center gap-3 text-xs">
                         <button
-                          onClick={() => toggleExpandGroup(group.id)}
-                          className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
+                          onClick={() => setInspectingGroup(group)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
                         >
-                          <span>{isExpanded ? 'Hide' : 'Review'} {sampleEmails.length} messages</span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Review {sampleEmails.length} messages</span>
                         </button>
 
                         {group.filterQuery && !isCompleted && (
@@ -1223,6 +1235,59 @@ export function SmartTriageModal({
             </div>
           )}
         </div>
+
+        {inspectingGroup && (
+          <EmailReviewView
+            title={inspectingGroup.title}
+            subtitle={inspectingGroup.categoryTag}
+            emails={fetchedEmails.filter(e => inspectingGroup.emailIds.includes(e.id))}
+            selectedEmailIds={new Set(inspectingGroup.emailIds.filter(id => !(inspectingGroup.deselectedEmailIds || []).includes(id)))}
+            onToggleSelect={(id) => toggleEmailInGroup(inspectingGroup.id, id)}
+            onToggleSelectAll={() => {}}
+            onBack={() => setInspectingGroup(null)}
+            onExecute={() => {
+              const labelExists = !inspectingGroup.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === inspectingGroup.suggestedLabel!.toLowerCase());
+              executeGroupAction(inspectingGroup, !labelExists);
+              setInspectingGroup(null);
+            }}
+            actionLabel={
+              inspectingGroup.actionType === 'trash' ? 'Trash' :
+              inspectingGroup.actionType === 'move_to_label' ? `Move to ${inspectingGroup.suggestedLabel || 'Folder'}` :
+              inspectingGroup.actionType === 'star_keep' ? 'Protect' :
+              'Archive'
+            }
+            isExecuting={executingGroupId === inspectingGroup.id}
+            isFullModal={false}
+          />
+        )}
+    </>
+  );
+
+  if (isPage) {
+    return (
+      <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
+        {headerElement}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[600px] relative">
+          {mainBodyContent}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="smart-organizer-title"
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {headerElement}
+        {mainBodyContent}
       </div>
     </div>
   );

@@ -3,76 +3,430 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 
-async function generateAIContent(prompt, schema, settings) {
-  const provider = settings?.provider || 'gemini';
-  const model = settings?.model || 'gemini-3.6-flash';
-  const apiKey = settings?.apiKey || process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(`Missing API Key for ${provider}`);
+function parseApiErrorMessage(data: any, status: number, provider: string): string {
+  if (!data) return `${provider} API request failed (${status})`;
+  if (typeof data === 'string') return data;
+  if (data.error?.message) return data.error.message;
+  if (typeof data.error === 'string') return data.error;
+  if (data.message) return data.message;
+  if (Array.isArray(data.detail)) {
+    return data.detail.map((d: any) => (typeof d === 'object' ? d.msg || d.message || JSON.stringify(d) : String(d))).join(', ');
   }
+  if (typeof data.detail === 'string') return data.detail;
+  return `${provider} API Error (${status})`;
+}
 
-  if (provider === 'gemini') {
-    const ai = new GoogleGenAI({ apiKey });
+function extractJsonFromText(rawText: string): any {
+  let content = rawText.trim();
+  // Strip markdown code fences if present
+  content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  
+  try {
+    return JSON.parse(content);
+  } catch {
+    // Attempt to locate outer JSON block if extra commentary was included
+    const firstBrace = content.indexOf('{');
+    const lastBrace = content.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(content.substring(firstBrace, lastBrace + 1));
+      } catch {}
+    }
+    const firstBracket = content.indexOf('[');
+    const lastBracket = content.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      try {
+        return JSON.parse(content.substring(firstBracket, lastBracket + 1));
+      } catch {}
+    }
+    throw new Error("Failed to parse JSON response from AI model");
+  }
+}
+
+async function callGemini(prompt: string, schema: any, model = 'gemini-3.7-flash', apiKey?: string) {
+  const key = apiKey || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("Missing Gemini API Key");
+  }
+  const ai = new GoogleGenAI({
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+
+  const targetModel = model || 'gemini-3.7-flash';
+
+  try {
     const response = await ai.models.generateContent({
-      model: model,
+      model: targetModel,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema
       }
     });
-    return JSON.parse(response.text);
-  } else if (['deepseek', 'openai', 'groq', 'anthropic', 'zhipu', 'mistral', 'grok'].includes(provider)) {
+    return JSON.parse(response.text || '{}');
+  } catch (error: any) {
+    const isRateLimitOrOverload = error.message && (
+      error.message.includes("429") || 
+      error.message.includes("quota") || 
+      error.message.includes("rate limit") || 
+      error.message.includes("RESOURCE_EXHAUSTED") ||
+      error.message.includes("503") ||
+      error.message.includes("UNAVAILABLE")
+    );
+
+    // If primary model hit quota/overload and wasn't already flash-lite, try gemini-3.1-flash-lite
+    if (isRateLimitOrOverload && targetModel !== 'gemini-3.1-flash-lite') {
+      try {
+        console.info(`[AI] Primary model ${targetModel} busy or rate-limited. Falling back to gemini-3.1-flash-lite.`);
+        const retryRes = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: schema
+          }
+        });
+        return JSON.parse(retryRes.text || '{}');
+      } catch (retryErr: any) {
+        throw retryErr;
+      }
+    }
+    throw error;
+  }
+}
+
+async function generateAIContent(
+  prompt: string, 
+  schema: any, 
+  settings: any, 
+  options: { strictUserKeyOnly?: boolean } = {}
+) {
+  const provider = settings?.provider || 'gemini';
+  const model = settings?.model || (
+    provider === 'gemini' ? 'gemini-3.7-flash' :
+    provider === 'mistral' ? 'mistral-small-latest' :
+    provider === 'openai' ? 'gpt-4o-mini' :
+    provider === 'anthropic' ? 'claude-3-5-haiku-20241022' :
+    provider === 'groq' ? 'llama-3.1-8b-instant' :
+    provider === 'deepseek' ? 'deepseek-chat' :
+    provider === 'zhipu' ? 'glm-4-flash' :
+    provider === 'grok' ? 'grok-2-latest' : 'gemini-3.7-flash'
+  );
+  
+  const userApiKey = settings?.apiKey?.trim();
+
+  // If using default Gemini provider
+  if (provider === 'gemini') {
+    return await callGemini(prompt, schema, model, userApiKey);
+  }
+
+  // If using third-party provider but no API key was provided
+  if (!userApiKey) {
+    if (!options.strictUserKeyOnly && process.env.GEMINI_API_KEY) {
+      console.info(`[AI] No API key provided for ${provider}. Seamlessly using default Gemini service.`);
+      return await callGemini(prompt, schema, 'gemini-3.7-flash');
+    }
+    throw new Error(`Missing API Key for ${provider}. Please enter your ${provider} API key in AI Settings or choose Gemini.`);
+  }
+
+  if (['deepseek', 'openai', 'groq', 'anthropic', 'zhipu', 'mistral', 'grok'].includes(provider)) {
     const enrichedPrompt = prompt + `\n\nIMPORTANT: You MUST respond in pure JSON format matching this exact schema: \n${JSON.stringify(schema, null, 2)}`;
     
-    if (provider === 'anthropic') {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
+    try {
+      if (provider === 'anthropic') {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': userApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: model,
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: enrichedPrompt }]
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(parseApiErrorMessage(data, res.status, provider));
+        }
+        const content = data?.content?.[0]?.text || '';
+        return extractJsonFromText(content);
+      } else {
+        const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com' 
+          : provider === 'groq' ? 'https://api.groq.com/openai/v1' 
+          : provider === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4'
+          : provider === 'mistral' ? 'https://api.mistral.ai/v1'
+          : provider === 'grok' ? 'https://api.x.ai/v1'
+          : 'https://api.openai.com/v1';
+
+        const requestBody: any = {
           model: model,
-          max_tokens: 4096,
           messages: [{ role: 'user', content: enrichedPrompt }]
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || `${provider} API Error`);
-      let content = data.content[0].text;
-      content = content.replace(/^\s*\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`\s*$/i, '').trim();
-      return JSON.parse(content);
-    } else {
-      const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com' 
-        : provider === 'groq' ? 'https://api.groq.com/openai/v1' 
-        : provider === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4'
-        : provider === 'mistral' ? 'https://api.mistral.ai/v1'
-        : provider === 'grok' ? 'https://api.x.ai/v1'
-        : 'https://api.openai.com/v1';
-      const res = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: 'user', content: enrichedPrompt }],
-          response_format: { type: "json_object" }
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || `${provider} API Error`);
-      let content = data.choices[0].message.content;
-      content = content.replace(/^\s*\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`\s*$/i, '').trim();
-      return JSON.parse(content);
+        };
+
+        // Most OpenAI-compatible providers support json_object mode
+        if (['openai', 'groq', 'deepseek', 'mistral'].includes(provider)) {
+          requestBody.response_format = { type: "json_object" };
+        }
+
+        const res = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${userApiKey}`
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(parseApiErrorMessage(data, res.status, provider));
+        }
+        const content = data?.choices?.[0]?.message?.content || '';
+        return extractJsonFromText(content);
+      }
+    } catch (providerError: any) {
+      if (options.strictUserKeyOnly) {
+        throw providerError;
+      }
+      // In general operations, gracefully fallback so user flows do not break
+      if (process.env.GEMINI_API_KEY) {
+        console.info(`[AI] ${provider} request issue (${providerError.message}). Utilizing resilient Gemini fallback.`);
+        return await callGemini(prompt, schema, 'gemini-3.7-flash');
+      }
+      throw providerError;
     }
   } else {
-    throw new Error("Unsupported provider: " + provider);
+    throw new Error("Unsupported AI provider: " + provider);
   }
+}
+
+function generateHeuristicCategoryCleanup(categoryName: string, estimatedTotal: any, emails: any[], userLabels: any[]) {
+  const actions: any[] = [];
+  const attentionEmails: any[] = [];
+  const availableFolderNames = (userLabels || []).map((f: any) => f.name).filter(Boolean);
+
+  const otpIds: string[] = [];
+  const receiptIds: string[] = [];
+  const buildAlertIds: string[] = [];
+  const marketingIds: string[] = [];
+  const importantIds: string[] = [];
+  const socialIds: string[] = [];
+  const securityIds: string[] = [];
+
+  const urgentKeywords = [
+    'due date', 'past due', 'payment failed', 'action required', 'immediate attention', 
+    'flight confirmation', 'check-in', 'boarding pass', 'itinerary', 'security alert', 
+    'password reset', 'unauthorized', 'verification code', 'otp', 'two-factor', 'expire'
+  ];
+
+  for (const e of emails) {
+    const text = `${e.subject || ''} ${e.snippet || ''} ${e.sender || ''}`.toLowerCase();
+    
+    // Check for attention emails
+    const isUrgent = urgentKeywords.some(kw => text.includes(kw));
+    if (isUrgent && attentionEmails.length < 8) {
+      const isSecurity = text.includes('security') || text.includes('unauthorized') || text.includes('password');
+      const isBill = text.includes('due') || text.includes('bill') || text.includes('invoice') || text.includes('failed');
+      const isTravel = text.includes('flight') || text.includes('itinerary') || text.includes('booking');
+      
+      attentionEmails.push({
+        id: e.id,
+        sender: e.sender || 'Sender',
+        subject: e.subject || '(No Subject)',
+        reason: isSecurity ? 'Account security verification or alert' : isBill ? 'Pending bill or invoice requirement' : isTravel ? 'Upcoming travel itinerary or check-in' : 'Requires direct review or action',
+        urgencyLevel: isSecurity || isBill ? 'high' : 'medium',
+        tag: isSecurity ? 'Security Alert' : isBill ? 'Payment Due' : isTravel ? 'Travel' : 'Action Required'
+      });
+    }
+
+    if (text.includes('verification code') || text.includes('one-time passcode') || text.includes('otp') || text.includes('security code')) {
+      otpIds.push(e.id);
+    } else if (text.includes('receipt') || text.includes('order confirmation') || text.includes('invoice') || text.includes('payment received') || text.includes('your order')) {
+      receiptIds.push(e.id);
+    } else if (text.includes('build') || text.includes('deployment') || text.includes('pipeline') || text.includes('ci/cd') || text.includes('pull request') || text.includes('commit') || text.includes('github') || text.includes('gitlab')) {
+      buildAlertIds.push(e.id);
+    } else if (text.includes('unsubscribe') || text.includes('sale') || text.includes('discount') || text.includes('% off') || text.includes('deal') || text.includes('newsletter') || text.includes('digest')) {
+      marketingIds.push(e.id);
+    } else if (text.includes('security alert') || text.includes('new login') || text.includes('suspicious activity')) {
+      securityIds.push(e.id);
+    } else if (text.includes('commented') || text.includes('mentioned you') || text.includes('new connection') || text.includes('invitation') || text.includes('liked your')) {
+      socialIds.push(e.id);
+    } else {
+      importantIds.push(e.id);
+    }
+  }
+
+  let actionCounter = 1;
+
+  if (otpIds.length > 0) {
+    actions.push({
+      id: `action_otp_${actionCounter++}`,
+      title: `Trash ${otpIds.length} expired security & verification codes`,
+      actionType: 'trash',
+      emailIds: otpIds,
+      urgency: 'safe_to_delete',
+      categoryTag: 'Expired Codes',
+      description: 'One-time verification passcodes and login tokens have already expired and can be safely deleted.'
+    });
+  }
+
+  if (buildAlertIds.length > 0) {
+    actions.push({
+      id: `action_build_${actionCounter++}`,
+      title: `Archive ${buildAlertIds.length} automated CI/CD & developer alerts`,
+      actionType: 'archive',
+      emailIds: buildAlertIds,
+      urgency: 'safe_to_archive',
+      categoryTag: 'Build Alerts',
+      description: 'Automated notification feeds from developer workflows and repository builds.',
+      suggestFilterRule: {
+        senderQuery: 'from:(github.com OR gitlab.com OR vercel.com)',
+        description: 'Auto-archive automated system alerts'
+      }
+    });
+  }
+
+  if (receiptIds.length > 0) {
+    const matchingReceiptFolder = availableFolderNames.find((f: string) => f.toLowerCase().includes('receipt') || f.toLowerCase().includes('finance') || f.toLowerCase().includes('order')) || (availableFolderNames.length > 0 ? availableFolderNames[0] : '');
+    actions.push({
+      id: `action_receipts_${actionCounter++}`,
+      title: `${matchingReceiptFolder ? `File ${receiptIds.length} receipts into "${matchingReceiptFolder}"` : `Archive ${receiptIds.length} order receipts & invoices`}`,
+      actionType: matchingReceiptFolder ? 'move_to_label' : 'archive',
+      suggestedLabel: matchingReceiptFolder || '',
+      emailIds: receiptIds,
+      urgency: 'relocate_to_folder',
+      categoryTag: 'Receipts & Orders',
+      description: 'Keep transactional purchase records accessible without clogging active inbox views.'
+    });
+  }
+
+  if (marketingIds.length > 0) {
+    actions.push({
+      id: `action_mktg_${actionCounter++}`,
+      title: `Trash or archive ${marketingIds.length} newsletters & promotional digests`,
+      actionType: 'trash',
+      emailIds: marketingIds,
+      urgency: 'safe_to_delete',
+      categoryTag: 'Promotions',
+      description: 'Stale commercial offers and newsletters that no longer need active inbox attention.'
+    });
+  }
+
+  if (socialIds.length > 0) {
+    actions.push({
+      id: `action_social_${actionCounter++}`,
+      title: `Archive ${socialIds.length} social activity & invitation updates`,
+      actionType: 'archive',
+      emailIds: socialIds,
+      urgency: 'safe_to_archive',
+      categoryTag: 'Social Activity',
+      description: 'Social networking notifications and connection activity.'
+    });
+  }
+
+  if (securityIds.length > 0) {
+    actions.push({
+      id: `action_sec_${actionCounter++}`,
+      title: `Star & keep ${securityIds.length} critical security notifications`,
+      actionType: 'star_keep',
+      emailIds: securityIds,
+      urgency: 'critical_keep',
+      categoryTag: 'Security Alerts',
+      description: 'Important login and security records preserved for reference.'
+    });
+  }
+
+  const totalActionable = otpIds.length + buildAlertIds.length + marketingIds.length + socialIds.length;
+  const clutterPct = emails.length > 0 ? Math.min(100, Math.round((totalActionable / emails.length) * 100)) : 40;
+  const relocPct = emails.length > 0 ? Math.min(100, Math.round((receiptIds.length / emails.length) * 100)) : 20;
+  const impPct = Math.max(0, 100 - clutterPct - relocPct);
+
+  const summary = {
+    headline: `${categoryName} Category: ${clutterPct}% removable clutter and background notifications`,
+    clutterPercentage: clutterPct,
+    importantPercentage: impPct,
+    relocatablePercentage: relocPct,
+    overview: `Analyzed ${emails.length} sample emails from ${categoryName}. Identified ${actions.length} high-impact cleanup actions.`,
+    practicalAdvice: `Regularly archiving automated notifications keeps your ${categoryName} category lightweight.`
+  };
+
+  return {
+    summary,
+    actions,
+    attentionEmails: attentionEmails.slice(0, 10)
+  };
+}
+
+function generateHeuristicSmartTriage(emails: any[], existingLabels: any[], userEmail?: string) {
+  const groups: any[] = [];
+  const senderMap: Record<string, any[]> = {};
+
+  for (const e of emails) {
+    const sender = e.sender || 'Unknown Sender';
+    const cleanSender = sender.replace(/<.*?>/, '').replace(/["']/g, '').trim();
+    if (!senderMap[cleanSender]) {
+      senderMap[cleanSender] = [];
+    }
+    senderMap[cleanSender].push(e);
+  }
+
+  let groupIdx = 1;
+  for (const [senderName, items] of Object.entries(senderMap)) {
+    if (items.length >= 2) {
+      const emailIds = items.map(i => i.id);
+      const isPromo = items.some(i => (i.subject || '').toLowerCase().includes('sale') || (i.subject || '').toLowerCase().includes('newsletter'));
+      const isReceipt = items.some(i => (i.subject || '').toLowerCase().includes('receipt') || (i.subject || '').toLowerCase().includes('order'));
+      
+      groups.push({
+        id: `triage_group_${groupIdx++}`,
+        sender: senderName,
+        title: isReceipt ? `Archive ${items.length} ${senderName} receipts` : isPromo ? `Trash ${items.length} ${senderName} marketing emails` : `Archive ${items.length} emails from ${senderName}`,
+        actionType: isPromo ? 'trash' : 'archive',
+        emailIds,
+        categoryTag: isReceipt ? 'Receipts' : isPromo ? 'Marketing' : 'Notifications',
+        confidenceScore: 0.9,
+        reason: `${items.length} messages from ${senderName} with consistent patterns.`,
+        suggestFilterRule: {
+          senderQuery: `from:${senderName.toLowerCase().replace(/\s+/g, '')}`,
+          description: `Auto-${isPromo ? 'trash' : 'archive'} recurring messages from ${senderName}`
+        }
+      });
+    }
+  }
+
+  const macroInsights = [
+    {
+      id: "macro_calendar_spam",
+      title: "Calendar Invitations & Updates",
+      actionType: "trash",
+      filterQuery: "filename:invite.ics OR subject:\"invitation\" is:unread",
+      estimatedImpact: "Cleans unread meeting alerts and calendar clutter",
+      categoryTag: "Calendar Spambox",
+      description: "Bulk review stale meeting invites that were already accepted or passed."
+    },
+    {
+      id: "macro_stale_promotions",
+      title: "Old Promotional Newsletters (>6 months)",
+      actionType: "trash_promotions",
+      filterQuery: "category:promotions older_than:6m",
+      estimatedImpact: "Purges obsolete marketing blasts older than 6 months",
+      categoryTag: "Stale Marketing",
+      description: "Expired discounts and old newsletters taking up space without active value."
+    }
+  ];
+
+  return {
+    groups: groups.slice(0, 15),
+    macroInsights
+  };
 }
 
 async function startServer() {
@@ -237,7 +591,17 @@ Sampled emails:
 ${emailText}
 `;
 
-      const result = await generateAIContent(aiPrompt, schema, settings);
+      let result: any = null;
+      try {
+        result = await generateAIContent(aiPrompt, schema, settings);
+      } catch (aiErr: any) {
+        console.warn("[AI] Smart triage fallback triggered due to AI error/rate limit:", aiErr.message || aiErr);
+        result = generateHeuristicSmartTriage(emails, existingLabels, userEmail);
+      }
+
+      if (!result || !result.groups) {
+        result = generateHeuristicSmartTriage(emails, existingLabels, userEmail);
+      }
       
       // Post-process & strict deduplication
       if (result && result.groups && Array.isArray(result.groups)) {
@@ -656,12 +1020,29 @@ Instructions:
 
 3. Keep wording crisp, professional, and practical.`;
 
-      const result = await generateAIContent(prompt, schema, settings);
+      let result: any = null;
+      try {
+        result = await generateAIContent(prompt, schema, settings);
+      } catch (aiErr: any) {
+        console.warn("[AI] Category cleanup analysis fallback triggered due to AI error/rate limit:", aiErr.message || aiErr);
+        result = generateHeuristicCategoryCleanup(categoryName, estimatedTotal, emails, userLabels);
+      }
+
+      if (!result || !result.summary || !result.actions) {
+        result = generateHeuristicCategoryCleanup(categoryName, estimatedTotal, emails, userLabels);
+      }
+
       res.json(result);
     } catch (e: any) {
       console.error("AI Category Cleanup Error:", e);
-      const isRateLimit = e.message && (e.message.includes("429") || e.message.includes("quota") || e.message.includes("rate limit") || e.message.includes("exhausted"));
-      res.status(isRateLimit ? 429 : 500).json({ error: e.message || "Failed to analyze category" });
+      try {
+        const { categoryName, estimatedTotal, emails, userLabels } = req.body || {};
+        if (emails && Array.isArray(emails)) {
+          const fallback = generateHeuristicCategoryCleanup(categoryName || 'Category', estimatedTotal, emails, userLabels);
+          return res.json(fallback);
+        }
+      } catch {}
+      res.status(500).json({ error: e.message || "Failed to analyze category" });
     }
   });
   
@@ -669,8 +1050,8 @@ Instructions:
     try {
       const { settings } = req.body;
       const schema = { type: Type.STRING };
-      // Lightweight prompt just to verify limits
-      await generateAIContent("Reply OK", schema, settings);
+      // Lightweight prompt strictly to verify user's chosen provider & key
+      await generateAIContent("Reply OK", schema, settings, { strictUserKeyOnly: true });
       res.json({ ok: true });
     } catch (err: any) {
       const isRateLimit = err.message && (err.message.includes("429") || err.message.includes("quota") || err.message.includes("rate limit") || err.message.includes("exhausted"));

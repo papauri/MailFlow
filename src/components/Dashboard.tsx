@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
-import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive } from "lucide-react";
+import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive, SlidersHorizontal } from "lucide-react";
 import { AdminPanel } from "./AdminPanel";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { InboxHealth } from "./InboxHealth";
@@ -9,8 +9,15 @@ import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
 import { WalkthroughTip } from "./WalkthroughTip";
 import { HealthScoreWidget } from "./HealthScoreWidget";
 import { LabelManagerModal } from "./LabelManagerModal";
+import { CategoryDistributionModal } from "./CategoryDistributionModal";
+import { UnsubscribeManager } from "./UnsubscribeManager";
+import { SmartTriageModal } from "./SmartTriageModal";
+import { HealthScoreModal } from "./HealthScoreModal";
+import { FolderOptimizer } from "./FolderOptimizer";
 import { CleanupPresetsBar, CleanupPreset } from "./CleanupPresetsBar";
 import { StorageBreakdownBar } from "./StorageBreakdownBar";
+import { RuleSuggester } from "./RuleSuggester";
+import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
 import { cn } from "../lib/utils";
 
 function formatSize(bytes: number) {
@@ -57,6 +64,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const searchIdRef = useRef(0);
   const todayStr = new Date().toISOString().split("T")[0];
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [currentHash, setCurrentHash] = useState<string>("dashboard");
+  const [filterPageParams, setFilterPageParams] = useState<FilterPageParams | null>(null);
   const [showHealth, setShowHealth] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
@@ -179,12 +188,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           setUseAI(true);
           setAiError(null);
         } else {
+          const errData = await res.json().catch(() => null);
           setConnectionStatus('error');
-          setConnectionMessage('Invalid API key or quota exceeded.');
+          setConnectionMessage(errData?.error || 'Invalid API key or quota exceeded.');
         }
-      } catch (e) {
+      } catch (e: any) {
         setConnectionStatus('error');
-        setConnectionMessage('Network error checking key.');
+        setConnectionMessage(e.message || 'Network error checking key.');
       }
     }, 1000);
     return () => clearTimeout(timer);
@@ -525,16 +535,55 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     
   const handleHashChange = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      const hash = decodeURIComponent(window.location.hash.replace('#', '')) || 'dashboard';
-      if (hash === 'health') {
+      const rawHash = decodeURIComponent(window.location.hash.replace('#', '')) || 'dashboard';
+      const hashKey = rawHash.split('?')[0] || 'dashboard';
+      const queryString = rawHash.includes('?') ? rawHash.slice(rawHash.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+
+      setCurrentHash(hashKey);
+
+      if (hashKey === 'health') {
         setShowHealth(true);
+        setFilterPageParams(null);
+      } else if (hashKey === 'filter-view' || hashKey === 'inspect') {
+        setShowHealth(false);
+        const filterParams: FilterPageParams = {
+          title: params.get('title') || 'Filtered Messages',
+          query: params.get('q') || '',
+          badge: params.get('badge') || undefined,
+          subtitle: params.get('sub') || undefined,
+          folder: params.get('folder') || 'anywhere',
+          sort: (params.get('sort') as any) || undefined,
+          source: params.get('source') || 'health'
+        };
+        setFilterPageParams(filterParams);
+        
+        // Configure search query & filters for this page
+        setQuery(filterParams.query);
+        if (filterParams.sort) {
+          setSortBy(filterParams.sort);
+          setSortDesc(true);
+        }
+        let newFilters = ['anywhere'];
+        if (filterParams.folder) {
+          if (filterParams.folder === 'spam+trash') newFilters = ['spam', 'trash'];
+          else if (filterParams.folder === 'inbox') newFilters = ['inbox'];
+          else if (filterParams.folder.startsWith('category:')) newFilters = [filterParams.folder];
+          else newFilters = [filterParams.folder];
+        }
+        setFolderFilters(newFilters);
+        setTimeout(() => handleSearch(undefined, filterParams.query, newFilters, true), 0);
+      } else if (['category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules'].includes(hashKey)) {
+        setShowHealth(false);
+        setFilterPageParams(null);
       } else {
         setShowHealth(false);
+        setFilterPageParams(null);
         let folders = ['anywhere'];
-        if (hash.startsWith('folders=')) {
-          folders = Array.from(new Set(hash.replace('folders=', '').split(',').filter(Boolean)));
-        } else if (hash.startsWith('folder-')) { // Backwards compat with what I just wrote
-          folders = [hash.replace('folder-', '')];
+        if (hashKey.startsWith('folders=')) {
+          folders = Array.from(new Set(hashKey.replace('folders=', '').split(',').filter(Boolean)));
+        } else if (hashKey.startsWith('folder-')) { // Backwards compat
+          folders = [hashKey.replace('folder-', '')];
         }
         
         if (folders.length === 0) folders = ['anywhere'];
@@ -578,6 +627,11 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
       setEmails(prev => prev.filter(e => !ids.includes(e.id)));
       setTotalCount(prev => typeof prev === 'number' ? Math.max(0, prev - ids.length) : prev);
       setSelectedIds(new Set());
+      
+      window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+        detail: { type: 'spam', count: ids.length, isPartial: true }
+      }));
+
       const newCount = emails.length - ids.length;
       if (newCount < 20 && nextPageToken) {
         setTimeout(() => handleLoadMore(), 100);
@@ -599,6 +653,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     setActionLoading("read");
     try {
       await markAllAsReadByQuery(lastExecutedQuery);
+      window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+        detail: { type: 'unread', count: emails.length, isPartial: false }
+      }));
       handleSearch(); // Refresh list to reflect changes
     } catch (e) {
       console.error(e);
@@ -625,6 +682,10 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
       setEmails([]);
       setTotalCount(0);
       setSelectedIds(new Set());
+
+      window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+        detail: { type: 'spam', count: 9999, isPartial: false }
+      }));
     } catch (err) {
       console.error(err);
     } finally {
@@ -668,10 +729,22 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     setSelectedIds(new Set());
     
     try {
-      if (action === "trash") await batchTrashEmails(allMessageIds);
-      else if (action === "archive") await batchArchiveEmails(allMessageIds);
-      else if (action === "read") await batchMarkAsRead(allMessageIds);
-      // delete action is handled separately by executeDeleteSelected
+      if (action === "trash") {
+        await batchTrashEmails(allMessageIds);
+        window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+          detail: { type: 'promo', count: ids.length, isPartial: true }
+        }));
+      } else if (action === "archive") {
+        await batchArchiveEmails(allMessageIds);
+        window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+          detail: { type: 'unread', count: ids.length, isPartial: true }
+        }));
+      } else if (action === "read") {
+        await batchMarkAsRead(allMessageIds);
+        window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+          detail: { type: 'unread', count: ids.length, isPartial: true }
+        }));
+      }
       
       // Auto-replenish if we are running low on displayed emails
       const removedCount = (action !== "read" || isUnreadView) ? ids.length : 0;
@@ -910,13 +983,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
       <OnboardingWalkthrough key={walkthroughKey} onComplete={() => {}} />
       
-      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
-        <div className="flex items-center gap-2 sm:gap-3">
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2 sm:py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <div className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs">
             <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <h1 onDoubleClick={() => setShowAdminPanel(true)} className="text-base sm:text-xl font-bold tracking-tight text-slate-800 cursor-default select-none">MailFlow</h1>
-          <div className="hidden md:block ml-2 border-l border-slate-200 pl-3">
+          <div className="ml-1 sm:ml-2 border-l border-slate-200 pl-1.5 sm:pl-3 flex items-center">
             <HealthScoreWidget 
               onApplyQuery={(q, filter, sortOption) => {
                 setQuery(q);
@@ -951,15 +1024,21 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <button 
-            onClick={() => { window.location.hash = showHealth ? '#dashboard' : '#health'; }}
+            onClick={() => { 
+              window.location.hash = ['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+                ? '#dashboard' 
+                : '#health'; 
+            }}
             className={cn(
               "px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer",
-              showHealth ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              ['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+                ? "bg-slate-800 text-white" 
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
             )}
             title="Inbox Health & Storage Visualizer"
           >
             <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" /> 
-            <span>{showHealth ? "Dashboard" : "Health"}</span>
+            <span>{['health', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) ? "Dashboard" : "Health"}</span>
           </button>
 
           <button 
@@ -992,25 +1071,154 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6">
         
         {/* Breadcrumbs Navigation */}
-        <div className="flex items-center gap-2 text-sm text-slate-500 mb-[-12px]">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500 mb-[-12px] flex-wrap">
           <button 
             onClick={() => { window.location.hash = '#dashboard'; }} 
-            className="hover:text-slate-900 transition-colors flex items-center gap-1"
+            className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer font-medium"
           >
-            Dashboard
+            <Inbox className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
+            <span>Dashboard</span>
           </button>
           
-          {showHealth && (
+          {currentHash === 'health' && (
             <>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
-              <span className="text-slate-800 font-medium flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5" />
+              <span className="text-slate-900 font-semibold flex items-center gap-1">
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
                 Inbox Health
               </span>
             </>
           )}
 
-          {!showHealth && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
+          {currentHash === 'category-distribution' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Category Breakdown</span>
+            </>
+          )}
+
+          {currentHash === 'subscriptions' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Subscriptions Manager</span>
+            </>
+          )}
+
+          {currentHash === 'smart-triage' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Smart Batch Organizer</span>
+            </>
+          )}
+
+          {currentHash === 'label-manager' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Folders & Labels</span>
+            </>
+          )}
+
+          {currentHash === 'health-score' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Inbox Health Score</span>
+            </>
+          )}
+
+          {currentHash === 'folder-optimizer' && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Folder Optimizer & Rules</span>
+            </>
+          )}
+
+          {(currentHash === 'rule-suggester' || currentHash === 'rules') && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => { window.location.hash = '#health'; }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                Inbox Health
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold">Automated Sorting Rules</span>
+            </>
+          )}
+
+          {(currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams && (
+            <>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <button 
+                onClick={() => {
+                  window.location.hash = '#' + (filterPageParams.source || 'health');
+                }} 
+                className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                {filterPageParams.source === 'health-score' 
+                  ? 'Health Score' 
+                  : filterPageParams.source === 'rule-suggester' 
+                  ? 'Automated Rules' 
+                  : 'Inbox Health'}
+              </button>
+              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
+              <span className="text-slate-900 font-semibold truncate max-w-[220px] sm:max-w-none">
+                {filterPageParams.title}
+              </span>
+            </>
+          )}
+
+          {currentHash !== 'health' && !['category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules', 'filter-view', 'inspect'].includes(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
             <>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
               <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
@@ -1027,7 +1235,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
         </div>
 
-        {showHealth ? (
+        {currentHash === 'health' ? (
            <InboxHealth 
              userEmail={user?.email}
              aiSettings={aiSettings} 
@@ -1038,7 +1246,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setQuery(q);
                if (sortOption) {
                  setSortBy(sortOption);
-                 setSortDesc(true); // Always sort highest to lowest by default
+                 setSortDesc(true);
                }
                let newFilters = ['anywhere'];
                if (filter) {
@@ -1049,7 +1257,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                }
                setFolderFilters(newFilters);
                
-               // We want hash so back button works!
                const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
                  ? `#folders=${newFilters.join(',')}` 
                  : '#dashboard';
@@ -1063,6 +1270,207 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
               }}
             />
+        ) : currentHash === 'category-distribution' ? (
+          <CategoryDistributionModal
+            isPage={true}
+            isOpen={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            onApplyCategory={(q, filter, sortOption) => {
+              setQuery(q);
+              if (sortOption) {
+                setSortBy(sortOption);
+                setSortDesc(true);
+              }
+              let newFilters = ['anywhere'];
+              if (filter) {
+                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                else if (filter === 'inbox') newFilters = ['inbox'];
+                else if (filter.startsWith('category:')) newFilters = [filter];
+                else newFilters = [filter];
+              }
+              setFolderFilters(newFilters);
+              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                ? `#folders=${newFilters.join(',')}` 
+                : '#dashboard';
+              window.location.hash = newHash;
+              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+            }}
+            userLabels={userLabels}
+            aiSettings={aiSettings}
+            userEmail={user?.email}
+            onRefresh={() => handleSearch()}
+          />
+        ) : currentHash === 'subscriptions' ? (
+          <UnsubscribeManager
+            isPage={true}
+            isOpen={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            aiSettings={aiSettings}
+            onApplyQuery={(q, filter, sortOption) => {
+              setQuery(q);
+              if (sortOption) {
+                setSortBy(sortOption);
+                setSortDesc(true);
+              }
+              let newFilters = ['anywhere'];
+              if (filter) {
+                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                else if (filter === 'inbox') newFilters = ['inbox'];
+                else if (filter.startsWith('category:')) newFilters = [filter];
+                else newFilters = [filter];
+              }
+              setFolderFilters(newFilters);
+              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                ? `#folders=${newFilters.join(',')}` 
+                : '#dashboard';
+              window.location.hash = newHash;
+              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+            }}
+          />
+        ) : currentHash === 'smart-triage' ? (
+          <SmartTriageModal
+            isPage={true}
+            isOpen={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            aiSettings={aiSettings}
+            userLabels={userLabels}
+            userEmail={user?.email}
+            onRefresh={() => handleSearch()}
+            onSearchQuery={(q) => {
+              setQuery(q);
+              window.location.hash = '#dashboard';
+              setTimeout(() => handleSearch(undefined, q, ['anywhere'], true), 0);
+            }}
+          />
+        ) : currentHash === 'label-manager' ? (
+          <LabelManagerModal
+            isPage={true}
+            isOpen={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            aiSettings={aiSettings}
+            userLabels={userLabels}
+            onRefresh={() => {
+              fetchGmailAPI('/labels').then(data => {
+                if (data && data.labels) setUserLabels(data.labels);
+              });
+              handleSearch();
+            }}
+            onApplyQuery={(q, filter, sortOption) => {
+              setQuery(q);
+              if (sortOption) {
+                setSortBy(sortOption);
+                setSortDesc(true);
+              }
+              let newFilters = ['anywhere'];
+              if (filter) {
+                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                else if (filter === 'inbox') newFilters = ['inbox'];
+                else if (filter.startsWith('category:')) newFilters = [filter];
+                else newFilters = [filter];
+              }
+              setFolderFilters(newFilters);
+              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                ? `#folders=${newFilters.join(',')}` 
+                : '#dashboard';
+              window.location.hash = newHash;
+              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+            }}
+          />
+        ) : currentHash === 'health-score' ? (
+          <HealthScoreModal
+            isPage={true}
+            isOpen={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            onApplyQuery={(q, filter, sortOption) => {
+              setQuery(q);
+              if (sortOption) {
+                setSortBy(sortOption);
+                setSortDesc(true);
+              }
+              let newFilters = ['anywhere'];
+              if (filter) {
+                if (filter === 'spam+trash') newFilters = ['spam', 'trash'];
+                else if (filter === 'inbox') newFilters = ['inbox'];
+                else if (filter.startsWith('category:')) newFilters = [filter];
+                else newFilters = [filter];
+              }
+              setFolderFilters(newFilters);
+              const newHash = newFilters.length > 0 && !(newFilters.length === 1 && newFilters[0] === 'anywhere')
+                ? `#folders=${newFilters.join(',')}` 
+                : '#dashboard';
+              window.location.hash = newHash;
+              setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
+            }}
+            onOpenUnsubscribe={() => { window.location.hash = '#subscriptions'; }}
+          />
+        ) : currentHash === 'folder-optimizer' ? (
+          <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { window.location.hash = '#health'; }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
+                  title="Back to Inbox Health"
+                >
+                  Back
+                </button>
+                <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-2xs shrink-0">
+                  <SlidersHorizontal className="w-5 h-5 text-slate-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Folder Optimizer & Automated Rules</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Automated detection of recurring email patterns to organize into folders & create Gmail rules</p>
+                </div>
+              </div>
+            </div>
+            <FolderOptimizer
+              emails={emails}
+              userLabels={userLabels}
+              aiSettings={aiSettings}
+              isFetching={isSearching}
+              isAiWorking={connectionStatus === 'success'}
+              onReload={() => handleSearch()}
+            />
+          </div>
+        ) : (currentHash === 'rule-suggester' || currentHash === 'rules') ? (
+          <RuleSuggester
+            isPage={true}
+            onClose={() => { window.location.hash = '#health'; }}
+            userLabels={userLabels}
+            recentEmails={emails}
+            aiSettings={aiSettings}
+            isAiWorking={connectionStatus === 'success'}
+          />
+        ) : (currentHash === 'filter-view' || currentHash === 'inspect') && filterPageParams ? (
+          <FilteredEmailPage
+            params={filterPageParams}
+            emails={emails}
+            isSearching={isSearching}
+            totalCount={totalCount}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onSelectAll={() => {
+              if (selectedIds.size === emails.length && emails.length > 0) {
+                setSelectedIds(new Set());
+              } else {
+                setSelectedIds(new Set(emails.map(e => e.id)));
+              }
+            }}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onDeleteSelected={handleDeleteSelected}
+            onArchiveSelected={() => handleBulkAction("archive")}
+            onMarkReadSelected={() => handleBulkAction("read")}
+            onStarSelected={() => {}}
+            userLabels={userLabels}
+            viewDensity={viewDensity}
+            setViewDensity={setViewDensity}
+            onLoadMore={handleLoadMore}
+            hasMore={!!nextPageToken}
+            isLoadingMore={isLoadingMore}
+            onRefresh={() => handleSearch(undefined, filterPageParams.query, folderFilters, true)}
+            onBack={() => { window.location.hash = '#' + (filterPageParams.source || 'health'); }}
+            actionLoading={actionLoading}
+          />
         ) : (
         <>
         <WalkthroughTip 
@@ -1070,7 +1478,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           title="Welcome to your MailFlow Workspace" 
           description="Try out the new 'Inbox Health' button above to unleash the automated Folder Optimizer, or select multiple emails below to test out Smart Organize Analytics and the Rule Suggester!"
         />
-        <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 sm:gap-4 relative z-30">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
@@ -1113,7 +1521,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
              </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-20">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-30">
             <FolderMultiSelect 
               selected={folderFilters} 
               onChange={(newFilters) => {
@@ -1161,17 +1569,28 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 flex flex-col flex-1">
-          <div className="sticky top-[57px] sm:top-[65px] z-20 bg-white flex flex-col border-b border-slate-200 rounded-t-2xl shadow-2xs">
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 flex flex-col flex-1 relative z-10">
+          <div className="sticky top-[57px] sm:top-[65px] z-10 bg-white flex flex-col border-b border-slate-200 rounded-t-2xl shadow-2xs">
             <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <button 
-                  onClick={() => setSelectedIds(selectedIds.size === emails.length ? new Set() : new Set(emails.map(e => e.id)))}
+                  type="button"
+                  id="select-all-emails-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (emails.length === 0) return;
+                    const isAllSelected = selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id));
+                    if (isAllSelected) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(emails.map(item => item.id)));
+                    }
+                  }}
                   className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors shrink-0 cursor-pointer"
                   disabled={emails.length === 0}
-                  title={selectedIds.size === emails.length ? "Deselect all" : "Select all"}
+                  title={selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id)) ? "Deselect all" : "Select all"}
                 >
-                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs", selectedIds.size > 0 ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white")}>
+                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs", selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id)) ? "bg-slate-800 border-slate-800" : selectedIds.size > 0 ? "bg-slate-800/80 border-slate-800" : "border-slate-300 bg-white")}>
                     {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
                   </div>
                 </button>
@@ -2215,15 +2634,30 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                   <CheckCircle className="w-3 h-3 text-slate-400 shrink-0" /> Stored securely in your browser's local storage.
                 </p>
                 {connectionStatus !== 'idle' && (
-                  <div className={"mt-2 text-[11px] sm:text-xs font-medium flex items-center gap-1.5 px-2 py-1.5 rounded " + (
-                    connectionStatus === 'testing' ? "bg-blue-50 text-blue-600" :
-                    connectionStatus === 'success' ? "bg-emerald-50 text-emerald-600" :
-                    "bg-red-50 text-red-600"
-                  )}>
-                    {connectionStatus === 'testing' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    {connectionStatus === 'success' && <CheckCircle className="w-3.5 h-3.5" />}
-                    {connectionStatus === 'error' && <AlertTriangle className="w-3.5 h-3.5" />}
-                    {connectionMessage}
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    <div className={"text-[11px] sm:text-xs font-medium flex items-center gap-1.5 px-2.5 py-2 rounded-lg " + (
+                      connectionStatus === 'testing' ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                      connectionStatus === 'success' ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                      "bg-amber-50 text-amber-800 border border-amber-200"
+                    )}>
+                      {connectionStatus === 'testing' && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-blue-600" />}
+                      {connectionStatus === 'success' && <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-600" />}
+                      {connectionStatus === 'error' && <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" />}
+                      <span className="leading-snug">{connectionMessage}</span>
+                    </div>
+                    {connectionStatus === 'error' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { provider: 'gemini', model: 'gemini-3.6-flash', apiKey: '' };
+                          saveSettings(updated);
+                          setConnectionStatus('idle');
+                        }}
+                        className="self-start text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 cursor-pointer mt-0.5"
+                      >
+                        Reset to default Gemini service
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2414,8 +2848,8 @@ function FolderMultiSelect({ selected, onChange, onClose, userLabels, onOpenLabe
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={handleClose} />
-          <div className="absolute top-full left-0 mt-1 w-52 sm:w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-80 sm:max-h-96 overflow-y-auto py-1">
+          <div className="fixed inset-0 z-40" onClick={handleClose} />
+          <div className="absolute top-full left-0 mt-1 w-52 sm:w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-80 sm:max-h-96 overflow-y-auto py-1">
             {options.map(opt => (
               <label key={opt.value} className="flex items-center gap-2.5 sm:gap-3 px-3 py-1.5 sm:py-2 hover:bg-slate-50 cursor-pointer text-xs sm:text-sm">
                 <input 
@@ -2491,8 +2925,8 @@ function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange }: any
       
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-3 flex flex-col gap-3">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-3 flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 px-2">Quick Select</span>
               <button type="button" onClick={() => setRange(7)} className="text-left px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Last 7 days</button>

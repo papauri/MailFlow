@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { batchModifyEmails, batchTrashEmails, batchArchiveEmails, createLabel, createFilter } from '../lib/gmail';
+import { EmailReviewView } from './EmailReviewView';
+import { Search } from 'lucide-react';
 import { 
   extractSenderDetails, 
   tokenizeText, 
@@ -227,6 +229,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   const [creatingRuleId, setCreatingRuleId] = useState<number | null>(null);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const [isExpanded, setIsExpanded] = useState(true);
+  const [inspectingRec, setInspectingRec] = useState<{ idx: number, rec: Recommendation } | null>(null);
 
   // Anti-Hallucination & Zero-False-Positive Sanitization Engine
   const validateAndSanitizeRecommendations = (rawRecs: any[], emailPool: any[]): Recommendation[] => {
@@ -744,7 +747,7 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
   }, [recommendations, activeCategoryFilter]);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8">
+    <div className={cn("bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs mt-6 sm:mt-8 relative", inspectingRec ? "min-h-[600px]" : "")}>
       {/* Header */}
       <div 
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 gap-3 cursor-pointer hover:bg-slate-100/50 transition-colors"
@@ -972,52 +975,12 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
                     <>
                       {/* Toggle inspect contents */}
                       <button 
-                        onClick={() => toggleExpand(idx)}
-                        className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-3 transition-colors mt-1"
+                        onClick={() => setInspectingRec({ idx, rec })}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 mb-3 transition-colors mt-1 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 w-fit"
                       >
-                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        {isExpanded ? 'Hide verified contents' : `Inspect ${rec.emailIds.length} verified emails`}
+                        <Search className="w-3.5 h-3.5" />
+                        Review {rec.emailIds.length} verified emails
                       </button>
-                      
-                      {/* Email items inspector with individual checkboxes */}
-                      {isExpanded && (
-                        <div className="bg-slate-50 rounded-lg p-2.5 mb-4 max-h-[180px] overflow-y-auto border border-slate-200/80 flex flex-col gap-1.5 custom-scrollbar">
-                          {emails
-                            .filter(e => rec.emailIds.includes(e.id))
-                            .map((e, i) => {
-                              const isSelected = !(rec.deselectedEmailIds || []).includes(e.id);
-                              const details = extractSenderDetails(e.sender);
-                              return (
-                                <div 
-                                  key={i} 
-                                  className={cn(
-                                    "text-xs flex items-start gap-2 border-b border-slate-200/60 pb-1.5 last:border-0 last:pb-0 cursor-pointer hover:bg-slate-100/70 p-1.5 rounded transition-colors",
-                                    !isSelected && "opacity-50"
-                                  )} 
-                                  onClick={() => toggleEmailSelection(idx, e.id)}
-                                >
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isSelected}
-                                    onChange={() => {}} // Handled by container click
-                                    className="mt-0.5 rounded border-slate-300 text-slate-800 focus:ring-slate-600 shrink-0 cursor-pointer"
-                                  />
-                                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className={cn("font-bold truncate transition-colors", isSelected ? "text-slate-800" : "text-slate-400 line-through")}>
-                                        {details.displayName}
-                                      </span>
-                                      <span className="text-[10px] font-mono text-slate-400 shrink-0">{details.rootDomain}</span>
-                                    </div>
-                                    <span className={cn("truncate transition-colors text-slate-500", !isSelected && "line-through")}>
-                                      {e.subject || '(No Subject)'}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
 
                       {/* Clear Choice Action Buttons: Label vs Move vs Archive vs Trash */}
                       <div className="flex flex-col gap-2 mt-auto pt-3 border-t border-slate-100">
@@ -1076,6 +1039,25 @@ export function FolderOptimizer({ emails, userLabels, aiSettings, isFetching, is
         )}
       </div>
       </div>
+      )}
+
+      {inspectingRec && (
+        <EmailReviewView
+          title={inspectingRec.rec.title || inspectingRec.rec.suggestedLabel || 'Review Emails'}
+          subtitle={inspectingRec.rec.categoryTag || ''}
+          emails={emails.filter(e => inspectingRec.rec.emailIds.includes(e.id))}
+          selectedEmailIds={new Set(inspectingRec.rec.emailIds.filter(id => !(inspectingRec.rec.deselectedEmailIds || []).includes(id)))}
+          onToggleSelect={(id) => toggleEmailSelection(inspectingRec.idx, id)}
+          onToggleSelectAll={() => {}}
+          onBack={() => setInspectingRec(null)}
+          onExecute={() => {
+            handleAction(inspectingRec.idx, 'move_archive', inspectingRec.rec);
+            setInspectingRec(null);
+          }}
+          actionLabel={`Move to ${inspectingRec.rec.suggestedLabel} & Archive`}
+          isExecuting={processingKey === `${inspectingRec.idx}-move_archive`}
+          isFullModal={false}
+        />
       )}
     </div>
   );
