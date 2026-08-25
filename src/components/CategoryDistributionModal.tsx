@@ -646,14 +646,18 @@ export function CategoryDistributionModal({
                   audit={audit}
                   categoryName={currentCategoryConfig.name}
                   aiSettings={aiSettings}
-                  onInspect={(ids, title) => {
-                    // Thread ids aren't a Gmail query, so scope by the category and
-                    // let the page filter — better than pretending to query by id.
+                  onInspect={(cluster) => {
+                    // The cluster's own query, derived from the subject template it
+                    // was built from, so Inspect shows exactly the group. Falls back
+                    // to the category only when no distinctive phrase survives —
+                    // wrong-but-wider beats pretending to filter.
                     const params = new URLSearchParams();
-                    params.set('q', currentCategoryConfig.query);
-                    params.set('title', title);
+                    params.set('q', cluster.query || currentCategoryConfig.query);
+                    params.set('title', cluster.sampleSubject.slice(0, 60));
                     params.set('badge', 'Audit group');
-                    params.set('sub', `${ids.length} similar messages in ${currentCategoryConfig.name}`);
+                    params.set('sub', cluster.query
+                      ? `${cluster.volume.toLocaleString()} messages sharing this subject pattern`
+                      : `${currentCategoryConfig.name} — no distinctive pattern to filter on`);
                     params.set('source', 'category-distribution');
                     params.set('action', 'trash');
                     window.location.hash = `#filter-view?${params.toString()}`;

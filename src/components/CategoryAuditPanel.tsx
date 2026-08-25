@@ -15,7 +15,7 @@ interface Props {
   audit: CategoryAudit;
   categoryName: string;
   aiSettings?: any;
-  onInspect: (ids: string[], title: string) => void;
+  onInspect: (cluster: TemplateCluster) => void;
   onCleared: (cluster: TemplateCluster, count: number) => void;
 }
 
@@ -271,7 +271,7 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                     </span>
                     <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                       <button
-                        onClick={() => onInspect(cluster.ids, title)}
+                        onClick={() => onInspect(cluster)}
                         disabled={isRunning}
                         className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
                       >
@@ -319,7 +319,7 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                       </ul>
                       <div className="mt-2.5 pt-2.5 border-t border-slate-200">
                         <code className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded px-1.5 py-0.5 break-all">
-                          {cluster.template}
+                          {cluster.query || cluster.template}
                         </code>
                       </div>
                     </div>

@@ -44,6 +44,9 @@ export interface TemplateCluster {
   ids: string[];
   /** Message-level ids, which is what the Gmail batch endpoints operate on. */
   actionIds: string[];
+  /** Gmail query selecting this cluster, so Inspect shows the group and not the
+   *  whole category. Empty when the template has no phrase distinctive enough. */
+  query: string;
   score: number;
 }
 
@@ -100,11 +103,45 @@ function describeAge(days: number): string {
   return `${days} days`;
 }
 
+/**
+ * Turns a subject template back into a Gmail query.
+ *
+ * The template has had its variable parts replaced, so the stable words around them
+ * are what every message in the cluster shares. The longest run of those words makes
+ * a phrase specific enough to select the group — "your verification code is" rather
+ * than a stray word like "your", which would match half the mailbox.
+ *
+ * Returns empty rather than guessing when nothing distinctive survives; the caller
+ * then falls back to the category scope, which is at least not wrong.
+ */
+export function templateToQuery(template: string, scopeQuery?: string): string {
+  // Split on the placeholder: each segment is literal text shared by the cluster.
+  const runs = template.split('#').map(r => r.trim().split(/\s+/).filter(Boolean));
+  let best: string[] = [];
+  for (const run of runs) {
+    if (run.length > best.length) best = run;
+  }
+
+  // One short word is not distinctive enough to filter on.
+  if (best.length === 0) return '';
+  if (best.length === 1 && best[0].length < 6) return '';
+
+  // Cap the phrase: Gmail matches it verbatim, and a very long one is more likely to
+  // miss members of the cluster than to sharpen it.
+  const phrase = best.slice(0, 6).join(' ').replace(/"/g, '');
+  if (!phrase) return '';
+
+  const clause = `subject:("${phrase}")`;
+  return scopeQuery ? `${scopeQuery} ${clause}` : clause;
+}
+
 export interface AuditOptions {
   /** Smallest cluster worth presenting as a single decision. */
   minClusterSize?: number;
   /** Messages newer than this are never proposed for clearing. */
   minAgeDays?: number;
+  /** Category query the clusters sit inside, so cluster queries stay scoped. */
+  scopeQuery?: string;
 }
 
 export function auditCategory(
@@ -112,7 +149,7 @@ export function auditCategory(
   now: Date = new Date(),
   options: AuditOptions = {}
 ): CategoryAudit {
-  const { minClusterSize = 5, minAgeDays = 14 } = options;
+  const { minClusterSize = 5, minAgeDays = 14, scopeQuery } = options;
   const nowMs = now.getTime();
 
   const buckets = new Map<string, any[]>();
@@ -196,6 +233,7 @@ export function auditCategory(
       confidence,
       ids: items.map(e => e.id).filter(Boolean),
       actionIds: items.flatMap(e => (e.messageIds?.length ? e.messageIds : [e.id])).filter(Boolean),
+      query: templateToQuery(template, scopeQuery),
       // Clearable clusters lead; among those, the biggest decision first.
       score: (verdict === 'expired' ? 3 : verdict === 'disposable' ? 2 : verdict === 'review' ? 1 : 0)
         * Math.log10(1 + items.length) * confidence,
