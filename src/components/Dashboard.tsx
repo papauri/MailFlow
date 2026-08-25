@@ -14,7 +14,7 @@ import { UnsubscribeManager } from "./UnsubscribeManager";
 import { SmartTriageModal } from "./SmartTriageModal";
 import { HealthScoreModal } from "./HealthScoreModal";
 import { FolderOptimizer } from "./FolderOptimizer";
-import { CleanupPresetsBar, CleanupPreset } from "./CleanupPresetsBar";
+import { CleanupPreset } from "../lib/cleanupPresets";
 import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { RuleSuggester } from "./RuleSuggester";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
@@ -1486,7 +1486,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-30">
-            <QuickFiltersDropdown onApplyPreset={handleApplyPreset} />
+            <QuickFiltersDropdown
+              onApplyPreset={handleApplyPreset}
+              currentQuery={query}
+              currentFolders={folderFilters}
+              currentSortBy={sortBy}
+              currentSortDesc={sortDesc}
+            />
             <FolderMultiSelect 
               selected={folderFilters} 
               onChange={(newFilters) => {
@@ -1513,14 +1519,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             </label>
           </div>
 
-          <CleanupPresetsBar 
-            currentQuery={query}
-            currentFolders={folderFilters}
-            currentSortBy={sortBy}
-            currentSortDesc={sortDesc}
-            onApplyPreset={handleApplyPreset}
-            className="pt-2 border-t border-slate-100"
-          />
+
         </div>
 
         {parsedQuery && (
