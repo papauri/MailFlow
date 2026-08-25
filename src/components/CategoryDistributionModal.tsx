@@ -1017,7 +1017,7 @@ export function CategoryDistributionModal({
             title="Back to Inbox Health"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
+            <span>Back to Inbox Health</span>
           </button>
         )}
         <div>

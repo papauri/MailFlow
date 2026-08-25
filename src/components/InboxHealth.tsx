@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { countEmails, searchEmails, estimateQuerySize } from '../lib/gmail';
+import React, { useState, useEffect } from 'react';
+import { useCachedResource, mutateCachedResource } from '../lib/useCachedResource';
+import {
+  fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult
+} from '../lib/inboxAnalytics';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
@@ -11,32 +14,27 @@ import { FolderOptimizer } from "./FolderOptimizer";
 import { RuleSuggester } from './RuleSuggester';
 import { SmartTriageModal } from './SmartTriageModal';
 import { HealthScoreModal } from './HealthScoreModal';
-import { SenderAnalyticsModal } from './SenderAnalyticsModal';
 import { StorageBreakdownBar } from './StorageBreakdownBar';
 import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
 
-export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking, currentHash }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean, currentHash?: string }) {
-  const [stats, setStats] = useState<any>(null);
-  const [sizes, setSizes] = useState<any>({});
-  const [loading, setLoading] = useState(true);
+export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
   const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
-  // Derived from the route, not local state: InboxHealth now stays mounted across
-  // navigation, so a local flag would keep the modal open when the user navigates
-  // to plain #health (and would be out of sync when returning to #sender-analytics).
-  const isSenderAnalyticsOpen = currentHash === 'sender-analytics';
-  const isVisible = currentHash === 'health' || currentHash === 'sender-analytics';
-  const isVisibleRef = useRef(isVisible);
-  const pendingReconcileRef = useRef(false);
-  const hasLoadedClustersRef = useRef(false);
-  const [topSenders, setTopSenders] = useState<any[]>([]);
-  const [topDomains, setTopDomains] = useState<any[]>([]);
-  const [recentEmailsState, setRecentEmailsState] = useState<any[]>([]);
-  const [isLoadingEmails, setIsLoadingEmails] = useState(true);
-  const [reloadTrigger, setReloadTrigger] = useState(0);
+
+  // Data lives in the shared cache, so this component can unmount freely without
+  // costing a full re-analysis on the way back in.
+  const statsResource = useCachedResource(inboxStatsKey(userEmail), () => fetchInboxStats());
+  const clustersResource = useCachedResource(senderClustersKey(userEmail), () => fetchSenderClusters(userEmail));
+
+  const stats = statsResource.data?.stats ?? null;
+  const sizes = statsResource.data?.sizes ?? {};
+  const topSenders = clustersResource.data?.topSenders ?? [];
+  const topDomains = clustersResource.data?.topDomains ?? [];
+  const loading = statsResource.loading;
+  const isLoadingEmails = clustersResource.loading;
 
   const openFilterPage = (
     query: string,
@@ -79,195 +77,32 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [showQuickFilters, setShowQuickFilters] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(true);
 
+  // Patch the cached counts the instant an action lands so the UI never lags. The
+  // shared cache also marks itself stale on these events and revalidates quietly in
+  // the background, so these optimistic numbers get reconciled with Gmail shortly
+  // after without ever showing a loader.
   useEffect(() => {
     const handleMetricsUpdated = (e: any) => {
       const { type, count, isPartial } = e.detail || {};
-      setStats((prev: any) => {
+      mutateCachedResource<InboxStatsResult>(inboxStatsKey(userEmail), (prev) => {
         if (!prev) return prev;
-        const next = { ...prev };
+        const stats = { ...prev.stats };
         if (type === 'unread') {
-          next.unread = isPartial ? Math.max(0, prev.unread - count) : 0;
+          stats.unread = isPartial ? Math.max(0, stats.unread - count) : 0;
         } else if (type === 'spam') {
-          next.spamAndTrash = isPartial ? Math.max(0, prev.spamAndTrash - count) : 0;
+          stats.spamAndTrash = isPartial ? Math.max(0, stats.spamAndTrash - count) : 0;
         } else if (type === 'promo') {
-          next.oldPromo = isPartial ? Math.max(0, prev.oldPromo - count) : 0;
+          stats.oldPromo = isPartial ? Math.max(0, stats.oldPromo - count) : 0;
         } else if (type === 'large') {
-          next.large = isPartial ? Math.max(0, prev.large - count) : 0;
+          stats.large = isPartial ? Math.max(0, stats.large - count) : 0;
         }
-        return next;
+        return { ...prev, stats };
       });
     };
 
     window.addEventListener('inbox_metrics_updated', handleMetricsUpdated);
     return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
-  }, []);
-
-  // This component now stays mounted across navigation, so its data would otherwise
-  // never refetch and would drift from the real inbox. Track mutations that happen
-  // while it is hidden and reconcile silently (no loader) the next time it is shown:
-  // the user gets instant back-navigation, with the numbers corrected in the
-  // background rather than a full blocking reload on every visit.
-  useEffect(() => {
-    isVisibleRef.current = isVisible;
-  }, [isVisible]);
-
-  useEffect(() => {
-    const markStale = () => {
-      if (!isVisibleRef.current) pendingReconcileRef.current = true;
-    };
-    window.addEventListener('inbox_metrics_updated', markStale);
-    return () => window.removeEventListener('inbox_metrics_updated', markStale);
-  }, []);
-
-  useEffect(() => {
-    if (isVisible && pendingReconcileRef.current) {
-      pendingReconcileRef.current = false;
-      setReloadTrigger(prev => prev + 1);
-    }
-  }, [isVisible]);
-
-  // Keep Sender Analytics counts in sync after trash/delete actions taken while
-  // inspecting a sender/domain, without re-running the full cluster analysis.
-  useEffect(() => {
-    const handleSenderEmailsRemoved = (e: any) => {
-      const { query, count, removedIds } = e.detail || {};
-      if (!query || !count) return;
-      const match = query.match(/^from:\(?([^)]+?)\)?$/i);
-      if (!match) return;
-      const identifier = match[1].toLowerCase();
-
-      // A sender identifier also rolls up into its domain cluster, so clearing
-      // mail from foo@bar.com must decrement the bar.com row too.
-      const affectedDomain = identifier.includes('@')
-        ? extractRootDomain(identifier.split('@')[1])
-        : extractRootDomain(identifier);
-
-      setTopSenders(prev => prev
-        .map(s => s.email.toLowerCase() === identifier ? { ...s, count: Math.max(0, s.count - count) } : s)
-        .filter(s => s.count > 0));
-      setTopDomains(prev => prev
-        .map(d => d.domain.toLowerCase() === affectedDomain ? { ...d, count: Math.max(0, d.count - count) } : d)
-        .filter(d => d.count > 0));
-
-      // Drop the removed threads from the inline accordion lists as well, otherwise
-      // expanding a sender still shows messages that were just trashed.
-      if (Array.isArray(removedIds) && removedIds.length > 0) {
-        const removed = new Set(removedIds);
-        setRecentEmailsState(prev => prev.filter(em => !removed.has(em.id)));
-      }
-    };
-
-    window.addEventListener('sender_analytics_emails_removed', handleSenderEmailsRemoved);
-    return () => window.removeEventListener('sender_analytics_emails_removed', handleSenderEmailsRemoved);
-  }, []);
-
-  useEffect(() => {
-    async function fetchStats() {
-      // Only show full page loader on initial mount
-      if (!stats) setLoading(true);
-      try {
-        const [unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
-          countEmails("is:unread in:inbox"),
-          countEmails("category:promotions older_than:6m -in:trash"),
-          countEmails("larger:5M -in:trash"),
-          countEmails("in:spam OR in:trash"),
-          countEmails("is:unread is:important -category:promotions -in:trash"),
-          countEmails("category:updates OR category:social -in:trash"),
-          countEmails("has:attachment -in:trash"),
-          countEmails("older_than:1y -in:trash")
-        ]);
-        setStats({ unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail });
-        
-        // Fetch estimated sizes in background
-        Promise.all([
-          estimateQuerySize("category:promotions older_than:6m -in:trash", oldPromo),
-          estimateQuerySize("larger:5M -in:trash", large),
-          estimateQuerySize("in:spam OR in:trash", spamAndTrash),
-          estimateQuerySize("has:attachment -in:trash", withAttachments),
-          estimateQuerySize("older_than:1y -in:trash", oldMail),
-          estimateQuerySize("category:updates OR category:social -in:trash", updatesAndSocial)
-        ]).then(([oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize]) => {
-          setSizes({ 
-            oldPromo: oldPromoSize, 
-            large: largeSize, 
-            spamAndTrash: spamAndTrashSize,
-            withAttachments: attachmentsSize,
-            oldMail: oldMailSize,
-            updatesAndSocial: updatesAndSocialSize
-          });
-        });
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    async function fetchClusters() {
-      // Only block the view with the loader on the very first load; later reconciles
-      // run silently in the background over the already-rendered data.
-      if (!hasLoadedClustersRef.current) setIsLoadingEmails(true);
-      const normalizedUser = (userEmail || '').toLowerCase().trim();
-      const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
-
-      try {
-        const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam -in:sent -is:draft", 250);
-        setRecentEmailsState(recentEmails);
-        
-        // Local Aggregation
-        const senderCounts = new Map();
-        const domainCounts = new Map();
-        
-        recentEmails.forEach(e => {
-          const details = extractSenderDetails(e.sender);
-          const email = details.emailAddr;
-          const rootDomain = details.rootDomain;
-          
-          if (!senderCounts.has(email)) {
-            senderCounts.set(email, { 
-              email, 
-              name: details.displayName, 
-              count: 0 
-            });
-          }
-          senderCounts.get(email).count++;
-          
-          // Only track organization / company / service domains for Domain Clusters (exclude generic public webmail providers and self)
-          if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
-            if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0 });
-            domainCounts.get(rootDomain).count++;
-          }
-        });
-        
-        const rawSenders = Array.from(senderCounts.values())
-          .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
-          .sort((a, b) => b.count - a.count).slice(0, 8);
-        const exactSenders = await Promise.all(rawSenders.map(async (s) => {
-           const exactCount = await countEmails(`from:(${s.email}) -in:trash`);
-           return { ...s, count: typeof exactCount === 'number' ? exactCount : s.count };
-        }));
-        setTopSenders(exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
-
-        const rawDomains = Array.from(domainCounts.values())
-          .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
-          .sort((a, b) => b.count - a.count).slice(0, 8);
-        const exactDomains = await Promise.all(rawDomains.map(async (d) => {
-           const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
-           return { ...d, count: typeof exactCount === 'number' ? exactCount : d.count };
-        }));
-        setTopDomains(exactDomains.filter(d => d.count > 0).sort((a, b) => b.count - a.count).slice(0, 6));
-
-      } catch (err: any) {
-        console.error("Pattern analysis error:", err);
-      } finally {
-        hasLoadedClustersRef.current = true;
-        setIsLoadingEmails(false);
-      }
-    }
-    
-    fetchStats();
-    fetchClusters();
-  }, [userEmail, reloadTrigger]);
+  }, [userEmail]);
 
   const exportHealthReport = () => {
     let csv = "Section,Metric,Value\n";
@@ -464,16 +299,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         </div>
       )}
 
-      {/* Analytics Modal */}
-      <SenderAnalyticsModal 
-        isOpen={isSenderAnalyticsOpen}
-        emails={recentEmailsState}
-        onClose={() => { window.location.hash = '#health'; }}
-        topSenders={topSenders}
-        topDomains={topDomains}
-        openFilterPage={openFilterPage}
-      />
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden p-5 flex flex-col h-full hover:border-slate-300 transition-colors group">
           <div className="flex items-center gap-3 mb-3">
@@ -521,7 +346,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         onClose={() => setIsLabelManagerOpen(false)}
         userLabels={userLabels || []}
         onLabelsUpdated={() => {
-          setReloadTrigger(prev => prev + 1);
+          statsResource.refresh();
+          clustersResource.refresh();
           if (onRefresh) onRefresh();
         }}
         onApplyQuery={onApplyQuery}

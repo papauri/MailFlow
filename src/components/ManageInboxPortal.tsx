@@ -29,7 +29,7 @@ export function ManageInboxPortal({
             title="Back to Inbox Health"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
+            <span>Back to Inbox Health</span>
           </button>
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Manage Inbox</h2>

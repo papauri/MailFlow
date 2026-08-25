@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { EmailData } from '../lib/gmail';
+import { routeLabel } from '../lib/routes';
 
 export interface FilterPageParams {
   title: string;
@@ -132,7 +133,9 @@ export function FilteredEmailPage({
     URL.revokeObjectURL(url);
   };
 
-  const backLabel = params.source === 'health-score' ? 'Back to Health Score' : 'Back to Inbox Health';
+  // Derived from the route the user actually arrived from, so the label always
+  // matches where the button sends them.
+  const backLabel = `Back to ${routeLabel(params.source)}`;
 
   return (
     <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">

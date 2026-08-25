@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, ChevronDown, ChevronUp, Activity, Loader2, TrendingUp, AlertTriangle, 
   HardDrive, Trash2, MailOpen, ArrowRight, ShieldCheck, RefreshCw, Sparkles, CheckCircle2, ArrowLeft, Mail,
-  Sliders, UserX, Filter, RotateCcw, Zap, ExternalLink
+  Sliders, UserX, Filter, RotateCcw, Zap, ExternalLink, Clock
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { 
@@ -17,6 +17,8 @@ import {
   HealthScoreMetrics,
   HealthScoreBreakdown
 } from '../lib/emailUtils';
+
+type FixableMetric = 'unread' | 'spam' | 'promo' | 'large' | 'oldMail';
 
 interface HealthScoreModalProps {
   isOpen?: boolean;
@@ -57,7 +59,7 @@ export function HealthScoreModal({
   const [simExtraRules, setSimExtraRules] = useState<number>(0);
 
   // Inspect mode states
-  const [inspectingView, setInspectingView] = useState<{ title: string; query: string; actionType: 'unread' | 'spam' | 'promo' | 'large', penalty: number } | null>(null);
+  const [inspectingView, setInspectingView] = useState<{ title: string; query: string; actionType: FixableMetric, penalty: number } | null>(null);
   const [previewEmails, setPreviewEmails] = useState<EmailData[]>([]);
   const [selectedInspectIds, setSelectedInspectIds] = useState<Set<string>>(new Set());
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -189,7 +191,7 @@ export function HealthScoreModal({
   const simulatedScore = simBreakdown.score;
   const scoreDiff = simulatedScore - liveScore;
 
-  const handleFix = async (type: 'unread' | 'spam' | 'promo' | 'large', currentPts: number, selectedIds?: string[]) => {
+  const handleFix = async (type: FixableMetric, _currentPts?: number, selectedIds?: string[]) => {
     setActiveAction(type);
     try {
       let message = "";
@@ -244,6 +246,20 @@ export function HealthScoreModal({
             onApplyQuery("larger:5M -in:trash");
             return;
          }
+      } else if (type === 'oldMail') {
+        if (isPartial) {
+          await batchTrashEmails(targetIds);
+          message = `${selectedIds!.length} old messages archived to trash!`;
+        } else {
+          // Bounded to one page like the promotions sweep — clearing a decade of mail
+          // in one unbounded pass would hammer the API and can't be undone in bulk.
+          const oldEmails = await searchEmails(HEALTH_SCORE_QUERIES.oldMail, 500);
+          const oldIds = oldEmails.flatMap(e => (e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]));
+          if (oldIds.length > 0) {
+            await batchTrashEmails(oldIds);
+          }
+          message = `${oldEmails.length} messages older than a year cleaned!`;
+        }
       }
       
       const countToSubtract = isPartial
@@ -252,6 +268,7 @@ export function HealthScoreModal({
             type === 'unread' ? metrics.unreadInbox :
             type === 'spam' ? metrics.spamAndTrash :
             type === 'promo' ? metrics.oldPromotions :
+            type === 'oldMail' ? (metrics.oldMail || 0) :
             metrics.largeFiles
           ));
 
@@ -268,6 +285,8 @@ export function HealthScoreModal({
         nextMetrics.oldPromotions = isPartial ? Math.max(0, metrics.oldPromotions - countToSubtract) : 0;
       } else if (type === 'large') {
         nextMetrics.largeFiles = isPartial ? Math.max(0, metrics.largeFiles - countToSubtract) : 0;
+      } else if (type === 'oldMail') {
+        nextMetrics.oldMail = isPartial ? Math.max(0, (metrics.oldMail || 0) - countToSubtract) : 0;
       }
 
       const ptsGained = computeInboxHealthScore(nextMetrics) - computeInboxHealthScore(metrics);
@@ -316,7 +335,7 @@ export function HealthScoreModal({
     }
   };
 
-  const startInspect = async (title: string, query: string, actionType: 'unread' | 'spam' | 'promo' | 'large', penalty: number) => {
+  const startInspect = async (title: string, query: string, actionType: FixableMetric, penalty: number) => {
     setInspectingView({ title, query, actionType, penalty });
     setLoadingPreview(true);
     setPreviewEmails([]);
@@ -359,6 +378,8 @@ export function HealthScoreModal({
       projectedMetrics.oldPromotions = Math.max(0, metrics.oldPromotions - selectedInspectIds.size);
     } else if (inspectingView.actionType === 'large') {
       projectedMetrics.largeFiles = Math.max(0, metrics.largeFiles - selectedInspectIds.size);
+    } else if (inspectingView.actionType === 'oldMail') {
+      projectedMetrics.oldMail = Math.max(0, (metrics.oldMail || 0) - selectedInspectIds.size);
     }
     return computeInboxHealthScore(projectedMetrics);
   };
@@ -390,7 +411,7 @@ export function HealthScoreModal({
             title="Back to Inbox Health"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
+            <span>Back to Inbox Health</span>
           </button>
         )}
         <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
@@ -784,18 +805,62 @@ export function HealthScoreModal({
                             {metrics.largeFiles.toLocaleString()} files
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Heavy files taking up storage quota (max -10 pts)</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Heavy files taking up storage quota (storage bloat, max -10 pts combined)</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.bloatPenalty} pts</span>
+                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.largeFilesPenalty} pts</span>
                       <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
                         <button
-                          onClick={() => startInspect('Large Attachments', 'larger:5M -in:trash', 'large', liveBreakdown.bloatPenalty)}
+                          onClick={() => startInspect('Large Attachments', HEALTH_SCORE_QUERIES.largeFiles, 'large', liveBreakdown.largeFilesPenalty)}
                           disabled={metrics.largeFiles === 0}
                           className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
                         >
                           Inspect Files
+                        </button>
+                        <button
+                          onClick={() => handleFix('large', liveBreakdown.largeFilesPenalty)}
+                          disabled={metrics.largeFiles === 0 || activeAction !== null}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {activeAction === 'large' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Clean All
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Item 5: Old Mail */}
+                  <div className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-slate-900">Old Mail (&gt;1 Year)</h4>
+                          <span className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
+                            {(metrics.oldMail || 0).toLocaleString()} emails
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">Messages you haven't needed in over a year (storage bloat)</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 self-end sm:self-center">
+                      <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">-{liveBreakdown.oldMailPenalty} pts</span>
+                      <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                        <button
+                          onClick={() => startInspect('Old Mail', HEALTH_SCORE_QUERIES.oldMail, 'oldMail', liveBreakdown.oldMailPenalty)}
+                          disabled={(metrics.oldMail || 0) === 0}
+                          className="text-xs font-medium px-3 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Inspect
+                        </button>
+                        <button
+                          onClick={() => handleFix('oldMail', liveBreakdown.oldMailPenalty)}
+                          disabled={(metrics.oldMail || 0) === 0 || activeAction !== null}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {activeAction === 'oldMail' ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null} Clean All
                         </button>
                       </div>
                     </div>

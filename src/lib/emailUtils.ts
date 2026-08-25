@@ -406,6 +406,10 @@ export interface HealthScoreBreakdown {
   spamPenalty: number;
   promoPenalty: number;
   bloatPenalty: number;
+  /** The share of bloatPenalty owed to >5MB attachments. */
+  largeFilesPenalty: number;
+  /** The share of bloatPenalty owed to >1 year old mail. */
+  oldMailPenalty: number;
   totalDeductions: number;
   managementBonus: number;
   unsubBonus: number;
@@ -438,7 +442,16 @@ export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): Health
   const promoPenalty = Math.min(20, oldPromotions > 0 ? (Math.log(1 + oldPromotions) / Math.log(1 + 500)) * 20 : 0);
 
   // 4. Bloat Factor: Large Emails > 5MB & Obsolete Mails > 1 Year (max 10 pts)
-  const bloatPenalty = Math.min(10, (largeFiles * 0.5) + (Math.min(500, oldMail) * 0.01));
+  const rawLargeFiles = largeFiles * 0.5;
+  const rawOldMail = Math.min(500, oldMail) * 0.01;
+  const bloatPenalty = Math.min(10, rawLargeFiles + rawOldMail);
+
+  // Split the (capped) bloat deduction proportionally between its two causes so the
+  // breakdown can show, and let the user actually clear, each half independently.
+  // The two reported figures always sum back to bloatPenalty.
+  const rawBloatTotal = rawLargeFiles + rawOldMail;
+  const largeFilesPenalty = rawBloatTotal > 0 ? bloatPenalty * (rawLargeFiles / rawBloatTotal) : 0;
+  const oldMailPenalty = rawBloatTotal > 0 ? bloatPenalty * (rawOldMail / rawBloatTotal) : 0;
 
   const totalDeductions = unreadPenalty + spamPenalty + promoPenalty + bloatPenalty;
 
@@ -457,6 +470,8 @@ export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): Health
     spamPenalty: Math.round(spamPenalty * 10) / 10,
     promoPenalty: Math.round(promoPenalty * 10) / 10,
     bloatPenalty: Math.round(bloatPenalty * 10) / 10,
+    largeFilesPenalty: Math.round(largeFilesPenalty * 10) / 10,
+    oldMailPenalty: Math.round(oldMailPenalty * 10) / 10,
     totalDeductions: Math.round(totalDeductions * 10) / 10,
     managementBonus: Math.round(managementBonus * 10) / 10,
     unsubBonus: Math.round(unsubBonus * 10) / 10,

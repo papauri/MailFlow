@@ -18,6 +18,8 @@ import { CleanupPresetsBar, CleanupPreset } from "./CleanupPresetsBar";
 import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { RuleSuggester } from "./RuleSuggester";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
+import { SenderAnalyticsPage } from "./SenderAnalyticsPage";
+import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes";
 import { ManageInboxPortal } from "./ManageInboxPortal";
 import { SmartAutomationsPortal } from "./SmartAutomationsPortal";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
@@ -70,7 +72,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const [currentHash, setCurrentHash] = useState<string>("dashboard");
   const [filterPageParams, setFilterPageParams] = useState<FilterPageParams | null>(null);
   const [showHealth, setShowHealth] = useState(false);
-  const [hasVisitedHealth, setHasVisitedHealth] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -552,9 +553,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
 
       setCurrentHash(hashKey);
 
-      if (hashKey === 'health' || hashKey === 'sender-analytics') {
+      if (hashKey === 'health') {
         setShowHealth(true);
-        setHasVisitedHealth(true);
         setFilterPageParams(null);
       } else if (hashKey === 'filter-view' || hashKey === 'inspect') {
         setShowHealth(false);
@@ -584,7 +584,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         }
         setFolderFilters(newFilters);
         setTimeout(() => handleSearch(undefined, filterParams.query, newFilters, true), 0);
-      } else if (['category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules'].includes(hashKey)) {
+      } else if (isHealthSectionRoute(hashKey)) {
         setShowHealth(false);
         setFilterPageParams(null);
       } else {
@@ -1048,20 +1048,20 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <button 
             onClick={() => { 
-              window.location.hash = ['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+              window.location.hash = isHealthSectionRoute(currentHash) 
                 ? '#dashboard' 
                 : '#health'; 
             }}
             className={cn(
               "px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer",
-              ['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) 
+              isHealthSectionRoute(currentHash) 
                 ? "bg-slate-800 text-white" 
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
             )}
             title="Inbox Health & Storage Visualizer"
           >
             <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" /> 
-            <span>{['health', 'sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score'].includes(currentHash) ? "Dashboard" : "Health"}</span>
+            <span>{isHealthSectionRoute(currentHash) ? "Dashboard" : "Health"}</span>
           </button>
 
           <button 
@@ -1228,13 +1228,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                 className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                {filterPageParams.source === 'health-score'
-                  ? 'Health Score'
-                  : filterPageParams.source === 'rule-suggester'
-                  ? 'Automated Rules'
-                  : filterPageParams.source === 'sender-analytics'
-                  ? 'Sender Analytics'
-                  : 'Inbox Health'}
+                {routeLabel(filterPageParams.source)}
               </button>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
               <span className="text-slate-900 font-semibold truncate max-w-[220px] sm:max-w-none">
@@ -1243,7 +1237,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             </>
           )}
 
-          {currentHash !== 'health' && !['sender-analytics', 'category-distribution', 'subscriptions', 'smart-triage', 'label-manager', 'health-score', 'folder-optimizer', 'rule-suggester', 'rules', 'filter-view', 'inspect'].includes(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
+          {!isFullPageRoute(currentHash) && folderFilters.length > 0 && !(folderFilters.length === 1 && folderFilters[0] === 'anywhere') && (
             <>
               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-slate-400" />
               <span className="text-slate-800 font-medium capitalize flex items-center gap-1">
@@ -1260,11 +1254,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           )}
         </div>
 
-        {hasVisitedHealth && (
-          <div className={(currentHash === 'health' || currentHash === 'sender-analytics') ? '' : 'hidden'}>
+        {currentHash === 'health' && (
           <InboxHealth
              userEmail={user?.email}
-             currentHash={currentHash}
              aiSettings={aiSettings}
              userLabels={userLabels}
              isAiWorking={connectionStatus === 'success'}
@@ -1297,7 +1289,24 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                setTimeout(() => handleSearch(undefined, q, newFilters, true), 0);
               }}
             />
-          </div>
+        )}
+
+        {currentHash === 'sender-analytics' && (
+          <SenderAnalyticsPage
+            userEmail={user?.email}
+            onBack={() => { window.location.hash = '#health'; }}
+            openFilterPage={(query, title, badge, subtitle, folder, sortOption, source) => {
+              const params = new URLSearchParams();
+              params.set('q', query);
+              params.set('title', title);
+              params.set('badge', badge);
+              if (subtitle) params.set('sub', subtitle);
+              if (folder) params.set('folder', folder);
+              if (sortOption) params.set('sort', sortOption);
+              params.set('source', source || 'sender-analytics');
+              window.location.hash = `#filter-view?${params.toString()}`;
+            }}
+          />
         )}
 
         {currentHash === 'category-distribution' && (
@@ -1464,7 +1473,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             actionLoading={actionLoading}
           />
         )}
-        <div style={{ display: !['health', 'category-distribution', 'manage-inbox', 'smart-automations', 'health-score', 'filter-view', 'inspect', 'folder-optimizer', 'rule-suggester'].includes(currentHash) ? 'block' : 'none' }}>
+        <div style={{ display: isFullPageRoute(currentHash) ? 'none' : 'block' }}>
         <WalkthroughTip 
           storageKey="tip_dashboard" 
           title="Welcome to your MailFlow Workspace" 
