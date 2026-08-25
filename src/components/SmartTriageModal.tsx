@@ -32,6 +32,7 @@ import {
   EmailData
 } from '../lib/gmail';
 import { cn } from '../lib/utils';
+import { useActionCompletion } from '../lib/useActionCompletion';
 import { extractSenderDetails, sanitizeGmailSearchQuery } from '../lib/emailUtils';
 
 export interface SmartGroup {
@@ -68,6 +69,7 @@ export interface SmartTriageModalProps {
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
+
 const STORAGE_DISMISSED_SENDERS_KEY = 'smart_organizer_dismissed_senders';
 
 function getStoredHandledIds(): Set<string> {
@@ -138,6 +140,9 @@ export function SmartTriageModal({
   const [executingAll, setExecutingAll] = useState(false);
   const [executionProgress, setExecutionProgress] = useState<{ current: number; total: number; message: string }>({ current: 0, total: 0, message: '' });
   const [completedGroupIds, setCompletedGroupIds] = useState<Set<string>>(new Set());
+  // Same confirm-then-clear behaviour as the recommendation panels: a finished
+  // group is no longer actionable, so it should leave rather than sit greyed out.
+  const completion = useActionCompletion();
   const [createdFilterGroupIds, setCreatedFilterGroupIds] = useState<Set<string>>(new Set());
   const [creatingFilterId, setCreatingFilterId] = useState<string | null>(null);
 
@@ -617,6 +622,7 @@ export function SmartTriageModal({
       // Mark handled in state and persistence
       saveHandledIds(activeEmailIds);
       setCompletedGroupIds(prev => new Set(prev).add(group.id));
+      completion.complete(group.id, 'Organized');
 
       if (onRefresh) onRefresh();
 
@@ -667,6 +673,7 @@ export function SmartTriageModal({
         }
 
         setCompletedGroupIds(prev => new Set(prev).add(group.id));
+        completion.complete(group.id, 'Organized');
         await new Promise(r => setTimeout(r, 120));
       }
 
@@ -1017,8 +1024,8 @@ export function SmartTriageModal({
             </div>
           ) : (
             <div className="flex flex-col gap-3.5 max-w-3xl mx-auto w-full">
-              {filteredGroups.map((group) => {
-                const isCompleted = completedGroupIds.has(group.id);
+              {filteredGroups.filter(g => !completion.isCleared(g.id)).map((group) => {
+                const isCompleted = !!completion.labelFor(group.id);
                 const isExecuting = executingGroupId === group.id;
                 const isExpanded = expandedGroupIds.has(group.id);
                 const isFilterCreated = createdFilterGroupIds.has(group.id);

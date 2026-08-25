@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, Sparkles, ArrowLeft } from 'lucide-react';
 import { searchEmails, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
+import { useActionCompletion } from '../lib/useActionCompletion';
 import { WalkthroughTip } from "./WalkthroughTip";
 import { extractSenderDetails, parseListUnsubscribe } from '../lib/emailUtils';
 
@@ -24,6 +25,10 @@ export function UnsubscribeManager({
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [actionLog, setActionLog] = useState<any[]>([]);
+  // Rows confirm what happened before leaving, matching every other actioned list
+  // in the app. Previously they vanished the instant they were clicked and the only
+  // feedback was a toast, so it was never clear which row had actually been dealt with.
+  const completion = useActionCompletion();
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [analyzing, setAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<any[] | null>(null);
@@ -133,7 +138,7 @@ export function UnsubscribeManager({
         trashedIds: []
       };
       saveActionLog([newLogItem, ...actionLog]);
-      setSubscriptions(prev => prev.filter(s => s.email !== sub.email));
+      completion.complete(sub.email, 'Unsubscribed');
       setPurgeToast({ message: `Unsubscribed from ${sub.name}. Existing emails were kept.` });
       setTimeout(() => setPurgeToast(null), 5000);
     } catch (e) {
@@ -174,7 +179,7 @@ export function UnsubscribeManager({
         trashedIds: affectedIds
       };
       saveActionLog([newLogItem, ...actionLog]);
-      setSubscriptions(prev => prev.filter(s => s.email !== sub.email));
+      completion.complete(sub.email, 'Unsubscribed & cleared');
       setPurgeToast({
         message: `Unsubscribed & ${actionType === 'trash' ? 'trashed' : 'archived'} ${affectedIds.length} historical emails from ${sub.name}.`,
         undoItem: newLogItem
@@ -211,7 +216,7 @@ export function UnsubscribeManager({
         trashedIds
       };
       saveActionLog([newLogItem, ...actionLog]);
-      setSubscriptions(prev => prev.filter(s => s.email !== sub.email));
+      completion.complete(sub.email, 'Blocked');
       setPurgeToast({
         message: `Blocked sender & moved ${trashedIds.length} emails to Trash.`,
         undoItem: newLogItem
@@ -282,6 +287,7 @@ export function UnsubscribeManager({
   };
 
   const filteredSubs = subscriptions.filter(sub => {
+    if (completion.isCleared(sub.email)) return false;
     if (!aiAnalysis || recommendationFilter === 'all') return true;
     const insight = aiAnalysis.find(a => a.email === sub.email);
     if (!insight) return false;
@@ -473,9 +479,16 @@ export function UnsubscribeManager({
                         <ul className="divide-y divide-slate-100">
                           {canUnsubscribeSubs.map((sub) => {
                             const isProcessing = processing.has(sub.email);
+                            const doneLabel = completion.labelFor(sub.email);
                             const insight = aiAnalysis?.find(a => a.email === sub.email);
                             return (
-                              <li key={sub.email} className={cn("p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 transition-colors group", isProcessing && "opacity-50 pointer-events-none")}>
+                              <li key={sub.email} className={cn("p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors group", isProcessing && "opacity-50 pointer-events-none", doneLabel ? "bg-emerald-50/40" : "hover:bg-slate-50")}>
+                                {doneLabel && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md self-start shrink-0 order-first">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    {doneLabel}
+                                  </span>
+                                )}
                                 <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
                                   <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 sm:mt-0">
                                     {sub.name.charAt(0).toUpperCase()}
