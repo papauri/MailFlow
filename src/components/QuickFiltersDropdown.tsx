@@ -142,7 +142,7 @@ export function QuickFiltersDropdown({
           {p.isCustom && (
             <span
               onClick={(e) => removeCustom(p.id, e)}
-              className="p-1 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+              className="p-1.5 sm:p-1 rounded text-slate-400 sm:text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100 touch-visible"
               title="Delete this preset"
             >
               <Trash2 className="w-3 h-3" />

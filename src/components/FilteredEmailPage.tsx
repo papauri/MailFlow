@@ -373,7 +373,7 @@ export function FilteredEmailPage({
         
         {/* Table Toolbar */}
         <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
             <button
               type="button"
               onClick={(e) => {
@@ -425,7 +425,7 @@ export function FilteredEmailPage({
             </div>
 
             {/* Sort controls — a storage cleanup view is useless without size ordering */}
-            <div className="flex items-center gap-1.5 ml-1">
+            <div className="flex items-center gap-1.5 sm:ml-1 shrink-0">
               <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden sm:block" />
               <select
                 value={sortBy}
@@ -466,7 +466,7 @@ export function FilteredEmailPage({
 
           {/* Bulk Actions when selected */}
           {selectedIds.size > 0 ? (
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
               {/* The task's own action leads and is the only filled button, so the
                   right move is obvious on a page opened for a specific job. */}
               {primaryAction && (
@@ -614,16 +614,16 @@ export function FilteredEmailPage({
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="w-[58px] text-right text-[10px] font-mono text-slate-600 tabular-nums hidden sm:block">
+                          <span className="sm:w-[58px] text-right text-[10px] font-mono text-slate-600 tabular-nums hidden sm:block">
                             {bigEnough ? formatSize(email.sizeEstimate) : ''}
                           </span>
-                          <span className="w-[52px] text-right text-[11px] text-slate-400 tabular-nums">
+                          <span className="w-[46px] sm:w-[52px] text-right text-[11px] text-slate-400 tabular-nums shrink-0">
                             {email.date ? new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
                           </span>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onInspectEmail?.(email); }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            className="p-2 sm:p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                             title="Preview message"
                             aria-label="Preview message"
                           >

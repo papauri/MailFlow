@@ -586,11 +586,11 @@ export function HealthScoreModal({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
                         <span className="text-sm font-bold text-slate-800 w-[64px] text-right tabular-nums shrink-0">
                           -{row.penalty} pts
                         </span>
-                        <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                        <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                           <button
                             onClick={() => openInspectPage(row.title, row.query, row.subtitle, row.inspectAction)}
                             disabled={row.count === 0}
@@ -630,11 +630,11 @@ export function HealthScoreModal({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
                       <span className="text-sm font-bold text-slate-800 w-[64px] text-right tabular-nums shrink-0">
                         +{liveBreakdown.totalBonus} pts
                       </span>
-                      <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                      <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                         <button
                           onClick={() => { window.location.hash = '#subscriptions'; }}
                           className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer whitespace-nowrap"

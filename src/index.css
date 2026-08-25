@@ -4,7 +4,33 @@
   --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+@layer base {
+  /* Mobile-first safety net.
+     A single over-wide child anywhere shifts the whole page sideways, and the
+     symptom (everything slightly scrollable, nothing obviously broken) is hard to
+     trace back to its cause. Containing it at the root means a layout slip degrades
+     to a clipped element instead of a horizontally sliding page. */
+  html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  /* Long unbroken strings — sender addresses, Gmail queries, tracking URLs — are the
+     usual culprits, so let them wrap rather than push the layout wide. */
+  body {
+    overflow-wrap: break-word;
+  }
+}
+
 @layer utilities {
+  /* Touch targets: pointer-based hover reveals never fire on a phone, so anything
+     that only appears on hover must stay visible on touch devices. */
+  @media (hover: none) {
+    .touch-visible {
+      opacity: 1 !important;
+    }
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

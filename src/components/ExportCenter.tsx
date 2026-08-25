@@ -365,7 +365,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
                       onClick={() => runExport(dataset)}
                       disabled={isBusy || isEmpty}
                       className={cn(
-                        "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 self-end sm:self-center disabled:opacity-50 disabled:cursor-not-allowed",
+                        "flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 w-full sm:w-auto self-stretch sm:self-center disabled:opacity-50 disabled:cursor-not-allowed",
                         isDone
                           ? "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
                           : "bg-slate-900 text-white hover:bg-slate-800"

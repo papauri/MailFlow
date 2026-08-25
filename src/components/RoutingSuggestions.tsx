@@ -277,11 +277,11 @@ export function RoutingSuggestions({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
                     <span className="text-[11px] font-medium text-slate-500 w-[92px] text-right shrink-0 hidden sm:block">
                       {Math.round(s.confidence * 100)}% confident
                     </span>
-                    <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                    <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                       <button
                         onClick={() => onInspect(s.query, `${s.senderName} → ${displayLabel(s)}`)}
                         disabled={isBusy}

@@ -50,11 +50,11 @@ export function EmailGroupHeader({
   const icon = ICONS[group.icon] || ICONS.inbox;
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-3 px-3 sm:px-4 py-2 bg-slate-50 border-y border-slate-200">
+    <div className="sticky top-0 z-10 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 bg-slate-50 border-y border-slate-200">
       <button
         onClick={onToggleSelectAll}
         className={cn(
-          "w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer shrink-0",
+          "w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer shrink-0 box-content p-1.5 -m-1.5 sm:p-0 sm:m-0",
           allSelected ? "bg-slate-900 border-slate-900 text-white"
             : someSelected ? "bg-slate-900/70 border-slate-900 text-white"
             : "border-slate-300 bg-white text-transparent hover:border-slate-400"
@@ -67,7 +67,7 @@ export function EmailGroupHeader({
 
       <button
         onClick={onToggleCollapse}
-        className="p-0.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+        className="p-2 sm:p-0.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
         title={collapsed ? `Expand ${group.title}` : `Collapse ${group.title}`}
         aria-label={collapsed ? `Expand ${group.title}` : `Collapse ${group.title}`}
         aria-expanded={!collapsed}
@@ -81,7 +81,7 @@ export function EmailGroupHeader({
         onClick={onToggleCollapse}
         className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer"
       >
-        <span className="text-sm font-bold text-slate-900 truncate">{group.title}</span>
+        <span className="text-sm font-bold text-slate-900 truncate min-w-0">{group.title}</span>
         <span className="text-[11px] font-medium text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 tabular-nums">
           {group.emails.length.toLocaleString()}
         </span>

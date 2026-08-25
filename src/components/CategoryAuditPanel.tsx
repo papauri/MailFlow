@@ -224,7 +224,7 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-semibold text-slate-900 truncate max-w-[320px]">{title}</h4>
+                        <h4 className="text-sm font-semibold text-slate-900 truncate max-w-full sm:max-w-[320px]">{title}</h4>
                         <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-md border whitespace-nowrap", meta.tone)}>
                           {meta.label}
                         </span>
@@ -247,11 +247,11 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
                     <span className="text-[11px] font-medium text-slate-500 w-[92px] text-right shrink-0 hidden sm:block">
                       {Math.round(cluster.confidence * 100)}% confident
                     </span>
-                    <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-[184px] shrink-0">
+                    <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                       <button
                         onClick={() => onInspect(cluster.ids, title)}
                         disabled={isRunning}
