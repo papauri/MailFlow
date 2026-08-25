@@ -1,6 +1,8 @@
 import { TypingLoader } from "./TypingLoader";
 import { CleanupRecommendations } from "./CleanupRecommendations";
 import { analyseCleanup } from "../lib/cleanupModel";
+import { CategoryAuditPanel } from "./CategoryAuditPanel";
+import { auditCategory } from "../lib/categoryAudit";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
@@ -148,6 +150,16 @@ export function CategoryDistributionModal({
    */
   const cleanupAnalysis = useMemo(
     () => (categoryEmails.length > 0 ? analyseCleanup(categoryEmails) : null),
+    [categoryEmails]
+  );
+
+  /**
+   * Groups by what messages *are* rather than who sent them, which is the only way
+   * to see mail like one-time codes — those come from hundreds of senders, so every
+   * sender cohort looks small and nothing gets flagged.
+   */
+  const audit = useMemo(
+    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails) : null),
     [categoryEmails]
   );
   const [diagnostic, setDiagnostic] = useState<CategoryDiagnostic | null>(null);
@@ -613,6 +625,34 @@ export function CategoryDistributionModal({
               {/* Behavioural cleanup model — leads the page because these are the
                   bulk decisions that actually clear a category, rather than
                   per-message chores. Runs entirely on-device. */}
+              {audit && (
+                <CategoryAuditPanel
+                  audit={audit}
+                  categoryName={currentCategoryConfig.name}
+                  aiSettings={aiSettings}
+                  onInspect={(ids, title) => {
+                    // Thread ids aren't a Gmail query, so scope by the category and
+                    // let the page filter — better than pretending to query by id.
+                    const params = new URLSearchParams();
+                    params.set('q', currentCategoryConfig.query);
+                    params.set('title', title);
+                    params.set('badge', 'Audit group');
+                    params.set('sub', `${ids.length} similar messages in ${currentCategoryConfig.name}`);
+                    params.set('source', 'category-distribution');
+                    params.set('action', 'trash');
+                    window.location.hash = `#filter-view?${params.toString()}`;
+                  }}
+                  onCleared={(cluster, count) => {
+                    setTotalCleanedInSession(prev => prev + count);
+                    const gone = new Set(cluster.ids);
+                    setCategoryEmails(prev => prev.filter(e => !gone.has(e.id)));
+                    window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
+                      detail: { type: 'promo', count, isPartial: true }
+                    }));
+                  }}
+                />
+              )}
+
               {cleanupAnalysis && (
                 <CleanupRecommendations
                   analysis={cleanupAnalysis}
