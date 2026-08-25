@@ -4,6 +4,7 @@ import {
   Trash2, AlertTriangle, Clock, Tag, ShieldCheck, Filter, Activity, Inbox, Package
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { PageHeader } from './PageHeader';
 import { searchEmails } from '../lib/gmail';
 import { useCachedResource } from '../lib/useCachedResource';
 import {
@@ -295,26 +296,13 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col animate-in fade-in duration-150">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white shrink-0 gap-4 p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
-            title="Back to Inbox Health"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Inbox Health</span>
-          </button>
-          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Download className="w-5 h-5 text-slate-100" />
-          </div>
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Export Center</h2>
-            <p className="text-xs text-slate-500">Download any dataset MailFlow can see as a CSV.</p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Export Center"
+        subtitle="Download any dataset MailFlow can see as a CSV."
+        icon={<Download className="w-4 h-4" />}
+        onBack={onBack}
+        backLabel="Back to Inbox Health"
+      />
 
       {error && (
         <div className="bg-white border border-amber-200 rounded-xl p-3.5 mb-4 flex items-start gap-2.5 shadow-2xs">

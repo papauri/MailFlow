@@ -1,5 +1,6 @@
 import { TypingLoader } from "./TypingLoader";
 import { CleanupRecommendations } from "./CleanupRecommendations";
+import { PageHeader } from "./PageHeader";
 import { analyseCleanup } from "../lib/cleanupModel";
 import { CategoryAuditPanel } from "./CategoryAuditPanel";
 import { auditCategory } from "../lib/categoryAudit";
@@ -459,50 +460,33 @@ export function CategoryDistributionModal({
   const currentCategoryConfig = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
   const currentCategoryData = data.find(d => d.id === selectedCategory);
 
-  const headerContent = (
-    <div className={cn(
-      "flex flex-col sm:flex-row sm:items-center justify-between bg-white shrink-0 gap-4",
-      isPage ? "p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs mb-4" : "px-5 py-4 border-b border-slate-200"
-    )}>
-      <div className="flex items-center gap-3">
-        {isPage && (
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
-            title="Back to Inbox Health"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Inbox Health</span>
-          </button>
-        )}
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 id="category-distribution-title" className="font-bold text-slate-900 text-base sm:text-lg">
-              Category Breakdown
-            </h2>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Overview
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            View volume across categories and review recommended cleanups.
-          </p>
-        </div>
+  const headerContent = isPage ? (
+    <PageHeader
+      title="Category Breakdown"
+      badge="Overview"
+      subtitle="Volume across categories, with recommended cleanups."
+      icon={<PieChartIcon className="w-4 h-4" />}
+      onBack={onClose}
+      backLabel="Back to Inbox Health"
+    />
+  ) : (
+    <div className="flex items-center justify-between bg-white shrink-0 gap-3 px-4 py-3 border-b border-slate-200">
+      <div className="flex items-center gap-2 min-w-0">
+        <h2 id="category-distribution-title" className="font-bold text-slate-900 text-base truncate">
+          Category Breakdown
+        </h2>
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+          Overview
+        </span>
       </div>
-
-      {/* Tab Selector Removed - unified layout */}
-      <div className="flex items-center gap-2">
-        {!isPage && (
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-            title="Close modal"
-            aria-label="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+      <button
+        onClick={onClose}
+        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+        title="Close modal"
+        aria-label="Close dialog"
+      >
+        <X className="w-5 h-5" />
+      </button>
     </div>
   );
 

@@ -1,29 +1,16 @@
-import React, { useState, useEffect, useMemo, useRef, FormEvent } from "react";
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense, FormEvent } from "react";
 import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive, SlidersHorizontal } from "lucide-react";
-import { AdminPanel } from "./AdminPanel";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
-import { InboxHealth } from "./InboxHealth";
 import { TypingLoader } from "./TypingLoader";
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
 import { WalkthroughTip } from "./WalkthroughTip";
 import { HealthScoreWidget } from "./HealthScoreWidget";
-import { LabelManagerModal } from "./LabelManagerModal";
-import { CategoryDistributionModal } from "./CategoryDistributionModal";
-import { UnsubscribeManager } from "./UnsubscribeManager";
-import { SmartTriageModal } from "./SmartTriageModal";
-import { HealthScoreModal } from "./HealthScoreModal";
-import { FolderOptimizer } from "./FolderOptimizer";
 import { CleanupPreset } from "../lib/cleanupPresets";
 import { StorageBreakdownBar } from "./StorageBreakdownBar";
-import { RuleSuggester } from "./RuleSuggester";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
-import { SenderAnalyticsPage } from "./SenderAnalyticsPage";
-import { ExportCenter } from "./ExportCenter";
 import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes";
 import { useInboxWarmup } from "../lib/useInboxWarmup";
-import { ManageInboxPortal } from "./ManageInboxPortal";
-import { SmartAutomationsPortal } from "./SmartAutomationsPortal";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
 import { cn } from "../lib/utils";
 
@@ -33,6 +20,36 @@ function formatSize(bytes: number) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/**
+ * Route views load on demand.
+ *
+ * All of these were in the initial bundle even though none is needed to render the
+ * inbox — the first screen had to download every analysis tool, chart library and
+ * modal before it could show a single message.
+ */
+const CategoryDistributionModal = lazy(() => import("./CategoryDistributionModal").then(m => ({ default: m.CategoryDistributionModal })));
+const HealthScoreModal = lazy(() => import("./HealthScoreModal").then(m => ({ default: m.HealthScoreModal })));
+const ExportCenter = lazy(() => import("./ExportCenter").then(m => ({ default: m.ExportCenter })));
+const SenderAnalyticsPage = lazy(() => import("./SenderAnalyticsPage").then(m => ({ default: m.SenderAnalyticsPage })));
+const FolderOptimizer = lazy(() => import("./FolderOptimizer").then(m => ({ default: m.FolderOptimizer })));
+const RuleSuggester = lazy(() => import("./RuleSuggester").then(m => ({ default: m.RuleSuggester })));
+const SmartTriageModal = lazy(() => import("./SmartTriageModal").then(m => ({ default: m.SmartTriageModal })));
+const UnsubscribeManager = lazy(() => import("./UnsubscribeManager").then(m => ({ default: m.UnsubscribeManager })));
+const LabelManagerModal = lazy(() => import("./LabelManagerModal").then(m => ({ default: m.LabelManagerModal })));
+const ManageInboxPortal = lazy(() => import("./ManageInboxPortal").then(m => ({ default: m.ManageInboxPortal })));
+const SmartAutomationsPortal = lazy(() => import("./SmartAutomationsPortal").then(m => ({ default: m.SmartAutomationsPortal })));
+const AdminPanel = lazy(() => import("./AdminPanel").then(m => ({ default: m.AdminPanel })));
+const InboxHealth = lazy(() => import("./InboxHealth").then(m => ({ default: m.InboxHealth })));
+
+/** Keeps a lazy view's arrival from collapsing the page height. */
+function RouteFallback() {
+  return (
+    <div className="w-full min-h-[320px] flex items-center justify-center">
+      <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+    </div>
+  );
 }
 
 export default function Dashboard({ user, onLogout }: { user: any, onLogout?: () => void }) {
@@ -156,8 +173,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   useEffect(() => {
     const loadGlobalConfig = async () => {
       try {
-        const { db } = await import('../lib/firebase');
-        const { doc, getDoc } = await import('firebase/firestore');
+        const { getDb } = await import('../lib/firebase');
+        const [db, { doc, getDoc }] = await Promise.all([getDb(), import('firebase/firestore')]);
         const docRef = doc(db, 'appConfig', 'global');
         
         // Use Promise.race to timeout getDoc after 3 seconds
@@ -1300,6 +1317,9 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           })()}
         </div>
 
+        {/* One boundary for every route view: they are mutually exclusive, so a
+            single fallback covers whichever is being fetched. */}
+        <Suspense fallback={<RouteFallback />}>
         {currentHash === 'health' && (
           <InboxHealth
              userEmail={user?.email}
@@ -1469,6 +1489,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             onInspectEmail={(email) => toggleExpand(email.id)}
           />
         )}
+        </Suspense>
         <div style={{ display: isFullPageRoute(currentHash) ? 'none' : 'block' }}>
         <WalkthroughTip 
           storageKey="tip_dashboard" 

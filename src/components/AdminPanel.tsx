@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { getDb } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Shield, Key, Trash2, X, Save } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const docRef = doc(db, 'appConfig', 'global');
+      const docRef = doc(await getDb(), 'appConfig', 'global');
       const docSnap = await Promise.race([
         getDoc(docRef),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 3000))
@@ -45,7 +45,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const docRef = doc(db, 'appConfig', 'global');
+      const docRef = doc(await getDb(), 'appConfig', 'global');
       await Promise.race([
         setDoc(docRef, settings, { merge: true }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 3000))

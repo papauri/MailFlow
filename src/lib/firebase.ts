@@ -1,11 +1,25 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-export const db = getFirestore(app);
+/**
+ * Firestore on demand.
+ *
+ * This module is imported by App, gmail.ts and AdminPanel, so a static Firestore
+ * import put the entire SDK in the initial bundle for every user — to read one
+ * config document on two screens. Callers await getDb() instead, which loads it the
+ * first time it is genuinely needed and reuses it after.
+ */
+let dbPromise: Promise<any> | null = null;
+
+export function getDb() {
+  if (!dbPromise) {
+    dbPromise = import('firebase/firestore').then(m => m.getFirestore(app));
+  }
+  return dbPromise;
+}
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://mail.google.com/');

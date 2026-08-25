@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Target, Layers, Filter, ArrowLeft, RefreshCw, L
 import { cn } from '../lib/utils';
 import { useCachedResource } from '../lib/useCachedResource';
 import { fetchSenderClusters, senderClustersKey, SenderClusters } from '../lib/inboxAnalytics';
+import { PageHeader } from './PageHeader';
 
 interface Props {
   userEmail?: string;
@@ -51,35 +52,23 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col animate-in fade-in duration-150">
-      {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white shrink-0 gap-4 p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs mb-4">
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title="Sender Analytics"
+        subtitle="Most frequent contacts and domain clusters."
+        icon={<Target className="w-4 h-4" />}
+        onBack={onBack}
+        backLabel="Back to Inbox Health"
+        actions={
           <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0"
-            title="Back to Inbox Health"
+            onClick={clusters.refresh}
+            disabled={clusters.loading || clusters.refreshing}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+            title="Refresh analytics"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Inbox Health</span>
+            <RefreshCw className={cn("w-4 h-4", (clusters.loading || clusters.refreshing) && "animate-spin")} />
           </button>
-          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Target className="w-5 h-5 text-slate-100" />
-          </div>
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Sender Analytics</h2>
-            <p className="text-xs text-slate-500">Most frequent contacts and domain clusters</p>
-          </div>
-        </div>
-
-        <button
-          onClick={clusters.refresh}
-          disabled={clusters.loading || clusters.refreshing}
-          className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer self-end sm:self-center disabled:opacity-50"
-          title="Refresh analytics"
-        >
-          <RefreshCw className={cn("w-4 h-4", (clusters.loading || clusters.refreshing) && "animate-spin")} />
-        </button>
-      </div>
+        }
+      />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs min-h-[400px] p-4 sm:p-6">
         {clusters.loading ? (
