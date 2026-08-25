@@ -132,9 +132,13 @@ export function buildRoutingSuggestions(
   options: RoutingOptions = {}
 ): RoutingSuggestion[] {
   const {
-    minVolume = 4,
-    minPurity = 0.55,
-    minNewFolderVolume = 12,
+    minVolume = 3,
+    minPurity = 0.5,
+    // Tuned down from 12: against a real ~500-message sample spread over hundreds of
+    // senders, very few clear a dozen, so the new-folder path almost never fired.
+    // Smoothing and the confidence score already keep thin evidence ranked low, so
+    // the threshold does not need to do that job as well.
+    minNewFolderVolume = 6,
   } = options;
 
   const labelIdToName = new Map<string, string>();

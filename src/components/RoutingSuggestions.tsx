@@ -12,6 +12,11 @@ import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 interface Props {
   suggestions: RoutingSuggestion[];
   sendersAnalysed: number;
+  /** Training sample still being fetched. */
+  loading?: boolean;
+  /** Messages in the sample that carry a user label — the evidence to learn from. */
+  filedCount?: number;
+  sampleSize?: number;
   aiSettings?: any;
   onInspect: (query: string, title: string) => void;
   onApplied: (suggestion: RoutingSuggestion) => void;
@@ -26,7 +31,8 @@ interface Props {
  * app reads the same way regardless of which model produced it.
  */
 export function RoutingSuggestions({
-  suggestions, sendersAnalysed, aiSettings, onInspect, onApplied, onLabelsChanged
+  suggestions, sendersAnalysed, loading = false, filedCount = 0, sampleSize = 0,
+  aiSettings, onInspect, onApplied, onLabelsChanged
 }: Props) {
   const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -121,9 +127,9 @@ export function RoutingSuggestions({
               </span>
             </div>
             <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-              Learned from filing you have already done across{' '}
-              <strong className="text-slate-900">{sendersAnalysed.toLocaleString()} senders</strong>. Each rule files
-              the mail sitting loose right now, then keeps doing it automatically.
+              Learned from <strong className="text-slate-900">{filedCount.toLocaleString()} filed messages</strong>{' '}
+              across <strong className="text-slate-900">{sendersAnalysed.toLocaleString()} senders</strong>. Each rule
+              files the mail sitting loose right now, then keeps doing it automatically.
             </p>
             {stats.patterns > 0 && (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg mt-3">
@@ -142,13 +148,41 @@ export function RoutingSuggestions({
         </div>
       )}
 
-      {visible.length === 0 ? (
+      {loading ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
+          <Loader2 className="w-7 h-7 animate-spin text-slate-500" />
+          <p className="text-sm font-semibold text-slate-800">Learning from your mail…</p>
+          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+            Reading how you already file things so the suggestions match your habits.
+          </p>
+        </div>
+      ) : sampleSize === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
+          <AlertTriangle className="w-8 h-8 text-amber-500" />
+          <p className="text-sm font-semibold text-slate-800">Couldn't read your mail</p>
+          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+            No messages came back, so there is nothing to analyse yet. Try refreshing — if it keeps happening the
+            Gmail connection may need reconnecting.
+          </p>
+        </div>
+      ) : visible.length === 0 && filedCount === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
+          <FolderTree className="w-8 h-8 text-slate-300" />
+          <p className="text-sm font-semibold text-slate-800">Nothing to learn from yet</p>
+          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+            This works by spotting where you already file mail, and none of the {sampleSize.toLocaleString()} messages
+            checked are in a folder yet. Label a handful by hand — once a sender goes to the same place a few times,
+            the rule will show up here.
+          </p>
+        </div>
+      ) : visible.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
           <CheckCircle2 className="w-8 h-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-800">No routing worth automating yet</p>
+          <p className="text-sm font-semibold text-slate-800">No consistent pattern yet</p>
           <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            No sender shows a consistent enough filing pattern to turn into a rule. File a few more messages by
-            hand and this will pick the pattern up.
+            Checked {filedCount.toLocaleString()} filed messages across {sendersAnalysed.toLocaleString()} senders.
+            None goes to one folder reliably enough to automate safely — a rule built on a mixed pattern would
+            misfile your mail.
           </p>
         </div>
       ) : (

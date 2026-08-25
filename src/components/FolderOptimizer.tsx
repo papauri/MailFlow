@@ -3,15 +3,17 @@ import { Loader2, SlidersHorizontal, ChevronDown, ChevronUp, RefreshCw } from 'l
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
 import { buildRoutingSuggestions } from '../lib/foldingModel';
+import { useCachedResource } from '../lib/useCachedResource';
+import { fetchRoutingSample, routingSampleKey, RoutingSample } from '../lib/inboxAnalytics';
 
 interface Props {
   isOpen?: boolean;
   onClose?: () => void;
-  emails: any[];
   userLabels: any[];
   aiSettings?: any;
   isFetching?: boolean;
   isAiWorking?: boolean;
+  userEmail?: string;
   onReload?: () => void;
   isPage?: boolean;
 }
@@ -29,18 +31,32 @@ interface Props {
  * page opens rather than after a scan.
  */
 export function FolderOptimizer({
-  emails, userLabels, aiSettings, isFetching, onReload, isPage
+  userLabels, aiSettings, userEmail, onReload, isPage
 }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [isExpanded, setIsExpanded] = useState(true);
 
+  /**
+   * Fetches its own sample rather than relying on whatever the dashboard last
+   * searched — these routes never trigger a search, so the prop was routinely empty
+   * and the tool reported "nothing to automate" from no data at all. Shares a cache
+   * key with Automated Sorting Rules, so the two cost one background fetch between
+   * them and it is already warm on the second visit.
+   */
+  const sample = useCachedResource<RoutingSample>(
+    routingSampleKey(userEmail),
+    () => fetchRoutingSample()
+  );
+
+  const sampleEmails = sample.data?.emails ?? [];
+
   const suggestions = useMemo(
-    () => buildRoutingSuggestions(emails || [], userLabels || []),
-    [emails, userLabels]
+    () => buildRoutingSuggestions(sampleEmails, userLabels || []),
+    [sampleEmails, userLabels]
   );
 
   const senderCount = useMemo(
-    () => new Set((emails || []).map((e: any) => (e.sender || '').toLowerCase())).size,
-    [emails]
+    () => new Set(sampleEmails.map((e: any) => (e.sender || '').toLowerCase())).size,
+    [sampleEmails]
   );
 
   return (
@@ -70,12 +86,12 @@ export function FolderOptimizer({
         <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
           {onReload && (
             <button
-              onClick={(e) => { e.stopPropagation(); onReload(); }}
-              disabled={isFetching}
+              onClick={(e) => { e.stopPropagation(); sample.refresh(); onReload(); }}
+              disabled={sample.loading || sample.refreshing}
               className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer disabled:opacity-50"
               title="Refresh mail sample"
             >
-              <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
+              <RefreshCw className={cn("w-4 h-4", (sample.loading || sample.refreshing) && "animate-spin")} />
             </button>
           )}
           {!isPage && (
@@ -92,15 +108,13 @@ export function FolderOptimizer({
 
       {isExpanded && (
         <div className="p-4 sm:p-6 bg-slate-50/40">
-          {isFetching && (emails || []).length === 0 ? (
-            <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-3">
-              <Loader2 className="w-7 h-7 animate-spin text-slate-500" />
-              <p className="text-sm font-medium text-slate-600">Loading your mail…</p>
-            </div>
-          ) : (
+          {(
             <RoutingSuggestions
               suggestions={suggestions}
               sendersAnalysed={senderCount}
+              loading={sample.loading}
+              filedCount={sample.data?.filedCount ?? 0}
+              sampleSize={sampleEmails.length}
               aiSettings={aiSettings}
               onInspect={(query, title) => {
                 const params = new URLSearchParams();
@@ -111,8 +125,8 @@ export function FolderOptimizer({
                 params.set('source', 'folder-optimizer');
                 window.location.hash = `#filter-view?${params.toString()}`;
               }}
-              onApplied={() => { if (onReload) onReload(); }}
-              onLabelsChanged={() => { if (onReload) onReload(); }}
+              onApplied={() => { sample.refresh(); if (onReload) onReload(); }}
+              onLabelsChanged={() => { sample.refresh(); if (onReload) onReload(); }}
             />
           )}
         </div>

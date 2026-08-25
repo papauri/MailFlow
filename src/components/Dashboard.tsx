@@ -1452,7 +1452,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         
         {currentHash === 'folder-optimizer' && (
           <FolderOptimizer
-            emails={emails}
+            userEmail={user?.email}
             userLabels={userLabels}
             aiSettings={aiSettings}
             isFetching={isSearching}
@@ -1466,7 +1466,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             isPage={true}
             onClose={() => { window.location.hash = '#health'; }}
             userLabels={userLabels}
-            recentEmails={emails}
+            userEmail={user?.email}
             aiSettings={aiSettings}
             isAiWorking={connectionStatus === 'success'}
           />

@@ -3,6 +3,8 @@ import { ArrowLeft, Filter, CheckCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
 import { buildRoutingSuggestions } from '../lib/foldingModel';
+import { useCachedResource } from '../lib/useCachedResource';
+import { fetchRoutingSample, routingSampleKey, RoutingSample } from '../lib/inboxAnalytics';
 
 export interface CreatedRuleRecord {
   id: string;
@@ -15,6 +17,7 @@ export interface CreatedRuleRecord {
 
 interface RuleSuggesterProps {
   userLabels: any[];
+  userEmail?: string;
   recentEmails?: any[];
   onApplyQuery?: (query: string, filter?: string) => void;
   aiSettings?: any;
@@ -37,7 +40,7 @@ const SAVED_RULES_STORAGE_KEY = 'inbox_created_rules_log_v1';
  */
 export function RuleSuggester({
   userLabels,
-  recentEmails = [],
+  userEmail,
   aiSettings,
   isPage = false,
   onClose
@@ -45,14 +48,22 @@ export function RuleSuggester({
   const [createdRulesLog, setCreatedRulesLog] = useState<CreatedRuleRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'suggestions' | 'active_rules'>('suggestions');
 
+  // Same cache key as Folder Optimizer: one background fetch serves both tools.
+  const sample = useCachedResource<RoutingSample>(
+    routingSampleKey(userEmail),
+    () => fetchRoutingSample()
+  );
+
+  const sampleEmails = sample.data?.emails ?? [];
+
   const suggestions = useMemo(
-    () => buildRoutingSuggestions(recentEmails || [], userLabels || []),
-    [recentEmails, userLabels]
+    () => buildRoutingSuggestions(sampleEmails, userLabels || []),
+    [sampleEmails, userLabels]
   );
 
   const senderCount = useMemo(
-    () => new Set((recentEmails || []).map((e: any) => (e.sender || '').toLowerCase())).size,
-    [recentEmails]
+    () => new Set(sampleEmails.map((e: any) => (e.sender || '').toLowerCase())).size,
+    [sampleEmails]
   );
 
   useEffect(() => {
@@ -141,6 +152,9 @@ export function RuleSuggester({
         <RoutingSuggestions
           suggestions={suggestions}
           sendersAnalysed={senderCount}
+          loading={sample.loading}
+          filedCount={sample.data?.filedCount ?? 0}
+          sampleSize={sampleEmails.length}
           aiSettings={aiSettings}
           onInspect={(query, title) => {
             const params = new URLSearchParams();
@@ -151,7 +165,7 @@ export function RuleSuggester({
             params.set('source', isPage ? 'rule-suggester' : 'health');
             window.location.hash = `#filter-view?${params.toString()}`;
           }}
-          onApplied={(s) => recordCreatedRule(s.query, s.labelName)}
+          onApplied={(s) => { recordCreatedRule(s.query, s.labelName); sample.refresh(); }}
         />
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">

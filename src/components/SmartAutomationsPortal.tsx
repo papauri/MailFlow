@@ -97,7 +97,7 @@ export function SmartAutomationsPortal({
         
         {activeTab === 'optimizer' && (
           <FolderOptimizer
-            emails={emails}
+            userEmail={userEmail}
             userLabels={userLabels}
             aiSettings={aiSettings}
             isFetching={isSearching}
@@ -109,6 +109,7 @@ export function SmartAutomationsPortal({
         {activeTab === 'rules' && (
           <RuleSuggester
             isPage={true}
+            userEmail={userEmail}
             onClose={onClose}
             userLabels={userLabels}
             recentEmails={emails}
