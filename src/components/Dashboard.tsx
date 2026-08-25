@@ -11,6 +11,7 @@ import { StorageBreakdownBar } from "./StorageBreakdownBar";
 import { FilteredEmailPage, FilterPageParams } from "./FilteredEmailPage";
 import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes";
 import { useInboxWarmup } from "../lib/useInboxWarmup";
+import { useRoutePrefetch } from "../lib/useRoutePrefetch";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
 import { cn } from "../lib/utils";
 
@@ -334,6 +335,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
 
   useEffect(() => { totalCountRef.current = totalCount; }, [totalCount]);
 
+  // Chunks first (cheap, same-origin, no quota), then the data behind them.
+  useRoutePrefetch();
   useInboxWarmup(user?.email);
 
   const searchCacheKey = (q: string, filters: string[]) => `${q}::${[...filters].sort().join(',')}`;
@@ -2749,6 +2752,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           </div>
         </div>
       )}
+      {showLabelManager && (
+      <Suspense fallback={null}>
       <LabelManagerModal
         isOpen={showLabelManager}
         onClose={() => setShowLabelManager(false)}
@@ -2766,7 +2771,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           handleSearch(undefined, q, f, true);
         }}
       />
-      <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
+      </Suspense>
+      )}
+      {showAdminPanel && (
+        <Suspense fallback={null}>
+          <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
