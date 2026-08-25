@@ -1,4 +1,4 @@
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect } from 'react';
 import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, Sparkles, ArrowLeft } from 'lucide-react';
 import { searchEmails, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
@@ -406,7 +406,7 @@ export function UnsubscribeManager({
             <>
               {loading ? (
                 <div className="flex flex-col items-center justify-center gap-4 text-slate-500 p-4 sm:p-16">
-                  <TypingLoader 
+                  <SketchLoadingState scene="binning" 
                     title="Finding Subscriptions" 
                     messages={[
                       "Scanning inbox for newsletters...",

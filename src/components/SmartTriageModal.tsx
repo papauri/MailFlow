@@ -1,4 +1,4 @@
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -975,7 +975,7 @@ export function SmartTriageModal({
         <div className="flex-1 bg-slate-50/50 p-4 sm:p-6 overflow-y-auto">
           {loading ? (
             <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
-              <TypingLoader 
+              <SketchLoadingState scene="sorting" 
                 title="Triaging Inbox" 
                 messages={[
                   "Analyzing unorganized emails...",

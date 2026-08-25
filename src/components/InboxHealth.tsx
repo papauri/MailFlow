@@ -9,7 +9,7 @@ import {
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalkthroughTip } from "./WalkthroughTip";
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from "./SketchLoader";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
 import { UnsubscribeManager } from "./UnsubscribeManager";
 import { LabelManagerModal } from "./LabelManagerModal";
@@ -102,7 +102,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   );
 
   if (loading || isLoadingEmails) {
-    return <TypingLoader title="Analyzing Inbox Health" messages={["Scanning folders...", "Calculating storage sizes...", "Running email distribution analysis...", "Identifying large attachments...", "Categorizing subscriptions..."]} />;
+    return <SketchLoadingState scene="measuring" title="Sizing up your inbox" messages={["Scanning folders…", "Weighing storage…", "Finding the heavy stuff…", "Spotting subscriptions…"]} />;
   }
 
   return (

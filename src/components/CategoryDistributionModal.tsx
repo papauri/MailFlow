@@ -1,4 +1,4 @@
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from "./SketchLoader";
 import { CleanupRecommendations } from "./CleanupRecommendations";
 import { PageHeader } from "./PageHeader";
 import { analyseCleanup } from "../lib/cleanupModel";
@@ -121,6 +121,11 @@ export interface CategoryDiagnostic {
   practicalAdvice?: string;
 }
 
+/** First, blocking fetch: one detail request per thread, so keep it small. */
+const INITIAL_SAMPLE = 120;
+/** Background rounds: larger, since nobody is waiting on them. */
+const DEEPEN_PAGE = 200;
+
 export function CategoryDistributionModal({
   isOpen = true,
   onClose,
@@ -167,7 +172,7 @@ export function CategoryDistributionModal({
           priority: 10,
           step: async (signal) => {
             const config = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
-            const page = await fetchCategoryPage(config.query, deepenToken, 300);
+            const page = await fetchCategoryPage(config.query, deepenToken, DEEPEN_PAGE);
             if (signal.aborted) return false;
 
             if (page.emails.length > 0) {
@@ -344,7 +349,12 @@ export function CategoryDistributionModal({
       //    holding thousands of messages spread over hundreds of senders left every
       //    sender with a handful of hits, below any threshold worth acting on, so the
       //    analysis concluded "nothing to clean" from a sliver of the evidence.
-      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=500`);
+      // Deliberately small. Every thread here costs a separate detail request, so a
+      // 500-thread sample meant 500 calls before anything could render — the page
+      // sat on a loader long enough to look broken, and competed with background
+      // work for the same quota. The background pass below widens this to thousands
+      // without the user waiting on it, which is what it exists for.
+      const listRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(config.query)}&maxResults=${INITIAL_SAMPLE}`);
       setDeepenToken(listRes?.nextPageToken || null);
       if (!listRes || !listRes.threads || listRes.threads.length === 0) {
         setCategoryEmails([]);
@@ -361,7 +371,7 @@ export function CategoryDistributionModal({
       }
 
       // 2. Fetch metadata details in efficient batches
-      const sampledThreads = listRes.threads.slice(0, 500);
+      const sampledThreads = listRes.threads.slice(0, INITIAL_SAMPLE);
       const detailedEmails: EmailData[] = (await processInChunks(sampledThreads, 10, async (thread: any) => {
         try {
           const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);

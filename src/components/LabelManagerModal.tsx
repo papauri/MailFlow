@@ -1,4 +1,4 @@
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   X, 
@@ -1094,7 +1094,7 @@ export function LabelManagerModal({
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50/40">
               {loadingEmails ? (
                 <div className="h-full flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-                  <TypingLoader 
+                  <SketchLoadingState scene="filing" 
                     title={`Loading ${currentFolder.name}`} 
                     messages={[
                       "Fetching emails...",

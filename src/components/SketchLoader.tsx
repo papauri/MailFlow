@@ -1,0 +1,210 @@
+import React, { useEffect, useState } from 'react';
+
+/**
+ * Hand-drawn stick figures for loading states.
+ *
+ * Drawn as inline SVG with CSS keyframes rather than an animation library or a GIF:
+ * it stays crisp at any size, adds nothing to the bundle, inherits the current text
+ * colour, and costs nothing to render.
+ *
+ * The scene matches the job, so the wait tells you what is happening — filing for
+ * folder work, binning for cleanup, a magnifying glass for analysis.
+ */
+
+export type SketchScene = 'filing' | 'sorting' | 'binning' | 'searching' | 'measuring';
+
+interface Props {
+  scene?: SketchScene;
+  className?: string;
+}
+
+/** Shared stick body. The head is separate so scenes can tilt it. */
+function Body() {
+  return (
+    <>
+      <line x1="50" y1="42" x2="50" y2="70" />
+      <line x1="50" y1="70" x2="42" y2="88" />
+      <line x1="50" y1="70" x2="58" y2="88" />
+    </>
+  );
+}
+
+function Scene({ scene }: { scene: SketchScene }) {
+  switch (scene) {
+    case 'filing':
+      return (
+        <g>
+          {/* Cabinet */}
+          <rect x="66" y="52" width="28" height="38" rx="2" />
+          <line x1="66" y1="65" x2="94" y2="65" />
+          <line x1="66" y1="78" x2="94" y2="78" />
+          <circle cx="80" cy="58.5" r="1.6" />
+          <circle cx="80" cy="71.5" r="1.6" />
+          <g className="sk-arm-file">
+            <line x1="50" y1="52" x2="66" y2="46" />
+            <rect className="sk-paper" x="62" y="38" width="12" height="9" rx="1" />
+          </g>
+          <line x1="50" y1="52" x2="38" y2="62" />
+          <circle cx="50" cy="34" r="8" />
+          <Body />
+        </g>
+      );
+
+    case 'sorting':
+      return (
+        <g>
+          <rect x="8" y="70" width="22" height="18" rx="2" />
+          <rect x="70" y="70" width="22" height="18" rx="2" />
+          <rect className="sk-paper sk-fly-left" x="20" y="30" width="12" height="9" rx="1" />
+          <rect className="sk-paper sk-fly-right" x="68" y="30" width="12" height="9" rx="1" />
+          <line x1="50" y1="52" x2="34" y2="44" />
+          <line x1="50" y1="52" x2="66" y2="44" />
+          <circle cx="50" cy="34" r="8" />
+          <Body />
+        </g>
+      );
+
+    case 'binning':
+      return (
+        <g>
+          {/* Bin */}
+          <path d="M68 58 L92 58 L89 92 L71 92 Z" />
+          <line x1="65" y1="58" x2="95" y2="58" />
+          <line x1="76" y1="66" x2="77" y2="85" />
+          <line x1="84" y1="66" x2="83" y2="85" />
+          <rect className="sk-paper sk-drop" x="72" y="30" width="12" height="9" rx="1" />
+          <g className="sk-arm-toss">
+            <line x1="50" y1="52" x2="68" y2="44" />
+          </g>
+          <line x1="50" y1="52" x2="38" y2="62" />
+          <circle cx="50" cy="34" r="8" />
+          <Body />
+        </g>
+      );
+
+    case 'measuring':
+      return (
+        <g>
+          <rect x="64" y="62" width="30" height="28" rx="2" />
+          <line x1="64" y1="72" x2="94" y2="72" />
+          <rect className="sk-paper sk-stack" x="68" y="48" width="22" height="12" rx="1" />
+          <line x1="50" y1="52" x2="66" y2="56" />
+          <line x1="50" y1="52" x2="38" y2="62" />
+          <circle cx="50" cy="34" r="8" />
+          <Body />
+        </g>
+      );
+
+    case 'searching':
+    default:
+      return (
+        <g>
+          <g className="sk-glass">
+            <circle cx="76" cy="46" r="11" />
+            <line x1="84" y1="54" x2="92" y2="63" />
+          </g>
+          <line x1="50" y1="52" x2="68" y2="50" />
+          <line x1="50" y1="52" x2="38" y2="62" />
+          <circle cx="50" cy="34" r="8" />
+          <Body />
+        </g>
+      );
+  }
+}
+
+export function SketchLoader({ scene = 'searching', className }: Props) {
+  return (
+    <div className={className} aria-hidden="true">
+      <style>{`
+        @keyframes sk-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes sk-arm-file { 0%,100% { transform: rotate(0deg); } 45% { transform: rotate(-16deg); } }
+        @keyframes sk-arm-toss { 0%,100% { transform: rotate(0deg); } 40% { transform: rotate(-26deg); } }
+        @keyframes sk-drop { 0% { opacity:0; transform: translate(0,0); } 25% { opacity:1; }
+                             70% { opacity:1; transform: translate(4px,26px); }
+                             85%,100% { opacity:0; transform: translate(4px,30px); } }
+        @keyframes sk-fly-left { 0%,100% { transform: translate(0,0); opacity:0; }
+                                 30% { opacity:1; } 75% { transform: translate(-6px,38px); opacity:1; }
+                                 90% { opacity:0; } }
+        @keyframes sk-fly-right { 0%,100% { transform: translate(0,0); opacity:0; }
+                                  40% { opacity:1; } 80% { transform: translate(6px,38px); opacity:1; }
+                                  95% { opacity:0; } }
+        @keyframes sk-glass { 0%,100% { transform: translate(0,0); } 33% { transform: translate(-7px,4px); }
+                              66% { transform: translate(5px,-3px); } }
+        @keyframes sk-stack { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        @keyframes sk-dash { to { stroke-dashoffset: 0; } }
+
+        .sk-figure { animation: sk-bob 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
+        /* Strokes draw themselves in once, so it reads as a sketch being made. */
+        .sk-figure path, .sk-figure line, .sk-figure circle, .sk-figure rect {
+          stroke-dasharray: 120; stroke-dashoffset: 120;
+          animation: sk-dash 1.1s ease-out forwards;
+        }
+        .sk-arm-file { animation: sk-arm-file 2.4s ease-in-out infinite; transform-origin: 50px 52px; }
+        .sk-arm-toss { animation: sk-arm-toss 2.2s ease-in-out infinite; transform-origin: 50px 52px; }
+        .sk-drop { animation: sk-drop 2.2s ease-in-out infinite; }
+        .sk-fly-left { animation: sk-fly-left 2.6s ease-in-out infinite; }
+        .sk-fly-right { animation: sk-fly-right 2.6s ease-in-out infinite .3s; }
+        .sk-glass { animation: sk-glass 3s ease-in-out infinite; }
+        .sk-stack { animation: sk-stack 2s ease-in-out infinite; }
+
+        /* Respect a stated preference for less motion: the drawing still appears,
+           it simply stops moving. */
+        @media (prefers-reduced-motion: reduce) {
+          .sk-figure, .sk-figure *, .sk-arm-file, .sk-arm-toss, .sk-drop,
+          .sk-fly-left, .sk-fly-right, .sk-glass, .sk-stack {
+            animation: none !important;
+            stroke-dashoffset: 0 !important;
+          }
+        }
+      `}</style>
+
+      <svg
+        viewBox="0 0 100 100"
+        className="sk-figure w-24 h-24 sm:w-28 sm:h-28 text-slate-400"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <Scene scene={scene} />
+        {/* Ground line, so the figure is standing rather than floating */}
+        <line x1="14" y1="92" x2="86" y2="92" className="text-slate-200" strokeWidth="1.6" />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Cycles through messages beneath the sketch. A wait that names what it is doing is
+ * far easier to sit through than a bare spinner.
+ */
+export function SketchLoadingState({
+  scene = 'searching',
+  title,
+  messages = [],
+}: {
+  scene?: SketchScene;
+  title: string;
+  messages?: string[];
+}) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (messages.length < 2) return;
+    const timer = setInterval(() => setIndex(i => (i + 1) % messages.length), 2200);
+    return () => clearInterval(timer);
+  }, [messages.length]);
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center py-12 sm:py-16 gap-1 text-center">
+      <SketchLoader scene={scene} />
+      <p className="text-sm font-semibold text-slate-800 mt-2">{title}</p>
+      {messages.length > 0 && (
+        <p key={index} className="text-xs text-slate-500 animate-in fade-in duration-500 min-h-[1rem]">
+          {messages[index]}
+        </p>
+      )}
+    </div>
+  );
+}

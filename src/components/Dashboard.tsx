@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense, FormEvent } from "react";
 import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive, SlidersHorizontal } from "lucide-react";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
-import { TypingLoader } from "./TypingLoader";
+import { SketchLoadingState } from './SketchLoader';
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
 import { BulkOrganizeDropdown } from "./BulkOrganizeDropdown";
 import { WalkthroughTip } from "./WalkthroughTip";
@@ -46,11 +46,7 @@ const InboxHealth = lazy(() => import("./InboxHealth").then(m => ({ default: m.I
 
 /** Keeps a lazy view's arrival from collapsing the page height. */
 function RouteFallback() {
-  return (
-    <div className="w-full min-h-[320px] flex items-center justify-center">
-      <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-    </div>
-  );
+  return <SketchLoadingState scene="filing" title="Opening…" />;
 }
 
 export default function Dashboard({ user, onLogout }: { user: any, onLogout?: () => void }) {
@@ -1881,7 +1877,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             {emails.length === 0 ? (
               (isSearching || isLoadingMore) ? (
                 <div className="flex flex-col items-center justify-center h-96 text-slate-400 px-4 text-center">
-                  <TypingLoader 
+                  <SketchLoadingState scene="searching" 
                     title="Loading Messages" 
                     messages={[
                       "Fetching emails from Gmail...",
