@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useCachedResource, mutateCachedResource } from '../lib/useCachedResource';
 import { buildRecommendations } from '../lib/recommendations';
 import { formatBytes } from '../lib/csvExport';
+import { PageHeader } from './PageHeader';
 import {
   fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult
 } from '../lib/inboxAnalytics';
@@ -106,6 +107,23 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
   return (
     <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Inbox Health"
+        subtitle="Where your storage and clutter actually are."
+        icon={<Activity className="w-4 h-4" />}
+        actions={
+          <button
+            onClick={() => { statsResource.refresh(); clustersResource.refresh(); }}
+            disabled={statsResource.refreshing || clustersResource.refreshing}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+            title="Refresh inbox analysis"
+          >
+            <Loader2 className={cn("w-4 h-4", (statsResource.refreshing || clustersResource.refreshing) ? "animate-spin" : "hidden")} />
+            <Activity className={cn("w-4 h-4", (statsResource.refreshing || clustersResource.refreshing) && "hidden")} />
+          </button>
+        }
+      />
+
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs relative overflow-hidden mb-4 sm:mb-6">
         <div className="flex items-start gap-4 relative z-10">
           <div className="bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shrink-0 hidden sm:block">

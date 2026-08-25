@@ -3,6 +3,7 @@ import { ArrowLeft, Filter, CheckCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
 import { buildRoutingSuggestions } from '../lib/foldingModel';
+import { PageHeader } from './PageHeader';
 import { useCachedResource } from '../lib/useCachedResource';
 import { fetchRoutingSample, routingSampleKey, RoutingSample } from '../lib/inboxAnalytics';
 
@@ -102,29 +103,16 @@ export function RuleSuggester({
   return (
     <div className={cn("flex flex-col gap-4", isPage ? "w-full animate-in fade-in duration-150" : "mt-6 sm:mt-8")}>
       {isPage && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                if (onClose) onClose();
-                else window.location.hash = '#health';
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shrink-0 shadow-2xs"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Inbox Health</span>
-            </button>
-            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
-              <Filter className="w-5 h-5 text-slate-100" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-slate-900">Automated Sorting Rules</h1>
-              <p className="text-xs text-slate-500">
-Filters that sort future mail automatically. To tidy up existing mail, use the Folder Optimizer.
-              </p>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          title="Automated Sorting Rules"
+          subtitle="Filters that sort future mail. Use Folder Optimizer for existing mail."
+          icon={<Filter className="w-4 h-4" />}
+          onBack={() => {
+            if (onClose) onClose();
+            else window.location.hash = '#health';
+          }}
+          backLabel="Back to Inbox Health"
+        />
       )}
 
       <div className="flex space-x-1 bg-slate-200/60 p-1 rounded-xl w-fit">

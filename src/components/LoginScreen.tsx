@@ -98,12 +98,12 @@ export default function LoginScreen({
     };
 
     const particleColors = [
-      '#1A56C4', // Deep blue
-      '#B3261E', // Deep red
-      '#B8860B', // Deep amber — plain yellow disappears on white
-      '#1E7B34', // Deep green
-      '#475569', // Slate 600
-      '#334155'  // Slate 700
+      '#0B3D91', // Navy — Google blue taken most of the way to black
+      '#7F1D1D', // Deep maroon
+      '#78350F', // Dark amber; yellow itself is invisible on white at this size
+      '#14532D', // Forest green
+      '#1E293B', // Slate 800
+      '#0F172A'  // Slate 900
     ];
 
     const particleCount = Math.min(Math.floor((width * height) / 12000), 75);
@@ -112,7 +112,7 @@ export default function LoginScreen({
     for (let i = 0; i < particleCount; i++) {
       const x = Math.random() * width;
       const y = Math.random() * height;
-      const baseAlpha = 0.45 + Math.random() * 0.4;
+      const baseAlpha = 0.6 + Math.random() * 0.35;
       particles.push({
         x,
         y,
@@ -120,7 +120,7 @@ export default function LoginScreen({
         originY: y,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.4,
-        size: Math.random() * 2.2 + 1.2,
+        size: Math.random() * 2.4 + 1.5,
         color: particleColors[Math.floor(Math.random() * particleColors.length)],
         alpha: baseAlpha,
         baseAlpha,
