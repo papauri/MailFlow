@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, CheckCircle, CheckCircle2, Loader2, Trash2, Archive, 
   Mail, Star, Tag, Folder, RefreshCw, Download, Filter, 
@@ -8,6 +8,10 @@ import {
 import { cn } from '../lib/utils';
 import { EmailData } from '../lib/gmail';
 import { routeLabel } from '../lib/routes';
+import { EmailGroupHeader } from './EmailGroupHeader';
+import {
+  chooseGrouping, groupEmails, sortForGrouping, readGroupingPref, writeGroupingPref
+} from '../lib/emailGrouping';
 
 export interface FilterPageParams {
   title: string;
@@ -50,6 +54,7 @@ interface FilteredEmailPageProps {
   sortBy: "date" | "size" | "sender";
   sortDesc: boolean;
   onSortChange: (field: "date" | "size" | "sender", desc: boolean) => void;
+  onInspectEmail?: (email: EmailData) => void;
 }
 
 function formatSize(bytes: number) {
@@ -106,10 +111,59 @@ export function FilteredEmailPage({
   actionLoading,
   sortBy,
   sortDesc,
-  onSortChange
+  onSortChange,
+  onInspectEmail
 }: FilteredEmailPageProps) {
   const [localSearch, setLocalSearch] = useState('');
   const [selectedFolderForMove, setSelectedFolderForMove] = useState('');
+  const [groupingEnabled, setGroupingEnabled] = useState(readGroupingPref);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  /**
+   * The grouping dimension follows the job this page was opened for — size bands for
+   * storage work, Spam vs Trash for junk, age bands for stale sweeps. Turning
+   * grouping off gives the plain single list.
+   */
+  const strategy = useMemo(
+    () => groupingEnabled
+      ? chooseGrouping({ query: params.query, folder: params.folder, action: params.action, sortBy })
+      : 'none',
+    [groupingEnabled, params.query, params.folder, params.action, sortBy]
+  );
+
+  // Apply the ordering the task implies, once, unless the user has since chosen
+  // their own sort. Storage pages arrive sorted biggest-first without being asked.
+  const appliedIntentSort = React.useRef(false);
+  useEffect(() => {
+    if (appliedIntentSort.current) return;
+    const intent = sortForGrouping(chooseGrouping({
+      query: params.query, folder: params.folder, action: params.action, sortBy: params.sort
+    }));
+    if (intent && (intent.sortBy !== sortBy || intent.sortDesc !== sortDesc)) {
+      onSortChange(intent.sortBy, intent.sortDesc);
+    }
+    appliedIntentSort.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.query, params.folder, params.action]);
+
+  const toggleGroupCollapse = (id: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroupSelection = (ids: string[]) => {
+    const allSelected = ids.every(id => selectedIds.has(id));
+    // Reuses the per-row toggle so selection stays consistent with the parent's model.
+    ids.forEach(id => {
+      const selected = selectedIds.has(id);
+      if (allSelected && selected) onToggleSelect(id);
+      else if (!allSelected && !selected) onToggleSelect(id);
+    });
+  };
 
   const filteredEmails = useMemo(() => {
     if (!localSearch.trim()) return emails;
@@ -120,6 +174,13 @@ export function FilteredEmailPage({
       e.snippet.toLowerCase().includes(term)
     );
   }, [emails, localSearch]);
+
+  const groups = useMemo(
+    () => groupEmails(filteredEmails, strategy),
+    [filteredEmails, strategy]
+  );
+  // A single group is just a list with an extra bar over it — don't show the header.
+  const showGroupHeaders = strategy !== 'none' && groups.length > 1;
 
   const isAllSelected = filteredEmails.length > 0 && filteredEmails.every(e => selectedIds.has(e.id));
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
@@ -377,6 +438,23 @@ export function FilteredEmailPage({
                 <option value="sender">Sender</option>
               </select>
               <button
+                onClick={() => {
+                  const next = !groupingEnabled;
+                  setGroupingEnabled(next);
+                  writeGroupingPref(next);
+                }}
+                className={cn(
+                  "px-2 py-1 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1",
+                  groupingEnabled
+                    ? "bg-slate-900 text-white border-slate-900 hover:bg-slate-800"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                )}
+                title={groupingEnabled ? 'Grouped — click for one long list' : 'One long list — click to group'}
+              >
+                <Layers className="w-3 h-3" />
+                <span className="hidden sm:inline">{groupingEnabled ? 'Grouped' : 'Flat'}</span>
+              </button>
+              <button
                 onClick={() => onSortChange(sortBy, !sortDesc)}
                 className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer whitespace-nowrap"
                 title={sortDesc ? 'Sorted descending — click for ascending' : 'Sorted ascending — click for descending'}
@@ -467,65 +545,94 @@ export function FilteredEmailPage({
               <p className="text-xs text-slate-400">All messages matching this criteria have been cleared or organized.</p>
             </div>
           ) : (
-            filteredEmails.map(email => {
-              const isSelected = selectedIds.has(email.id);
-              const isUnread = email.labelIds?.includes('UNREAD');
+            groups.map(group => {
+              const collapsed = collapsedGroups.has(group.id);
+              const groupIds = group.emails.map((e: any) => e.id);
+              const selectedInGroup = groupIds.filter((id: string) => selectedIds.has(id)).length;
 
               return (
-                <div
-                  key={email.id}
-                  onClick={() => onToggleSelect(email.id)}
-                  className={cn(
-                    "flex items-start sm:items-center gap-3 p-3 sm:px-4 hover:bg-slate-50/80 transition-colors cursor-pointer group",
-                    isSelected ? "bg-blue-50/40" : "",
-                    isUnread ? "bg-white font-medium" : "text-slate-600",
-                    viewDensity === 'compact' ? "py-2 sm:py-2" : "py-3 sm:py-3.5"
+                <div key={group.id}>
+                  {showGroupHeaders && (
+                    <EmailGroupHeader
+                      group={group}
+                      collapsed={collapsed}
+                      onToggleCollapse={() => toggleGroupCollapse(group.id)}
+                      allSelected={selectedInGroup === groupIds.length && groupIds.length > 0}
+                      someSelected={selectedInGroup > 0 && selectedInGroup < groupIds.length}
+                      onToggleSelectAll={() => toggleGroupSelection(groupIds)}
+                      showBytes={strategy === 'size'}
+                    />
                   )}
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleSelect(email.id);
-                    }}
-                    className="mt-0.5 sm:mt-0 flex items-center justify-center w-5 h-5 rounded hover:bg-slate-200 text-slate-400 transition-colors shrink-0 cursor-pointer"
-                  >
-                    <div className={cn(
-                      "w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs",
-                      isSelected ? "bg-slate-900 border-slate-900 text-white" : "border-slate-300 bg-white text-transparent"
-                    )}>
-                      <Check className="w-3 h-3" />
-                    </div>
-                  </button>
+                  {!collapsed && group.emails.map((email: any) => {
+                    const isSelected = selectedIds.has(email.id);
+                    const isUnread = email.labelIds?.includes('UNREAD');
+                    const bigEnough = (email.sizeEstimate || 0) > 1024 * 1024;
 
-                  <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline sm:items-center">
-                    {/* Sender */}
-                    <div className="sm:col-span-3 truncate text-xs sm:text-sm font-semibold text-slate-800">
-                      {email.sender}
-                    </div>
+                    return (
+                      <div
+                        key={email.id}
+                        onClick={() => onToggleSelect(email.id)}
+                        className={cn(
+                          "flex items-center gap-3 px-3 sm:px-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/80 transition-colors cursor-pointer group",
+                          isSelected ? "bg-blue-50/40" : "",
+                          isUnread ? "bg-white" : "text-slate-600",
+                          viewDensity === 'compact' ? "py-2" : "py-3"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onToggleSelect(email.id); }}
+                          className="flex items-center justify-center w-5 h-5 rounded hover:bg-slate-200 text-slate-400 transition-colors shrink-0 cursor-pointer"
+                          aria-label={isSelected ? 'Deselect message' : 'Select message'}
+                        >
+                          <div className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs",
+                            isSelected ? "bg-slate-900 border-slate-900 text-white" : "border-slate-300 bg-white text-transparent"
+                          )}>
+                            <Check className="w-3 h-3" />
+                          </div>
+                        </button>
 
-                    {/* Subject & Snippet */}
-                    <div className="sm:col-span-7 min-w-0 flex items-baseline gap-2 truncate text-xs sm:text-sm">
-                      <span className={cn("truncate", isUnread ? "font-bold text-slate-900" : "text-slate-700")}>
-                        {email.subject || '(No Subject)'}
-                      </span>
-                      <span className="text-slate-400 text-xs truncate hidden sm:inline">
-                        — {email.snippet}
-                      </span>
-                    </div>
+                        {/* Fixed columns so sender, subject, size and date line up on
+                            every row regardless of which optional parts are present. */}
+                        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-4">
+                          <div className={cn(
+                            "sm:w-[190px] shrink-0 truncate text-xs sm:text-sm",
+                            isUnread ? "font-bold text-slate-900" : "font-semibold text-slate-700"
+                          )}>
+                            {email.sender}
+                          </div>
 
-                    {/* Date & Size */}
-                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2 text-[11px] text-slate-400 shrink-0">
-                      {email.sizeEstimate && email.sizeEstimate > 1024 * 1024 && (
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]">
-                          {formatSize(email.sizeEstimate)}
-                        </span>
-                      )}
-                      <span>
-                        {email.date ? new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
-                      </span>
-                    </div>
-                  </div>
+                          <div className="flex-1 min-w-0 flex items-baseline gap-2 text-xs sm:text-sm">
+                            <span className={cn("truncate shrink-0 max-w-full", isUnread ? "font-bold text-slate-900" : "text-slate-700")}>
+                              {email.subject || '(No Subject)'}
+                            </span>
+                            <span className="text-slate-400 text-xs truncate hidden sm:inline">
+                              — {email.snippet}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="w-[58px] text-right text-[10px] font-mono text-slate-600 tabular-nums hidden sm:block">
+                            {bigEnough ? formatSize(email.sizeEstimate) : ''}
+                          </span>
+                          <span className="w-[52px] text-right text-[11px] text-slate-400 tabular-nums">
+                            {email.date ? new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onInspectEmail?.(email); }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            title="Preview message"
+                            aria-label="Preview message"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })

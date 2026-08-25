@@ -1505,6 +1505,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             sortBy={sortBy}
             sortDesc={sortDesc}
             onSortChange={(field, desc) => { setSortBy(field); setSortDesc(desc); }}
+            onInspectEmail={(email) => toggleExpand(email.id)}
           />
         )}
         <div style={{ display: isFullPageRoute(currentHash) ? 'none' : 'block' }}>
@@ -2075,7 +2076,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                               title={isExpanded ? "Collapse thread" : "Preview email"}
                             >
                               {isExpanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 text-slate-600" />}
-                              <span className="hidden sm:inline ml-1">{isExpanded ? "Hide" : "Preview"}</span>
                             </button>
                           </div>
 
@@ -2172,7 +2172,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                                   className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2 py-1 hover:bg-slate-200 rounded-lg transition-colors ml-auto cursor-pointer"
                                 >
                                   <ChevronUp className="w-3.5 h-3.5" />
-                                  <span>Hide Preview</span>
+                                  <span>Hide</span>
                                 </button>
                               </div>
                             </div>
@@ -2230,7 +2230,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                                 title={isExpanded ? "Collapse thread" : "Expand thread"}
                               >
                                 {isExpanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3 text-slate-600" />}
-                                <span>{isExpanded ? "Hide" : (email.messages && email.messages.length > 1 ? `View ${email.messages.length} replies` : "Preview")}</span>
+                                <span>{isExpanded ? "Hide" : (email.messages && email.messages.length > 1 ? `View ${email.messages.length} replies` : "")}</span>
                               </button>
                             </div>
                           </div>
@@ -2387,7 +2387,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                                   className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2 py-1 hover:bg-slate-200 rounded-lg transition-colors ml-auto cursor-pointer"
                                 >
                                   <ChevronUp className="w-3.5 h-3.5" />
-                                  <span>Hide Preview</span>
+                                  <span>Hide</span>
                                 </button>
                               </div>
                             </div>
