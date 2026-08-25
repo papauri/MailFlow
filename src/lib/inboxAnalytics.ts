@@ -29,6 +29,42 @@ export interface SenderClusters {
 
 export const senderClustersKey = (userEmail?: string) => `sender-clusters:${userEmail || 'anon'}`;
 export const inboxStatsKey = (userEmail?: string) => `inbox-stats:${userEmail || 'anon'}`;
+export const routingSampleKey = (userEmail?: string) => `routing-sample:${userEmail || 'anon'}`;
+
+export interface RoutingSample {
+  emails: any[];
+  /** Messages carrying a user label — the evidence the routing model learns from. */
+  filedCount: number;
+}
+
+/**
+ * Sample for the routing model: training data plus candidates.
+ *
+ * The training signal is mail the user has *already filed*, which by definition is
+ * not in the inbox — so an inbox-scoped sample contains almost none of it and the
+ * model has nothing to learn from. `has:userlabels` is the query that actually finds
+ * it, and nothing else in the app was asking for it.
+ *
+ * The second half is recent inbox mail: the candidates a rule would act on. Both are
+ * needed — filed mail alone shows where things go but not what is still loose.
+ */
+export async function fetchRoutingSample(): Promise<RoutingSample> {
+  const [filed, recent] = await Promise.all([
+    searchEmails('has:userlabels -in:trash -in:spam -in:chats', 300).catch(() => []),
+    searchEmails('in:inbox -in:chats -is:draft', 200).catch(() => []),
+  ]);
+
+  // A message can appear in both halves; keep one copy so counts stay honest.
+  const byId = new Map<string, any>();
+  for (const e of [...filed, ...recent]) {
+    if (e?.id) byId.set(e.id, e);
+  }
+
+  return {
+    emails: Array.from(byId.values()),
+    filedCount: filed.length,
+  };
+}
 
 export async function fetchSenderClusters(userEmail?: string): Promise<SenderClusters> {
   const normalizedUser = (userEmail || '').toLowerCase().trim();
