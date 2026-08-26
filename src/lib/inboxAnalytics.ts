@@ -238,7 +238,7 @@ export const categoryScanKey = (categoryId: string, userEmail?: string) =>
   `category-scan:${categoryId}:${userEmail || 'anon'}`;
 
 /** Upper bound on one category scan, so the cost of "scan everything" stays bounded. */
-export const CATEGORY_SCAN_LIMIT = 3000;
+export const CATEGORY_SCAN_LIMIT = Infinity;
 
 /**
  * Full metadata scan of one category.

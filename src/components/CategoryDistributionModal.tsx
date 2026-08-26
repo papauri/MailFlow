@@ -241,11 +241,8 @@ export function CategoryDistributionModal({
     try {
       const results: CategoryItem[] = await Promise.all(
         CATEGORY_CONFIG.map(async (cat) => {
-          const rawCount = await estimateMessageCount(cat.query);
-          const numValue =
-            typeof rawCount === 'number'
-              ? rawCount
-              : parseInt(String(rawCount).replace(/[^0-9]/g, ''), 10) || 5000;
+          const rawCount = await countEmails(cat.query);
+          const numValue = rawCount;
           return {
             id: cat.id,
             name: cat.name,
@@ -253,7 +250,7 @@ export function CategoryDistributionModal({
             filter: cat.filter,
             color: cat.color,
             value: numValue,
-            displayCount: typeof rawCount === 'number' ? rawCount.toLocaleString() : String(rawCount),
+            displayCount: rawCount.toLocaleString(),
           };
         })
       );

@@ -51,19 +51,23 @@ export function EmailGroupHeader({
 
   return (
     <div className="sticky top-0 z-10 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 bg-slate-50 border-y border-slate-200">
-      <button
-        onClick={onToggleSelectAll}
-        className={cn(
-          "w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer shrink-0 box-content p-1.5 -m-1.5 sm:p-0 sm:m-0",
-          allSelected ? "bg-slate-900 border-slate-900 text-white"
-            : someSelected ? "bg-slate-900/70 border-slate-900 text-white"
-            : "border-slate-300 bg-white text-transparent hover:border-slate-400"
-        )}
+      <label
+        className="flex items-center justify-center transition-colors cursor-pointer shrink-0 box-content p-1.5 -m-1.5 sm:p-0 sm:m-0"
         title={allSelected ? `Deselect all in ${group.title}` : `Select all in ${group.title}`}
         aria-label={allSelected ? `Deselect all in ${group.title}` : `Select all in ${group.title}`}
       >
-        <Check className="w-3 h-3" />
-      </button>
+        <input
+          type="checkbox"
+          checked={allSelected}
+          ref={input => {
+            if (input) {
+              input.indeterminate = someSelected;
+            }
+          }}
+          onChange={onToggleSelectAll}
+          className="rounded text-slate-700 focus:ring-slate-500 border-slate-300 w-4 h-4 cursor-pointer"
+        />
+      </label>
 
       <button
         onClick={onToggleCollapse}

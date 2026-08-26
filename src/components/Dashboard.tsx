@@ -1603,27 +1603,31 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           <div className="sticky top-[57px] sm:top-[65px] z-10 bg-white flex flex-col border-b border-slate-200 rounded-t-2xl shadow-2xs">
             <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                <button 
-                  type="button"
-                  id="select-all-emails-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (emails.length === 0) return;
-                    const isAllSelected = selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id));
-                    if (isAllSelected) {
-                      setSelectedIds(new Set());
-                    } else {
-                      setSelectedIds(new Set(emails.map(item => item.id)));
-                    }
-                  }}
-                  className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors shrink-0 cursor-pointer"
-                  disabled={emails.length === 0}
+                <label 
+                  id="select-all-emails-label"
+                  className={cn("flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-100 transition-colors shrink-0 cursor-pointer", emails.length === 0 ? "opacity-50 pointer-events-none" : "")}
                   title={selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id)) ? "Deselect all" : "Select all"}
                 >
-                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs", selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id)) ? "bg-slate-800 border-slate-800" : selectedIds.size > 0 ? "bg-slate-800/80 border-slate-800" : "border-slate-300 bg-white")}>
-                    {selectedIds.size > 0 && <CheckCircle className="w-3 h-3 text-white" />}
-                  </div>
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size > 0 && emails.every(item => selectedIds.has(item.id))}
+                    ref={input => {
+                      if (input) {
+                        input.indeterminate = selectedIds.size > 0 && !emails.every(item => selectedIds.has(item.id));
+                      }
+                    }}
+                    onChange={(e) => {
+                      if (emails.length === 0) return;
+                      if (!e.target.checked) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(emails.map(item => item.id)));
+                      }
+                    }}
+                    disabled={emails.length === 0}
+                    className="rounded text-slate-700 focus:ring-slate-500 border-slate-300 w-4 h-4 cursor-pointer"
+                  />
+                </label>
 
                 {isScrolledDown && (
                   <div className="animate-in fade-in zoom-in-95 duration-150">

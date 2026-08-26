@@ -374,28 +374,33 @@ export function FilteredEmailPage({
         {/* Table Toolbar */}
         <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (filteredEmails.length === 0) return;
-                if (isAllSelected) {
-                  onClearSelection();
-                } else {
-                  onSelectAll();
-                }
-              }}
-              disabled={filteredEmails.length === 0}
-              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-200/80 text-slate-600 transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+            <label
+              className={cn(
+                "flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg hover:bg-slate-200/80 transition-colors shrink-0 cursor-pointer",
+                filteredEmails.length === 0 ? "opacity-50 pointer-events-none" : ""
+              )}
               title={isAllSelected ? "Deselect all" : "Select all in view"}
             >
-              <div className={cn(
-                "w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-2xs",
-                isAllSelected ? "bg-slate-900 border-slate-900" : isSomeSelected ? "bg-slate-900/80 border-slate-900" : "border-slate-300 bg-white"
-              )}>
-                {selectedIds.size > 0 && <Check className="w-3 h-3 text-white" />}
-              </div>
-            </button>
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                ref={input => {
+                  if (input) {
+                    input.indeterminate = isSomeSelected;
+                  }
+                }}
+                onChange={(e) => {
+                  if (filteredEmails.length === 0) return;
+                  if (isAllSelected) {
+                    onClearSelection();
+                  } else {
+                    onSelectAll();
+                  }
+                }}
+                disabled={filteredEmails.length === 0}
+                className="rounded text-slate-700 focus:ring-slate-500 border-slate-300 w-4 h-4 cursor-pointer"
+              />
+            </label>
 
             <span className="text-xs sm:text-sm font-semibold text-slate-700">
               {selectedIds.size > 0 ? (

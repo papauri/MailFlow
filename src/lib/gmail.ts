@@ -369,7 +369,6 @@ export async function countEmails(query: string): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
-    let pages = 0;
     
     do {
       let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
@@ -379,8 +378,7 @@ export async function countEmails(query: string): Promise<number> {
       if (!res || !res.messages || res.messages.length === 0) break;
       total += res.messages.length;
       pageToken = res.nextPageToken;
-      pages++;
-    } while (pageToken && pages < 10); // Check up to 5,000 emails max to save API calls
+    } while (pageToken); // Check all emails to get accurate count
     
     return total;
   } catch (err) {
