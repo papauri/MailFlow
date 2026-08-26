@@ -68,6 +68,8 @@ export interface SmartTriageModalProps {
   isPage?: boolean;
   /** False when shown as a tab inside another page, which supplies its own header. */
   showHeader?: boolean;
+  /** Route that Review should return to, so Back matches where the user came from. */
+  reviewSource?: string;
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
@@ -124,6 +126,7 @@ export function SmartTriageModal({
   onSearchQuery,
   isPage = false,
   showHeader = true,
+  reviewSource = 'smart-triage',
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
@@ -859,10 +862,17 @@ export function SmartTriageModal({
                     <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                       <button
                         onClick={() => {
-                          if (onSearchQuery) {
-                            onSearchQuery(insight.filterQuery);
-                            onClose();
-                          }
+                          // Was: onSearchQuery() then onClose(). Both set the hash in
+                          // the same tick, so the close won and every review landed on
+                          // Inbox Health. Reviewing now opens the messages as a proper
+                          // filtered page that knows where to go back to.
+                          const params = new URLSearchParams();
+                          params.set('q', insight.filterQuery);
+                          params.set('title', insight.title);
+                          params.set('badge', 'Smart Organizer');
+                          params.set('sub', insight.description || 'Messages matching this insight');
+                          params.set('source', reviewSource);
+                          window.location.hash = `#filter-view?${params.toString()}`;
                         }}
                         className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-medium shadow-xs transition-colors"
                       >

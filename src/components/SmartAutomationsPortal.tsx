@@ -87,6 +87,7 @@ export function SmartAutomationsPortal({
             isPage={true}
             isOpen={true}
             showHeader={false}
+            reviewSource="smart-automations"
             onClose={onClose}
             aiSettings={aiSettings}
             userLabels={userLabels}

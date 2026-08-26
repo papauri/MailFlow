@@ -1193,7 +1193,9 @@ export function LabelManagerModal({
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        onClose();
+                                        // onApplyQuery navigates; calling onClose too
+                                        // set the hash twice in one tick, where only
+                                        // the last write survives.
                                         onApplyQuery(`rfc822msgid:${email.id}`, 'anywhere');
                                       }}
                                       className="text-xs text-blue-600 font-semibold hover:underline"

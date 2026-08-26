@@ -579,7 +579,7 @@ export function CategoryDistributionModal({
                    <div className="flex items-center gap-2 shrink-0">
                      {onApplyCategory && (
                        <button 
-                         onClick={(e) => { e.stopPropagation(); onClose(); onApplyCategory(cat.query, cat.filter); }} 
+                         onClick={(e) => { e.stopPropagation(); onApplyCategory(cat.query, cat.filter); }} 
                          className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors" 
                          title={`View emails in ${cat.name}`}
                        >
