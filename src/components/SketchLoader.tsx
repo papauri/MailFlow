@@ -259,7 +259,6 @@ export function SketchLoadingState({
   progressLabel?: string;
 }) {
   const [index, setIndex] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     if (messages.length < 2) return;
@@ -267,15 +266,7 @@ export function SketchLoadingState({
     return () => clearInterval(timer);
   }, [messages.length]);
 
-  // Without counts there is nothing honest to put opposite the bar, and a wait with
-  // no numbers on it at all feels stuck. A running clock at least confirms it is alive.
   const measurable = !!progress && progress.total > 0;
-  useEffect(() => {
-    if (measurable) return;
-    const timer = setInterval(() => setElapsed(s => s + 1), 1000);
-    return () => clearInterval(timer);
-  }, [measurable]);
-
   const pct = measurable
     ? Math.min(100, Math.round((progress!.done / progress!.total) * 100))
     : 0;
@@ -293,16 +284,14 @@ export function SketchLoadingState({
       {/* The bar is always here: determinate when the work can be counted, a moving
           shuttle when it cannot. Either way the wait shows something happening. */}
       <div className="w-full max-w-[220px] mt-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] font-medium text-slate-500">
-            {measurable ? progressLabel : 'Working…'}
-          </span>
-          <span className="text-[11px] font-medium text-slate-600 tabular-nums">
-            {measurable
-              ? `${progress!.done.toLocaleString()} / ${progress!.total.toLocaleString()}`
-              : formatElapsed(elapsed)}
-          </span>
-        </div>
+        {measurable && (
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-medium text-slate-500">{progressLabel}</span>
+            <span className="text-[11px] font-medium text-slate-600 tabular-nums">
+              {progress!.done.toLocaleString()} / {progress!.total.toLocaleString()}
+            </span>
+          </div>
+        )}
         <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
           {measurable ? (
             <div
@@ -316,10 +305,4 @@ export function SketchLoadingState({
       </div>
     </div>
   );
-}
-
-function formatElapsed(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
