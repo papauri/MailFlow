@@ -4,7 +4,8 @@ import { PageHeader } from "./PageHeader";
 import { analyseCleanup } from "../lib/cleanupModel";
 import { CategoryAuditPanel } from "./CategoryAuditPanel";
 import { auditCategory } from "../lib/categoryAudit";
-import { fetchCategoryPage } from "../lib/inboxAnalytics";
+import { fetchCategoryScan, categoryScanKey } from "../lib/inboxAnalytics";
+import { useCachedResource, isCacheWarm, warmCachedResource, invalidateCachedResource, mutateCachedResource } from "../lib/useCachedResource";
 import { useBackgroundTask } from "../lib/useBackgroundTask";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -152,67 +153,10 @@ export function CategoryDistributionModal({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   // Category Cleanup State
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [categoryEmails, setCategoryEmails] = useState<EmailData[]>([]);
   /** Cursor for the background pass that keeps deepening the sample after load. */
   const [deepenToken, setDeepenToken] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
 
-  /**
-   * Keeps loading the rest of the category after the page is already usable.
-   *
-   * A first fetch can only reasonably cover a few hundred messages, so a category
-   * holding thousands was judged on a fraction of itself and the counts understated
-   * the real picture. This walks the remaining pages one at a time in the
-   * background, re-running the audit as each lands, so the findings sharpen while
-   * the user reads them rather than making them wait up front.
-   */
-  const DEEPEN_LIMIT = 2500;
-  useBackgroundTask(
-    deepenToken && categoryEmails.length < DEEPEN_LIMIT
-      ? {
-          id: `deepen:${selectedCategory}`,
-          label: `Analysing more of ${CATEGORY_CONFIG.find(c => c.id === selectedCategory)?.name || 'this category'}…`,
-          priority: 10,
-          step: async (signal) => {
-            const config = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
-            const page = await fetchCategoryPage(config.query, deepenToken, DEEPEN_PAGE);
-            if (signal.aborted) return false;
-
-            if (page.emails.length > 0) {
-              setCategoryEmails(prev => {
-                // The user may have cleared messages while this page was in flight,
-                // so merge on id rather than blindly appending.
-                const seen = new Set(prev.map(e => e.id));
-                return [...prev, ...page.emails.filter((e: any) => !seen.has(e.id))];
-              });
-            }
-            setDeepenToken(page.nextPageToken);
-            return Boolean(page.nextPageToken);
-          },
-        }
-      : null
-  );
-
-  /**
-   * Behavioural analysis of the scanned messages. Pure and local, so it is always
-   * available regardless of AI quota — recomputed straight from the fetched sample.
-   */
-  const cleanupAnalysis = useMemo(
-    () => (categoryEmails.length > 0 ? analyseCleanup(categoryEmails) : null),
-    [categoryEmails]
-  );
-
-  /**
-   * Groups by what messages *are* rather than who sent them, which is the only way
-   * to see mail like one-time codes — those come from hundreds of senders, so every
-   * sender cohort looks small and nothing gets flagged.
-   */
-  const audit = useMemo(
-    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails, new Date(), { minClusterSize: 3 }) : null),
-    [categoryEmails]
-  );
   const [diagnostic, setDiagnostic] = useState<CategoryDiagnostic | null>(null);
   const [dismissedAttentionIds, setDismissedAttentionIds] = useState<Set<string>>(() => {
     try {
@@ -330,101 +274,75 @@ export function CategoryDistributionModal({
   }, [isOpen, fetchCategoryData]);
 
   // Run Category Scan & Analysis
-  const runCategoryAudit = useCallback(async (categoryId: string) => {
-    const config = CATEGORY_CONFIG.find(c => c.id === categoryId) || CATEGORY_CONFIG[0];
-    setSelectedCategory(categoryId);
-    setScanLoading(true);
-    setScanError(null);
-    setCompletedBundleIds(new Set());
-    setCreatedFilterIds(new Set());
-    setExpandedBundleIds(new Set());
-    
-    setHandledAttentionIds(new Set());
+  /**
+   * The selected category's scan, served from cache.
+   *
+   * Switching categories used to trigger a full rescan every time, which is both
+   * slow and pointless — the mailbox has not changed between two clicks, and each
+   * scan costs real quota. Results are cached per category, so switching is instant
+   * once scanned and refreshing is something the user asks for.
+   */
+  const scan = useCachedResource<any[]>(
+    categoryScanKey(selectedCategory, userEmail),
+    () => fetchCategoryScan(
+      (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query,
+      (done, total) => setScanProgress({ done, total })
+    ).finally(() => setScanProgress(null)) as Promise<any[]>
+  );
 
-    // Scroll to the cleanup section if it exists
-    setTimeout(() => {
-      const el = document.getElementById('cleanup-recommendations');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 50);
+  const categoryEmails = (scan.data || []) as EmailData[];
+  const scanLoading = scan.loading;
+  const scanError = scan.error ? (scan.error.message || 'Failed to scan this category.') : null;
 
-    try {
-      // Scan the whole category, not a sample.
-      //
-      // Previously this fetched one detail request per thread, so covering a
-      // category meant thousands of round trips — slow enough to look broken. The
-      // fix was never a smaller sample: the clustering needs volume, and at 120
-      // messages almost nothing reached a threshold, which is why results appeared
-      // with no action items. Listing ids is one request per 500, and Gmail's batch
-      // endpoint fetches metadata 100 at a time, so a few thousand messages costs
-      // roughly 25 requests instead of thousands.
-      const ids = await listMessageIds(config.query, MAX_SCAN);
-      setDeepenToken(null); // whole category covered here; no background top-up needed
+  /**
+   * Warm the categories the user has not opened yet, one at a time in the
+   * background, so every tab is already scanned by the time it is clicked. Only the
+   * unscanned ones are queued, and the scheduler keeps this behind anything the user
+   * is waiting on.
+   */
+  const pendingCategory = CATEGORY_CONFIG.find(
+    c => c.id !== selectedCategory && !isCacheWarm(categoryScanKey(c.id, userEmail))
+  );
 
-      if (ids.length === 0) {
-        setCategoryEmails([]);
-        setDiagnostic({
-          headline: `${config.name} is completely clear`,
-          clutterPercentage: 0,
-          importantPercentage: 100,
-          relocatablePercentage: 0,
-          overview: `There are no messages matching "${config.name}".`,
-          practicalAdvice: `No cleanup needed for this category.`
-        });
-        setScanLoading(false);
-        return;
-      }
+  useBackgroundTask(
+    !scanLoading && pendingCategory
+      ? {
+          id: `scan:${pendingCategory.id}`,
+          label: `Scanning ${pendingCategory.name}…`,
+          priority: 30,
+          step: async (signal) => {
+            const key = categoryScanKey(pendingCategory.id, userEmail);
+            if (signal.aborted || isCacheWarm(key)) return false;
+            await warmCachedResource(key, () => fetchCategoryScan(pendingCategory.query, undefined, signal));
+            return false;
+          },
+        }
+      : null
+  );
 
-      setScanProgress({ done: 0, total: ids.length });
-      const detailedEmails = await fetchMessagesMetadataBatch(
-        ids,
-        (done, total) => setScanProgress({ done, total })
-      ) as EmailData[];
-      setScanProgress(null);
+  /**
+   * Behavioural analysis of the scanned messages. Pure and local, so it is always
+   * available regardless of AI quota — recomputed straight from the fetched sample.
+   */
+  const cleanupAnalysis = useMemo(
+    () => (categoryEmails.length > 0 ? analyseCleanup(categoryEmails) : null),
+    [categoryEmails, selectedCategory]
+  );
 
-      setCategoryEmails(detailedEmails);
+  /**
+   * Groups by what messages *are* rather than who sent them, which is the only way
+   * to see mail like one-time codes — those come from hundreds of senders, so every
+   * sender cohort looks small and nothing gets flagged.
+   */
+  const audit = useMemo(
+    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails, new Date(), { minClusterSize: 3, scopeQuery: (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query }) : null),
+    [categoryEmails, selectedCategory]
+  );
 
-      if (detailedEmails.length === 0) {
-        setDiagnostic({
-          headline: `No Accessible Messages in ${config.name}`,
-          clutterPercentage: 0,
-          importantPercentage: 0,
-          relocatablePercentage: 0,
-          overview: `Could not retrieve message details for category ${config.name}.`,
-          practicalAdvice: `Please check your network connection.`
-        });
-        setScanLoading(false);
-        return;
-      }
-
-      // 3. Summarise locally. The behavioural model below derives the actual
-      //    recommendations; this is just the headline for the category.
-      const catMeta = data.find(d => d.id === categoryId);
-      const estTotal = catMeta ? catMeta.displayCount : detailedEmails.length;
-      const unreadShare = detailedEmails.length > 0
-        ? detailedEmails.filter(e => (e.labelIds || []).includes('UNREAD')).length / detailedEmails.length
-        : 0;
-      const bulkShare = detailedEmails.length > 0
-        ? detailedEmails.filter(e => !!e.listUnsubscribe).length / detailedEmails.length
-        : 0;
-
-      setDiagnostic({
-        headline: `${config.name}: ${estTotal.toLocaleString()} messages`,
-        clutterPercentage: Math.round(bulkShare * 100),
-        importantPercentage: Math.round((1 - bulkShare) * 100),
-        relocatablePercentage: Math.round(unreadShare * 100),
-        overview: `Analysed a sample of ${detailedEmails.length.toLocaleString()} messages from ${config.name}.`,
-        practicalAdvice: 'Recommendations below are ranked by how much each one is worth.'
-      });
-
-    } catch (err: any) {
-      console.error('Failed to run category audit:', err);
-      setScanError(err?.message || 'Failed to scan and analyze category.');
-    } finally {
-      setScanLoading(false);
-    }
-  }, [aiSettings, data, userLabels]);
+  const rescan = useCallback(() => {
+    invalidateCachedResource(categoryScanKey(selectedCategory, userEmail));
+    scan.refresh();
+  }, [selectedCategory, userEmail, scan]);
 
   // Keyboard navigation & body lock
   useEffect(() => {
@@ -455,10 +373,26 @@ export function CategoryDistributionModal({
     <PageHeader
       title="Category Breakdown"
       badge="Overview"
-      subtitle="Volume across categories, with recommended cleanups."
+      subtitle={
+        scanLoading ? 'Scanning…'
+          : categoryEmails.length > 0
+            ? `${categoryEmails.length.toLocaleString()} messages analysed${scan.refreshing ? ' · refreshing' : ''}`
+            : 'Volume across categories, with recommended cleanups.'
+      }
       icon={<PieChartIcon className="w-4 h-4" />}
       onBack={onClose}
       backLabel="Back to Inbox Health"
+      actions={
+        <button
+          onClick={rescan}
+          disabled={scanLoading || scan.refreshing}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+          title="Scan this category again"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", (scanLoading || scan.refreshing) && "animate-spin")} />
+          <span className="hidden sm:inline">Rescan</span>
+        </button>
+      }
     />
   ) : (
     <div className="flex items-center justify-between bg-white shrink-0 gap-3 px-4 py-3 border-b border-slate-200">
@@ -514,7 +448,7 @@ export function CategoryDistributionModal({
                     onMouseEnter={(_, index) => setActiveIndex(index)}
                     onMouseLeave={() => setActiveIndex(null)}
                     onClick={(_, index) => {
-                      if (data[index]) runCategoryAudit(data[index].id);
+                      if (data[index]) setSelectedCategory(data[index].id);
                     }}
                   >
                     {data.map((entry, index) => (
@@ -577,7 +511,7 @@ export function CategoryDistributionModal({
                     "p-3 sm:p-4 border-b border-slate-100 last:border-0 flex items-center justify-between gap-4 cursor-pointer transition-colors group", 
                     isSelected ? "bg-indigo-50/50" : "hover:bg-slate-50"
                   )} 
-                  onClick={() => runCategoryAudit(cat.id)}
+                  onClick={() => setSelectedCategory(cat.id)}
                 >
                    <div className="flex items-center gap-3">
                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: cat.color }} />
@@ -629,7 +563,7 @@ export function CategoryDistributionModal({
               <AlertCircle className="w-6 h-6 text-red-500" />
               <p className="text-sm font-medium text-slate-800">{scanError}</p>
               <button
-                onClick={() => runCategoryAudit(selectedCategory)}
+                onClick={rescan}
                 className="mt-1 flex items-center gap-1.5 bg-slate-900 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg shadow-xs hover:bg-slate-800 transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -665,7 +599,8 @@ export function CategoryDistributionModal({
                   onCleared={(cluster, count) => {
                     setTotalCleanedInSession(prev => prev + count);
                     const gone = new Set(cluster.ids);
-                    setCategoryEmails(prev => prev.filter(e => !gone.has(e.id)));
+                    mutateCachedResource<any[]>(categoryScanKey(selectedCategory, userEmail),
+                      prev => (prev || []).filter((e: any) => !gone.has(e.id)));
                     window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
                       detail: { type: 'promo', count, isPartial: true }
                     }));
@@ -690,7 +625,7 @@ export function CategoryDistributionModal({
                   }}
                   onCompleted={(rec, processed) => {
                     setTotalCleanedInSession(prev => prev + processed);
-                    setCategoryEmails(prev => prev.filter(e => !rec.ids.includes(e.id)));
+                    mutateCachedResource<any[]>(categoryScanKey(selectedCategory, userEmail), prev => (prev || []).filter((e: any) => !rec.ids.includes(e.id)));
                     window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
                       detail: { type: 'promo', count: processed, isPartial: true }
                     }));

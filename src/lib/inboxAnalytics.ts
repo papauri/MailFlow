@@ -1,4 +1,4 @@
-import { countEmails, searchEmails, estimateQuerySize, fetchGmailAPI, processInChunks } from './gmail';
+import { countEmails, searchEmails, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch } from './gmail';
 import { extractSenderDetails, GENERIC_FREEMAIL_DOMAINS } from './emailUtils';
 
 /**
@@ -231,4 +231,28 @@ export async function fetchCategoryPage(
     emails: mapped.filter(Boolean),
     nextPageToken: listRes?.nextPageToken || null,
   };
+}
+
+
+export const categoryScanKey = (categoryId: string, userEmail?: string) =>
+  `category-scan:${categoryId}:${userEmail || 'anon'}`;
+
+/** Upper bound on one category scan, so the cost of "scan everything" stays bounded. */
+export const CATEGORY_SCAN_LIMIT = 3000;
+
+/**
+ * Full metadata scan of one category.
+ *
+ * Cached per category so switching between them is instant. Re-scanning on every
+ * click was both slow and pointless: the mailbox has not changed between two clicks,
+ * and each scan costs real quota. Refreshing is now something the user asks for.
+ */
+export async function fetchCategoryScan(
+  query: string,
+  onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<any[]> {
+  const ids = await listMessageIds(query, CATEGORY_SCAN_LIMIT, signal);
+  if (ids.length === 0) return [];
+  return fetchMessagesMetadataBatch(ids, onProgress, signal);
 }

@@ -130,6 +130,16 @@ export function useCachedResource<T>(key: string | null, fetcher: () => Promise<
   };
 }
 
+/** Marks one key stale so the next read refetches. Used by explicit refresh. */
+export function invalidateCachedResource(key: string) {
+  const entry = cache.get(key);
+  if (entry) {
+    entry.stale = true;
+    entry.data = null;
+    notify(key);
+  }
+}
+
 /** True when the key holds usable, non-stale data. */
 export function isCacheWarm(key: string): boolean {
   const entry = cache.get(key);
