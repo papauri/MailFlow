@@ -19,7 +19,9 @@ import {
   Inbox,
   Zap,
   Search,
-  ArrowLeft
+  ArrowLeft,
+  MoreHorizontal,
+  Star
 } from 'lucide-react';
 import { 
   searchEmails, 
@@ -139,6 +141,8 @@ export function SmartTriageModal({
   // Selection & UI Filters
   const [selectedFolder, setSelectedFolder] = useState<string>("in:inbox");
   const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'archive' | 'move' | 'trash' | 'keep'>('all');
+  const [filterText, setFilterText] = useState('');
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
 
   // Execution States
@@ -591,7 +595,12 @@ export function SmartTriageModal({
   };
 
   // Execute a Single Group Action
-  const executeGroupAction = async (group: SmartGroup, createFolderIfNeeded = false) => {
+  const executeGroupAction = async (
+    group: SmartGroup, 
+    createFolderIfNeeded = false, 
+    overrideAction?: 'trash' | 'archive' | 'star_keep' | 'move_to_label',
+    overrideLabel?: string
+  ) => {
     const activeEmailIds = group.emailIds.filter(id => !(group.deselectedEmailIds || []).includes(id));
     if (activeEmailIds.length === 0) return;
 
@@ -600,20 +609,23 @@ export function SmartTriageModal({
       const matchingEmailObjects = fetchedEmails.filter(e => activeEmailIds.includes(e.id));
       const allMessageIds = matchingEmailObjects.flatMap(e => e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]);
 
-      if (group.actionType === 'trash') {
+      const action = overrideAction || group.actionType;
+      const targetLabel = overrideLabel || group.suggestedLabel;
+
+      if (action === 'trash') {
         await batchTrashEmails(allMessageIds);
-      } else if (group.actionType === 'archive') {
+      } else if (action === 'archive') {
         await batchArchiveEmails(allMessageIds);
-      } else if (group.actionType === 'star_keep') {
+      } else if (action === 'star_keep') {
         await batchModifyEmails(allMessageIds, ['STARRED'], []);
-      } else if (group.actionType === 'move_to_label') {
+      } else if (action === 'move_to_label') {
         let targetLabelId: string | undefined;
-        if (group.suggestedLabel) {
-          const existing = userLabels.find(l => l.name.toLowerCase() === group.suggestedLabel!.toLowerCase());
+        if (targetLabel) {
+          const existing = userLabels.find(l => l.name.toLowerCase() === targetLabel.toLowerCase());
           if (existing) {
             targetLabelId = existing.id;
           } else if (createFolderIfNeeded) {
-            const created = await createLabel(group.suggestedLabel);
+            const created = await createLabel(targetLabel);
             if (created && created.id) targetLabelId = created.id;
           }
         }
@@ -727,7 +739,7 @@ export function SmartTriageModal({
     try {
       // Find emails matching the filterQuery locally from fetchedEmails (if possible)
       // Otherwise, we could just execute a fresh search, but let's do a fresh search to be safe for macro insights
-      const matches = await searchEmails(insight.filterQuery, 500);
+      const matches = await searchEmails(sanitizeGmailSearchQuery(insight.filterQuery), 500);
       const allMessageIds = matches.flatMap(e => e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]);
 
       if (allMessageIds.length > 0) {
@@ -761,13 +773,23 @@ export function SmartTriageModal({
 
   // Filter tabs
   const filteredGroups = useMemo(() => {
-    if (activeFilterTab === 'all') return groups;
-    if (activeFilterTab === 'archive') return groups.filter(g => g.actionType === 'archive');
-    if (activeFilterTab === 'move') return groups.filter(g => g.actionType === 'move_to_label');
-    if (activeFilterTab === 'trash') return groups.filter(g => g.actionType === 'trash');
-    if (activeFilterTab === 'keep') return groups.filter(g => g.actionType === 'star_keep');
-    return groups;
-  }, [groups, activeFilterTab]);
+    let result = groups;
+    if (activeFilterTab === 'archive') result = result.filter(g => g.actionType === 'archive');
+    else if (activeFilterTab === 'move') result = result.filter(g => g.actionType === 'move_to_label');
+    else if (activeFilterTab === 'trash') result = result.filter(g => g.actionType === 'trash');
+    else if (activeFilterTab === 'keep') result = result.filter(g => g.actionType === 'star_keep');
+    
+    if (filterText.trim()) {
+      const lower = filterText.toLowerCase();
+      result = result.filter(g => 
+        g.sender.toLowerCase().includes(lower) || 
+        g.title.toLowerCase().includes(lower) || 
+        (g.reason || '').toLowerCase().includes(lower)
+      );
+    }
+    
+    return result;
+  }, [groups, activeFilterTab, filterText]);
 
   const totalActionableEmails = useMemo(() => {
     return groups.reduce((acc, g) => acc + g.emailIds.length, 0);
@@ -867,7 +889,7 @@ export function SmartTriageModal({
                           // Inbox Health. Reviewing now opens the messages as a proper
                           // filtered page that knows where to go back to.
                           const params = new URLSearchParams();
-                          params.set('q', insight.filterQuery);
+                          params.set('q', sanitizeGmailSearchQuery(insight.filterQuery));
                           params.set('title', insight.title);
                           params.set('badge', 'Smart Organizer');
                           params.set('sub', insight.description || 'Messages matching this insight');
@@ -964,23 +986,36 @@ export function SmartTriageModal({
               )}
             </div>
 
-            <button
-              onClick={executeAllGroups}
-              disabled={executingAll || completedGroupIds.size === groups.length}
-              className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50 ml-auto"
-            >
-              {executingAll ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Applying ({executionProgress.current}/{executionProgress.total})...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Apply All ({totalActionableEmails} emails)</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-3 ml-auto">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter cards..."
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 w-40 sm:w-48 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-shadow"
+                />
+              </div>
+
+              <button
+                onClick={executeAllGroups}
+                disabled={executingAll || completedGroupIds.size === groups.length}
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
+              >
+                {executingAll ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Applying ({executionProgress.current}/{executionProgress.total})...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Apply All ({totalActionableEmails} emails)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
@@ -1078,13 +1113,13 @@ export function SmartTriageModal({
                       bounce: 0.2
                     }}
                     key={group.id}
-                    className="border rounded-xl p-4 transition-colors flex flex-col gap-0 hover:border-slate-300"
+                    className="border rounded-xl p-3 transition-colors flex flex-col gap-0 hover:border-slate-300"
                   >
                     {/* Header Row: Sender Info & Dismiss */}
-                    <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-start justify-between gap-3 mb-1">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="font-semibold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs">
-                          {group.sender}
+                          {group.title}
                         </span>
                         <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 shrink-0">
                           {group.categoryTag}
@@ -1098,26 +1133,23 @@ export function SmartTriageModal({
                         <button
                           onClick={() => handleDismissGroup(group)}
                           disabled={isExecuting}
-                          className="p-1.5 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors -mt-1 -mr-1"
+                          className="p-1 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors -mt-1 -mr-1"
                           title="Dismiss this recommendation"
                         >
-                          <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>
 
                     {/* Title & Description */}
-                    <div className="mb-4">
-                      <h4 className="text-sm font-bold text-slate-800 leading-snug break-words">
-                        {group.title}
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed break-words">
-                        {group.reason}
+                    <div className="mb-3">
+                      <p className="text-xs text-slate-500 leading-relaxed break-words">
+                        <span className="font-medium text-slate-700">{group.sender}</span> — {group.reason}
                       </p>
                     </div>
 
                     {/* Footer Row: Metadata & Actions */}
-                    <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       
                       {/* Left: Review & Rule */}
                       <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -1207,6 +1239,40 @@ export function SmartTriageModal({
                                 <span className="whitespace-nowrap">Protect & Keep</span>
                               </button>
                             )}
+
+                            {/* Actions Dropdown */}
+                            <div className="relative ml-2 shrink-0">
+                              <button
+                                onClick={() => setOpenDropdownId(openDropdownId === group.id ? null : group.id)}
+                                disabled={isExecuting || activeEmailIds.length === 0}
+                                className="flex items-center justify-center p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors h-full"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                              
+                              <AnimatePresence>
+                                {openDropdownId === group.id && (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 5 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 5 }}
+                                    className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-slate-200 shadow-lg rounded-xl overflow-hidden z-10"
+                                  >
+                                    <div className="py-1">
+                                      <button onClick={() => { executeGroupAction(group, false, 'trash'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                                        <Trash2 className="w-3.5 h-3.5" /> Move to Trash
+                                      </button>
+                                      <button onClick={() => { executeGroupAction(group, false, 'archive'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                                        <Archive className="w-3.5 h-3.5" /> Archive
+                                      </button>
+                                      <button onClick={() => { executeGroupAction(group, false, 'star_keep'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-amber-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                                        <Star className="w-3.5 h-3.5" /> Star / Keep
+                                      </button>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
                           </div>
                         )}
                       </div>

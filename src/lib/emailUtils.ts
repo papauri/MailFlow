@@ -605,6 +605,9 @@ export function sanitizeGmailSearchQuery(rawQuery: string): string {
   // Fix unquoted label queries with spaces: label:My Folder -> label:"My Folder"
   clean = clean.replace(/label:([^\s"]+[\s]+[^\s"]+)/g, 'label:"$1"');
 
+  // Replace illegal AND operator (Gmail uses space for AND)
+  clean = clean.replace(/\s+AND\s+/gi, ' ');
+
   // Strip trailing illegal Boolean operators (e.g. "from:foo.com OR")
   clean = clean.replace(/\s+(OR|AND)\s*$/i, '');
 

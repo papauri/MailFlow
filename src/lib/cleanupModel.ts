@@ -218,7 +218,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     // requiring near-total neglect meant obvious junk from active senders never
     // qualified. Ignoring more than half of a bulk sender is signal enough; the
     // confidence score carries the remaining uncertainty.
-    if (c.bulkRatio >= 0.5 && c.readRate <= 0.45 && c.volume >= 4) {
+    if (c.bulkRatio >= 0.5 && c.readRate <= 0.8 && c.volume >= 4) {
       const confidence = Math.min(0.98, 0.5 + sample * 0.3 + (1 - c.readRate) * 0.2);
       recs.push({
         id: `unsub:${c.key}`,
@@ -244,7 +244,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     }
 
     // 2. Gone quiet and never engaged with — safe to clear in bulk.
-    if (c.daysSinceLast >= 120 && c.volume >= 3 && c.readRate <= 0.7) {
+    if (c.daysSinceLast >= 90 && c.volume >= 3 && c.readRate <= 0.9) {
       const confidence = Math.min(0.95, 0.45 + sample * 0.3 + Math.min(0.2, c.daysSinceLast / 1825));
       recs.push({
         id: `dormant:${c.key}`,
@@ -297,7 +297,7 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
     }
 
     // 4. Steady one-way notifications: worth filing automatically rather than deleting.
-    if (c.conversationRatio < 0.05 && c.volume >= 8 && c.cadence >= 0.3 && c.readRate <= 0.7) {
+    if (c.conversationRatio < 0.05 && c.volume >= 5 && c.readRate <= 0.9) {
       const confidence = Math.min(0.9, 0.4 + sample * 0.35);
       recs.push({
         id: `archive:${c.key}`,

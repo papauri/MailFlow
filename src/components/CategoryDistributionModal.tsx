@@ -34,7 +34,8 @@ import {
   AlertTriangle,
   ExternalLink,
   Search,
-  ArrowLeft
+  ArrowLeft,
+  Mail
 } from 'lucide-react';
 
 import { 
@@ -335,7 +336,7 @@ export function CategoryDistributionModal({
    * sender cohort looks small and nothing gets flagged.
    */
   const audit = useMemo(
-    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails, new Date(), { minClusterSize: 3, scopeQuery: (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query }) : null),
+    () => (categoryEmails.length > 0 ? auditCategory(categoryEmails, new Date(), { minClusterSize: 2, scopeQuery: (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query }) : null),
     [categoryEmails, selectedCategory]
   );
 
@@ -367,6 +368,7 @@ export function CategoryDistributionModal({
    * for everything — not repeatedly and implicitly.
    */
   const [scanAllState, setScanAllState] = useState<{ current: string; done: number; total: number } | null>(null);
+  const [showAllEmails, setShowAllEmails] = useState(false);
 
   const scanAllFolders = useCallback(async () => {
     setScanAllState({ current: '', done: 0, total: CATEGORY_CONFIG.length });
@@ -692,6 +694,53 @@ export function CategoryDistributionModal({
                     }));
                   }}
                 />
+              )}
+
+              {/* Catch-all: Remaining Emails (or all) inline viewer */}
+              {categoryEmails.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden mt-2">
+                  <div 
+                    className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => setShowAllEmails(!showAllEmails)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-slate-500" />
+                      <h4 className="text-sm font-semibold text-slate-900">All {categoryEmails.length.toLocaleString()} Scanned Emails</h4>
+                    </div>
+                    <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", showAllEmails && "rotate-180")} />
+                  </div>
+                  <AnimatePresence>
+                    {showAllEmails && (
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: "auto" }}
+                        exit={{ height: 0 }}
+                        className="overflow-hidden border-t border-slate-100"
+                      >
+                        <div className="max-h-96 overflow-y-auto p-2 bg-slate-50">
+                          <ul className="divide-y divide-slate-100 bg-white border border-slate-200 rounded-lg overflow-hidden">
+                            {categoryEmails.map((email: any) => (
+                              <li key={email.id} className="p-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[12px] font-semibold text-slate-900 truncate">
+                                    {email.subject || '(No Subject)'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{email.sender}</p>
+                                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                    {email.snippet || ''}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] text-slate-400 shrink-0 tabular-nums font-medium whitespace-nowrap">
+                                  {new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               )}
             </div>
           ) : null}
