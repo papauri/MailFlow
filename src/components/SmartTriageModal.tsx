@@ -1,25 +1,19 @@
 import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, 
-  Loader2, 
-  CheckCircle2, 
-  Archive, 
-  Trash2, 
-  Bookmark, 
-  FolderInput, 
-  Layers, 
-  Filter, 
-  ChevronDown, 
-  ChevronUp, 
+import {
+  X,
+  Loader2,
+  CheckCircle2,
+  Archive,
+  Trash2,
+  Bookmark,
+  FolderInput,
+  Layers,
+  Filter,
   CheckCircle,
   RefreshCw,
-  FolderPlus,
-  Inbox,
   Zap,
-  Search,
-  ArrowLeft,
   MoreHorizontal,
   Star
 } from 'lucide-react';
@@ -36,6 +30,10 @@ import {
 import { cn } from '../lib/utils';
 import { useActionCompletion } from '../lib/useActionCompletion';
 import { extractSenderDetails, sanitizeGmailSearchQuery } from '../lib/emailUtils';
+import {
+  AutomationToolbar, AutomationGrid, AutomationCard, AutomationState,
+  ReviewToggle, ReviewPanel,
+} from './AutomationShell';
 
 export interface SmartGroup {
   id: string;
@@ -66,12 +64,11 @@ export interface SmartTriageModalProps {
   userLabels?: any[];
   userEmail?: string;
   onRefresh?: () => void;
-  onSearchQuery?: (query: string) => void;
   isPage?: boolean;
   /** False when shown as a tab inside another page, which supplies its own header. */
   showHeader?: boolean;
-  /** Route that Review should return to, so Back matches where the user came from. */
-  reviewSource?: string;
+  /** Rendered inside a panel the parent already drew — so draw no panel of our own. */
+  embedded?: boolean;
 }
 
 const STORAGE_HANDLED_KEY = 'smart_organizer_handled_ids';
@@ -125,16 +122,29 @@ export function SmartTriageModal({
   userLabels = [],
   userEmail,
   onRefresh,
-  onSearchQuery,
   isPage = false,
   showHeader = true,
-  reviewSource = 'smart-triage',
+  embedded = false,
 }: SmartTriageModalProps) {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SmartGroup[]>([]);
   const [insights, setInsights] = useState<SmartInsight[]>([]);
   const [handledInsightIds, setHandledInsightIds] = useState<Set<string>>(new Set());
   const [executingInsightId, setExecutingInsightId] = useState<string | null>(null);
+
+  /**
+   * Inline review state for the Smart Actions.
+   *
+   * These used to hand off to `#filter-view`, which meant leaving Smart Automations
+   * to look at what an action would touch and then finding your way back. Everything
+   * a card offers is now reviewable inside the card, so the messages are fetched here
+   * on demand and kept per insight — reopening one costs nothing.
+   */
+  const [expandedInsightIds, setExpandedInsightIds] = useState<Set<string>>(new Set());
+  const [insightEmails, setInsightEmails] = useState<Map<string, EmailData[]>>(new Map());
+  const [loadingInsightId, setLoadingInsightId] = useState<string | null>(null);
+  const [insightDeselected, setInsightDeselected] = useState<Map<string, Set<string>>>(new Map());
+  const [insightErrors, setInsightErrors] = useState<Map<string, string>>(new Map());
   const [fetchedEmails, setFetchedEmails] = useState<EmailData[]>([]);
   const [error, setError] = useState<string | null>(null);
   
@@ -734,13 +744,71 @@ export function SmartTriageModal({
     }
   };
 
+  /** Number of messages the insight's review list still has selected. */
+  const insightSelection = useCallback((insight: SmartInsight): EmailData[] => {
+    const loaded = insightEmails.get(insight.id);
+    if (!loaded) return [];
+    const off = insightDeselected.get(insight.id) || new Set<string>();
+    return loaded.filter(e => !off.has(e.id));
+  }, [insightEmails, insightDeselected]);
+
+  /** True once the user has excluded something, which pins the action to the review. */
+  const insightIsNarrowed = (insight: SmartInsight) =>
+    (insightDeselected.get(insight.id)?.size || 0) > 0;
+
+  const toggleInsightReview = async (insight: SmartInsight) => {
+    const isOpen = expandedInsightIds.has(insight.id);
+    setExpandedInsightIds(prev => {
+      const next = new Set(prev);
+      if (isOpen) next.delete(insight.id);
+      else next.add(insight.id);
+      return next;
+    });
+    if (isOpen || insightEmails.has(insight.id)) return;
+
+    setLoadingInsightId(insight.id);
+    setInsightErrors(prev => { const n = new Map(prev); n.delete(insight.id); return n; });
+    try {
+      // A review sample, not the whole result set: the action itself still runs
+      // against the query unless the user narrows it, so fetching hundreds of
+      // messages nobody will scroll through would only spend quota.
+      const matches = await searchEmails(sanitizeGmailSearchQuery(insight.filterQuery), 60);
+      setInsightEmails(prev => new Map(prev).set(insight.id, matches));
+    } catch (err: any) {
+      setInsightErrors(prev => new Map(prev).set(insight.id, err?.message || 'Could not load these messages.'));
+    } finally {
+      setLoadingInsightId(null);
+    }
+  };
+
+  const toggleEmailInInsight = (insightId: string, emailId: string) => {
+    setInsightDeselected(prev => {
+      const next = new Map<string, Set<string>>(prev);
+      const set = new Set<string>(next.get(insightId) || []);
+      if (set.has(emailId)) set.delete(emailId);
+      else set.add(emailId);
+      next.set(insightId, set);
+      return next;
+    });
+  };
+
+  /**
+   * Runs a Smart Action.
+   *
+   * Acts on the whole query by default — that is what the card claims to do. But once
+   * the user has deselected something in the review list, the action is confined to
+   * exactly what is still ticked: silently trashing messages someone has just
+   * unticked would make the review a lie.
+   */
   const executeInsightAction = async (insight: SmartInsight) => {
     setExecutingInsightId(insight.id);
     try {
-      // Find emails matching the filterQuery locally from fetchedEmails (if possible)
-      // Otherwise, we could just execute a fresh search, but let's do a fresh search to be safe for macro insights
-      const matches = await searchEmails(sanitizeGmailSearchQuery(insight.filterQuery), 500);
-      const allMessageIds = matches.flatMap(e => e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]);
+      const narrowed = insightIsNarrowed(insight);
+      const targets = narrowed
+        ? insightSelection(insight)
+        : await searchEmails(sanitizeGmailSearchQuery(insight.filterQuery), 500);
+
+      const allMessageIds = targets.flatMap(e => e.messageIds && e.messageIds.length > 0 ? e.messageIds : [e.id]);
 
       if (allMessageIds.length > 0) {
         if (insight.actionType === 'mark_read') {
@@ -756,6 +824,7 @@ export function SmartTriageModal({
       }
 
       setHandledInsightIds(prev => new Set(prev).add(insight.id));
+      if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Insight execution failed:', err);
       alert('Failed to execute insight action.');
@@ -797,6 +866,23 @@ export function SmartTriageModal({
 
   const isAllCompleted = groups.length > 0 && completedGroupIds.size === groups.length;
 
+  const visibleInsights = useMemo(
+    () => insights.filter(i => !handledInsightIds.has(i.id)),
+    [insights, handledInsightIds]
+  );
+
+  /** Chips are built from what is actually present, so none of them ever reads zero. */
+  const filterChips = useMemo(() => {
+    const byAction = (t: SmartGroup['actionType']) => groups.filter(g => g.actionType === t).length;
+    return [
+      { id: 'all', label: 'All', count: groups.length },
+      { id: 'archive', label: 'Archive', count: byAction('archive') },
+      { id: 'move', label: 'File', count: byAction('move_to_label') },
+      { id: 'trash', label: 'Trash', count: byAction('trash') },
+      { id: 'keep', label: 'Keep', count: byAction('star_keep') },
+    ].filter(c => c.id === 'all' || c.count > 0);
+  }, [groups]);
+
   if (!isPage && !isOpen) return null;
 
   const headerElement = (
@@ -809,541 +895,471 @@ export function SmartTriageModal({
           <Layers className="w-5 h-5" />
         </div>
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 id="smart-organizer-title" className="font-bold text-slate-900 text-base sm:text-lg">
-              Smart Organizer
-            </h2>
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-            <select
-              value={selectedFolder}
-              onChange={(e) => setSelectedFolder(e.target.value)}
-              disabled={loading}
-              className="bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-slate-500 cursor-pointer disabled:opacity-50"
-            >
-              <option value="in:inbox">Inbox</option>
-              <option value="anywhere">Everywhere</option>
-              <option value="category:updates">Updates</option>
-              <option value="category:promotions">Promotions</option>
-              <option value="category:social">Social</option>
-              <option value="category:forums">Forums</option>
-              {userLabels?.filter(l => l.type === 'user').map(l => (
-                <option key={l.id} value={`label:"${l.name}"`}>{l.name}</option>
-              ))}
-            </select>
-          </div>
+          <h2 id="smart-organizer-title" className="font-bold text-slate-900 text-base sm:text-lg">
+            Smart Organizer
+          </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Identifies recurring senders and bundles them into clean, one-click actions.
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {!isPage && (
         <button
-          onClick={() => analyzeFolder(selectedFolder)}
-          disabled={loading}
-          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
-          title="Refresh analysis"
+          onClick={onClose}
+          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+          title="Close modal"
         >
-          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin text-slate-800")} />
+          <X className="w-5 h-5" />
         </button>
+      )}
+    </div>
+  );
 
-        {!isPage && (
-          <button 
-            onClick={onClose} 
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-            title="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+  /**
+   * Which mailbox this is analysing, and a way to re-run it.
+   *
+   * These lived inside the header, which the Smart Automations portal hides because it
+   * supplies its own — so on that tab there was no way to change folder or refresh at
+   * all, while the other two tabs both had a refresh control. Kept out of the header
+   * so it renders wherever the tool does.
+   */
+  const folderPicker = (
+    <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-white border-b border-slate-200 shrink-0">
+      <label htmlFor="smart-organizer-scope" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider shrink-0">
+        Analysing
+      </label>
+      <select
+        id="smart-organizer-scope"
+        value={selectedFolder}
+        onChange={(e) => setSelectedFolder(e.target.value)}
+        disabled={loading}
+        className="bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 cursor-pointer disabled:opacity-50 max-w-[200px]"
+      >
+        <option value="in:inbox">Inbox</option>
+        <option value="anywhere">Everywhere</option>
+        <option value="category:updates">Updates</option>
+        <option value="category:promotions">Promotions</option>
+        <option value="category:social">Social</option>
+        <option value="category:forums">Forums</option>
+        {userLabels?.filter(l => l.type === 'user').map(l => (
+          <option key={l.id} value={`label:"${l.name}"`}>{l.name}</option>
+        ))}
+      </select>
+
+      <button
+        onClick={() => analyzeFolder(selectedFolder)}
+        disabled={loading}
+        className="ml-auto p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+        title="Refresh analysis"
+        aria-label="Refresh analysis"
+      >
+        <RefreshCw className={cn("w-4 h-4", loading && "animate-spin text-slate-800")} />
+      </button>
+    </div>
+  );
+
+  /** One icon per action, so a card's intent is readable before its text is. */
+  const ACTION_ICON: Record<SmartGroup['actionType'], React.ReactNode> = {
+    archive: <Archive className="w-3.5 h-3.5" />,
+    trash: <Trash2 className="w-3.5 h-3.5" />,
+    move_to_label: <FolderInput className="w-3.5 h-3.5" />,
+    star_keep: <Bookmark className="w-3.5 h-3.5" />,
+  };
+
+  /**
+   * One row of an inline review list.
+   *
+   * Shared between the group cards and the Smart Actions so reviewing is the same
+   * gesture in both: tick to include, untick to exclude, open in Gmail to check.
+   */
+  const reviewRow = (
+    email: EmailData,
+    checked: boolean,
+    onToggle: () => void,
+    disabled: boolean = false
+  ) => (
+    <div
+      key={email.id}
+      className={cn(
+        "flex items-start gap-2 px-2.5 py-2 bg-white/60 hover:bg-white transition-colors",
+        !checked && "opacity-50"
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        disabled={disabled}
+        className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        <p className={cn(
+          "text-[12px] font-semibold text-slate-800 leading-snug truncate",
+          !checked && "line-through"
+        )}>
+          {email.subject || '(No Subject)'}
+        </p>
+        <p className="text-[11px] text-slate-500 truncate">
+          <span className="font-medium text-slate-600">{email.sender}</span>
+          {email.snippet ? ` — ${email.snippet}` : ''}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[10px] text-slate-400 whitespace-nowrap hidden sm:inline">
+          {email.date ? new Date(email.date).toLocaleDateString() : ''}
+        </span>
+        <a
+          href={`https://mail.google.com/mail/u/0/#all/${email.threadId || email.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-300 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors"
+          title="Open in Gmail"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+        </a>
       </div>
     </div>
   );
 
   const mainBodyContent = (
     <>
-      {/* Macro Insights */}
-      {!loading && insights.length > 0 && !isAllCompleted && (
-          <div className="px-5 pt-4 pb-4 bg-slate-50 border-b border-slate-200 shrink-0">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-blue-600" /> Smart Actions
-            </h3>
-            <div className="flex flex-col gap-2.5">
-              {insights.map(insight => {
-                const isHandled = handledInsightIds.has(insight.id);
-                if (isHandled) return null;
-                const isExecuting = executingInsightId === insight.id;
+      {/* Smart Actions — whole-mailbox moves, reviewable in place */}
+      {!loading && visibleInsights.length > 0 && !isAllCompleted && (
+        <div className="px-3 sm:px-4 pt-3 pb-3.5 bg-slate-50/70 border-b border-slate-200 shrink-0">
+          <h3 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Zap className="w-3 h-3 text-slate-500" /> Smart Actions
+          </h3>
+          <AutomationGrid>
+            {visibleInsights.map(insight => {
+              const isExecuting = executingInsightId === insight.id;
+              const isOpen = expandedInsightIds.has(insight.id);
+              const loaded = insightEmails.get(insight.id);
+              const narrowed = insightIsNarrowed(insight);
+              const selected = insightSelection(insight);
+              const loadError = insightErrors.get(insight.id);
 
-                return (
-                  <div key={insight.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-slate-800 text-sm truncate">{insight.title}</h4>
-                      <p className="text-xs text-slate-600 mt-0.5 leading-snug break-words">{insight.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                      <button
-                        onClick={() => {
-                          // Was: onSearchQuery() then onClose(). Both set the hash in
-                          // the same tick, so the close won and every review landed on
-                          // Inbox Health. Reviewing now opens the messages as a proper
-                          // filtered page that knows where to go back to.
-                          const params = new URLSearchParams();
-                          params.set('q', sanitizeGmailSearchQuery(insight.filterQuery));
-                          params.set('title', insight.title);
-                          params.set('badge', 'Smart Organizer');
-                          params.set('sub', insight.description || 'Messages matching this insight');
-                          params.set('source', reviewSource);
-                          window.location.hash = `#filter-view?${params.toString()}`;
-                        }}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-medium shadow-xs transition-colors"
-                      >
-                        <Search className="w-3 h-3" /> Review
-                      </button>
-                      <button
-                        onClick={() => executeInsightAction(insight)}
-                        disabled={isExecuting}
-                        className="flex-1 sm:flex-none shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
-                      >
-                        {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-                        {insight.actionLabel}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              return (
+                <AutomationCard
+                  key={insight.id}
+                  icon={<Zap className="w-3.5 h-3.5" />}
+                  title={insight.title}
+                  description={insight.description}
+                  expanded={isOpen}
+                  tags={narrowed ? [{ label: `${selected.length} of ${loaded?.length ?? 0} selected`, tone: 'warn' }] : undefined}
+                  footerLeft={
+                    <ReviewToggle
+                      open={isOpen}
+                      loading={loadingInsightId === insight.id}
+                      count={loaded?.length ?? 0}
+                      onClick={() => toggleInsightReview(insight)}
+                    />
+                  }
+                  footerRight={
+                    <button
+                      onClick={() => executeInsightAction(insight)}
+                      disabled={isExecuting || (narrowed && selected.length === 0)}
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-[11px] font-semibold shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {isExecuting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                      <span className="whitespace-nowrap">
+                        {narrowed ? `${insight.actionLabel} ${selected.length}` : insight.actionLabel}
+                      </span>
+                    </button>
+                  }
+                >
+                  {isOpen && (
+                    <ReviewPanel>
+                      {loadError ? (
+                        <p className="px-3 py-4 text-[11px] text-slate-500 text-center">{loadError}</p>
+                      ) : !loaded ? (
+                        <p className="px-3 py-4 text-[11px] text-slate-500 text-center flex items-center justify-center gap-2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading messages…
+                        </p>
+                      ) : loaded.length === 0 ? (
+                        <p className="px-3 py-4 text-[11px] text-slate-500 text-center">
+                          Nothing currently matches this action.
+                        </p>
+                      ) : (
+                        <>
+                          {loaded.map(email =>
+                            reviewRow(
+                              email,
+                              !(insightDeselected.get(insight.id)?.has(email.id)),
+                              () => toggleEmailInInsight(insight.id, email.id),
+                              isExecuting
+                            )
+                          )}
+                          <p className="px-3 py-2 text-[10px] text-slate-500 bg-slate-100/70 leading-relaxed">
+                            {narrowed
+                              ? `Untick anything you want to keep — this will act on the ${selected.length.toLocaleString()} still selected.`
+                              : `Showing the first ${loaded.length.toLocaleString()}. Leaving everything ticked applies the action to all matching mail; untick any message to limit it to this list.`}
+                          </p>
+                        </>
+                      )}
+                    </ReviewPanel>
+                  )}
+                </AutomationCard>
               );
             })}
-            </div>
+          </AutomationGrid>
+        </div>
+      )}
+
+      {/* Filters and the batch action */}
+      {!loading && groups.length > 0 && !isAllCompleted && (
+        <AutomationToolbar
+          chips={filterChips}
+          activeChip={activeFilterTab}
+          onChipSelect={(id) => setActiveFilterTab(id as typeof activeFilterTab)}
+          search={filterText}
+          onSearchChange={setFilterText}
+          actions={
+            <button
+              onClick={executeAllGroups}
+              disabled={executingAll || completedGroupIds.size === groups.length}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[11px] font-semibold shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {executingAll ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span className="whitespace-nowrap">Applying {executionProgress.current}/{executionProgress.total}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span className="whitespace-nowrap">Apply all ({totalActionableEmails.toLocaleString()})</span>
+                </>
+              )}
+            </button>
+          }
+        />
+      )}
+
+      {/* Recommendations */}
+      <div className="flex-1 bg-slate-50/50 p-3 sm:p-4 overflow-y-auto">
+        {loading ? (
+          <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
+            <SketchLoadingState scene="sorting"
+              title="Triaging Inbox"
+              messages={[
+                "Analyzing unorganized emails...",
+                "Grouping by recurring senders...",
+                "Isolating receipts and notifications...",
+                "Preparing smart recommendations..."
+              ]}
+            />
           </div>
-        )}
-
-        {/* Top Control Bar & Filters */}
-        {!loading && groups.length > 0 && !isAllCompleted && (
-          <div className="px-5 py-3 border-b border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 shrink-0">
-            <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
+        ) : error ? (
+          <AutomationState
+            kind="error"
+            title={error}
+            action={
               <button
-                onClick={() => setActiveFilterTab('all')}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-colors shrink-0",
-                  activeFilterTab === 'all'
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                )}
-              >
-                All ({groups.length})
-              </button>
-              {groups.some(g => g.actionType === 'archive') && (
-                <button
-                  onClick={() => setActiveFilterTab('archive')}
-                  className={cn(
-                    "px-3 py-1 rounded-md text-xs font-medium transition-colors shrink-0",
-                    activeFilterTab === 'archive'
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  To Archive ({groups.filter(g => g.actionType === 'archive').length})
-                </button>
-              )}
-              {groups.some(g => g.actionType === 'move_to_label') && (
-                <button
-                  onClick={() => setActiveFilterTab('move')}
-                  className={cn(
-                    "px-3 py-1 rounded-md text-xs font-medium transition-colors shrink-0",
-                    activeFilterTab === 'move'
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  To Labels ({groups.filter(g => g.actionType === 'move_to_label').length})
-                </button>
-              )}
-              {groups.some(g => g.actionType === 'trash') && (
-                <button
-                  onClick={() => setActiveFilterTab('trash')}
-                  className={cn(
-                    "px-3 py-1 rounded-md text-xs font-medium transition-colors shrink-0",
-                    activeFilterTab === 'trash'
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  To Trash ({groups.filter(g => g.actionType === 'trash').length})
-                </button>
-              )}
-              {groups.some(g => g.actionType === 'star_keep') && (
-                <button
-                  onClick={() => setActiveFilterTab('keep')}
-                  className={cn(
-                    "px-3 py-1 rounded-md text-xs font-medium transition-colors shrink-0",
-                    activeFilterTab === 'keep'
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  Keep / Protect ({groups.filter(g => g.actionType === 'star_keep').length})
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3 ml-auto">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Filter cards..."
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 w-40 sm:w-48 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-shadow"
-                />
-              </div>
-
-              <button
-                onClick={executeAllGroups}
-                disabled={executingAll || completedGroupIds.size === groups.length}
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
-              >
-                {executingAll ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Applying ({executionProgress.current}/{executionProgress.total})...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Apply All ({totalActionableEmails} emails)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Main List */}
-        <div className="flex-1 bg-slate-50/50 p-4 sm:p-6 overflow-y-auto">
-          {loading ? (
-            <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
-              <SketchLoadingState scene="sorting" 
-                title="Triaging Inbox" 
-                messages={[
-                  "Analyzing unorganized emails...",
-                  "Grouping by recurring senders...",
-                  "Isolating receipts and notifications...",
-                  "Preparing smart recommendations..."
-                ]} 
-              />
-            </div>
-          ) : error ? (
-            <div className="h-72 flex flex-col items-center justify-center gap-3 text-center p-4">
-              <p className="text-sm font-medium text-slate-800">{error}</p>
-              <button 
                 onClick={() => analyzeFolder(selectedFolder)}
-                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Retry
               </button>
-            </div>
-          ) : isAllCompleted ? (
-            <div className="h-80 flex flex-col items-center justify-center text-center p-6 animate-in zoom-in-95 duration-200">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
-                <CheckCircle className="w-6 h-6" />
-              </div>
-              <h3 className="text-base sm:text-lg font-semibold text-slate-900">All caught up</h3>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm">
-                You have reviewed and organized all recommended clusters in this view.
-              </p>
-              <button 
+            }
+          />
+        ) : isAllCompleted ? (
+          <AutomationState
+            kind="done"
+            title="All caught up"
+            body="You have reviewed and organized all recommended clusters in this view."
+            action={
+              <button
                 onClick={onClose}
-                className="mt-4 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors"
+                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
                 Done
               </button>
-            </div>
-          ) : filteredGroups.length === 0 ? (
-            <div className="h-80 flex flex-col items-center justify-center text-center p-6">
-              <div className="w-12 h-12 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center mb-3">
-                <Inbox className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-900">No clusters found</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                No unorganized patterns or repetitive clusters were detected in this folder.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3.5 max-w-3xl mx-auto w-full">
-              {filteredGroups.filter(g => !completion.isCleared(g.id)).map((group) => {
-                const isCompleted = !!completion.labelFor(group.id);
-                const isExecuting = executingGroupId === group.id;
-                const isExpanded = expandedGroupIds.has(group.id);
-                const isFilterCreated = createdFilterGroupIds.has(group.id);
-                const isCreatingFilter = creatingFilterId === group.id;
+            }
+          />
+        ) : filteredGroups.length === 0 ? (
+          <AutomationState
+            kind="empty"
+            title="No clusters found"
+            body="No unorganized patterns or repetitive clusters were detected in this folder."
+          />
+        ) : (
+          <AutomationGrid>
+            {filteredGroups.filter(g => !completion.isCleared(g.id)).map((group) => {
+              const doneLabel = completion.labelFor(group.id);
+              const isCompleted = !!doneLabel;
+              const isExecuting = executingGroupId === group.id;
+              const isExpanded = expandedGroupIds.has(group.id);
+              const isFilterCreated = createdFilterGroupIds.has(group.id);
+              const isCreatingFilter = creatingFilterId === group.id;
 
-                const activeEmailIds = group.emailIds.filter(id => !(group.deselectedEmailIds || []).includes(id));
-                const sampleEmails = fetchedEmails.filter(e => group.emailIds.includes(e.id));
+              const activeEmailIds = group.emailIds.filter(id => !(group.deselectedEmailIds || []).includes(id));
+              const sampleEmails = fetchedEmails.filter(e => group.emailIds.includes(e.id));
+              const excluded = group.emailIds.length - activeEmailIds.length;
 
-                const labelExists = !group.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === group.suggestedLabel!.toLowerCase());
+              const labelExists = !group.suggestedLabel || userLabels?.some(l => l.name.toLowerCase() === group.suggestedLabel!.toLowerCase());
 
-                return (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={
-                      isCompleted 
-                        ? { 
-                            scale: 0.98,
-                            opacity: 0.6,
-                            y: -4,
-                            boxShadow: "0px 10px 30px -10px rgba(52, 211, 153, 0.4)",
-                            borderColor: "rgba(167, 243, 208, 1)",
-                            backgroundColor: "rgba(236, 253, 245, 0.5)",
-                          } 
-                        : { 
-                            scale: 1,
-                            opacity: 1,
-                            y: 0,
-                            boxShadow: "0px 1px 2px 0px rgba(0, 0, 0, 0.05)",
-                            borderColor: "rgba(226, 232, 240, 1)",
-                            backgroundColor: "rgba(255, 255, 255, 1)",
-                          }
-                    }
-                    transition={{
-                      duration: 0.5,
-                      type: "spring",
-                      bounce: 0.2
-                    }}
-                    key={group.id}
-                    className="border rounded-xl p-3 transition-colors flex flex-col gap-0 hover:border-slate-300"
-                  >
-                    {/* Header Row: Sender Info & Dismiss */}
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <div className="flex items-center gap-2 flex-wrap min-w-0">
-                        <span className="font-semibold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs">
-                          {group.title}
-                        </span>
-                        <span className="text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 shrink-0">
-                          {group.categoryTag}
-                        </span>
-                        <span className="text-xs text-slate-400 shrink-0">
-                          • {activeEmailIds.length} {activeEmailIds.length === 1 ? 'email' : 'emails'}
-                        </span>
-                      </div>
-                      
-                      {!isCompleted && (
-                        <button
-                          onClick={() => handleDismissGroup(group)}
-                          disabled={isExecuting}
-                          className="p-1 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors -mt-1 -mr-1"
-                          title="Dismiss this recommendation"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Title & Description */}
-                    <div className="mb-3">
-                      <p className="text-xs text-slate-500 leading-relaxed break-words">
-                        <span className="font-medium text-slate-700">{group.sender}</span> — {group.reason}
-                      </p>
-                    </div>
-
-                    {/* Footer Row: Metadata & Actions */}
-                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      
-                      {/* Left: Review & Rule */}
-                      <div className="flex flex-wrap items-center gap-3 text-xs">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.preventDefault(); toggleExpandGroup(group.id); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
-                        >
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          <span>{isExpanded ? 'Hide' : 'Review'} {sampleEmails.length} messages</span>
-                        </button>
-
-                        {group.filterQuery && !isCompleted && (
-                          <div className="hidden sm:block w-px h-3.5 bg-slate-200"></div>
-                        )}
-
-                        {group.filterQuery && !isCompleted && (
-                          <div className="flex items-center">
-                            {isFilterCreated ? (
-                              <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Rule Created
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleCreateRule(group)}
-                                disabled={isCreatingFilter}
-                                className="text-[11px] text-slate-500 hover:text-slate-800 font-medium flex items-center gap-1 hover:underline disabled:opacity-50"
-                              >
-                                {isCreatingFilter ? <Loader2 className="w-3 h-3 animate-spin" /> : <Filter className="w-3 h-3" />}
-                                <span>Auto-apply to future</span>
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right: Primary Action Button */}
-                      <div className="shrink-0 w-full sm:w-auto">
-                        {isCompleted ? (
-                          <div className="flex items-center justify-center gap-1.5 text-emerald-600 text-xs font-semibold px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-100 w-full">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Done</span>
-                          </div>
+              return (
+                <AutomationCard
+                  key={group.id}
+                  icon={ACTION_ICON[group.actionType]}
+                  title={group.title}
+                  done={isCompleted}
+                  doneLabel={doneLabel}
+                  expanded={isExpanded}
+                  onDismiss={isExecuting ? undefined : () => handleDismissGroup(group)}
+                  tags={[
+                    { label: group.categoryTag },
+                    {
+                      label: `${activeEmailIds.length.toLocaleString()} ${activeEmailIds.length === 1 ? 'email' : 'emails'}`,
+                      tone: excluded > 0 ? 'warn' : 'neutral',
+                    },
+                  ]}
+                  description={<><span className="font-medium text-slate-700">{group.sender}</span> — {group.reason}</>}
+                  footerLeft={
+                    <>
+                      <ReviewToggle
+                        open={isExpanded}
+                        count={sampleEmails.length}
+                        onClick={() => toggleExpandGroup(group.id)}
+                      />
+                      {group.filterQuery && !isCompleted && (
+                        isFilterCreated ? (
+                          <span className="text-[10px] text-emerald-600 flex items-center gap-1 font-semibold whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3" /> Rule on
+                          </span>
                         ) : (
-                          <div className="flex w-full">
-                            {group.actionType === 'trash' && (
-                              <button
-                                onClick={() => executeGroupAction(group)}
-                                disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
+                          <button
+                            onClick={() => handleCreateRule(group)}
+                            disabled={isCreatingFilter}
+                            className="text-[10px] text-slate-400 hover:text-slate-800 font-semibold flex items-center gap-1 hover:underline disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                            title="Create a Gmail filter so future mail like this is handled automatically"
+                          >
+                            {isCreatingFilter ? <Loader2 className="w-3 h-3 animate-spin" /> : <Filter className="w-3 h-3" />}
+                            <span>Automate</span>
+                          </button>
+                        )
+                      )}
+                    </>
+                  }
+                  footerRight={
+                    isCompleted ? (
+                      <span className="flex items-center gap-1 text-emerald-600 text-[11px] font-semibold px-2 py-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Done
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => executeGroupAction(group, group.actionType === 'move_to_label' && !labelExists)}
+                          disabled={isExecuting || activeEmailIds.length === 0}
+                          className={cn(
+                            "flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer max-w-[170px]",
+                            group.actionType === 'trash' && "bg-rose-600 hover:bg-rose-700",
+                            group.actionType === 'archive' && "bg-slate-900 hover:bg-slate-800",
+                            group.actionType === 'move_to_label' && "bg-emerald-700 hover:bg-emerald-800",
+                            group.actionType === 'star_keep' && "bg-amber-600 hover:bg-amber-700",
+                          )}
+                        >
+                          {isExecuting
+                            ? <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                            : <span className="shrink-0">{ACTION_ICON[group.actionType]}</span>}
+                          <span className="truncate">
+                            {group.actionType === 'trash' && `Trash ${activeEmailIds.length}`}
+                            {group.actionType === 'archive' && `Archive ${activeEmailIds.length}`}
+                            {group.actionType === 'move_to_label' && `File to ${group.suggestedLabel || 'label'}`}
+                            {group.actionType === 'star_keep' && 'Protect'}
+                          </span>
+                        </button>
+
+                        <div className="relative shrink-0">
+                          <button
+                            onClick={() => setOpenDropdownId(openDropdownId === group.id ? null : group.id)}
+                            disabled={isExecuting || activeEmailIds.length === 0}
+                            className="flex items-center justify-center p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 transition-colors disabled:opacity-50 cursor-pointer"
+                            title="Other actions"
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                          </button>
+
+                          <AnimatePresence>
+                            {openDropdownId === group.id && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                className="absolute right-0 bottom-full mb-1.5 w-44 bg-white border border-slate-200 shadow-lg rounded-xl overflow-hidden z-20 py-1"
                               >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                <span>Trash ({activeEmailIds.length})</span>
-                              </button>
+                                <button onClick={() => { executeGroupAction(group, false, 'trash'); setOpenDropdownId(null); }} className="w-full text-left px-3 py-1.5 text-[11px] text-rose-600 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  <Trash2 className="w-3.5 h-3.5" /> Move to Trash
+                                </button>
+                                <button onClick={() => { executeGroupAction(group, false, 'archive'); setOpenDropdownId(null); }} className="w-full text-left px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  <Archive className="w-3.5 h-3.5" /> Archive
+                                </button>
+                                <button onClick={() => { executeGroupAction(group, false, 'star_keep'); setOpenDropdownId(null); }} className="w-full text-left px-3 py-1.5 text-[11px] text-amber-600 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  <Star className="w-3.5 h-3.5" /> Star / Keep
+                                </button>
+                              </motion.div>
                             )}
-
-                            {group.actionType === 'archive' && (
-                              <button
-                                onClick={() => executeGroupAction(group)}
-                                disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
-                              >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
-                                <span>Archive ({activeEmailIds.length})</span>
-                              </button>
-                            )}
-
-                            {group.actionType === 'move_to_label' && (
-                              <button
-                                onClick={() => executeGroupAction(group, !labelExists)}
-                                disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
-                              >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5 shrink-0" />}
-                                <span className="truncate max-w-[150px]">Move to {group.suggestedLabel || 'Label'}</span>
-                              </button>
-                            )}
-
-                            {group.actionType === 'star_keep' && (
-                              <button
-                                onClick={() => executeGroupAction(group)}
-                                disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-xs font-medium shadow-xs transition-colors disabled:opacity-50"
-                              >
-                                {isExecuting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5 fill-current shrink-0" />}
-                                <span className="whitespace-nowrap">Protect & Keep</span>
-                              </button>
-                            )}
-
-                            {/* Actions Dropdown */}
-                            <div className="relative ml-2 shrink-0">
-                              <button
-                                onClick={() => setOpenDropdownId(openDropdownId === group.id ? null : group.id)}
-                                disabled={isExecuting || activeEmailIds.length === 0}
-                                className="flex items-center justify-center p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors h-full"
-                              >
-                                <MoreHorizontal className="w-4 h-4" />
-                              </button>
-                              
-                              <AnimatePresence>
-                                {openDropdownId === group.id && (
-                                  <motion.div
-                                    initial={{ opacity: 0, y: 5 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 5 }}
-                                    className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-slate-200 shadow-lg rounded-xl overflow-hidden z-10"
-                                  >
-                                    <div className="py-1">
-                                      <button onClick={() => { executeGroupAction(group, false, 'trash'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
-                                        <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-                                      </button>
-                                      <button onClick={() => { executeGroupAction(group, false, 'archive'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
-                                        <Archive className="w-3.5 h-3.5" /> Archive
-                                      </button>
-                                      <button onClick={() => { executeGroupAction(group, false, 'star_keep'); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-xs text-amber-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
-                                        <Star className="w-3.5 h-3.5" /> Star / Keep
-                                      </button>
-                                    </div>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Expanded Email List */}
-                    {isExpanded && sampleEmails.length > 0 && (
-                      <div className="mt-1 bg-slate-50 rounded-lg p-2.5 border border-slate-200/70 flex flex-col gap-1.5 max-h-72 overflow-y-auto">
-                        {sampleEmails.map(email => {
-                          const isChecked = !(group.deselectedEmailIds || []).includes(email.id);
-
-                          return (
-                            <div key={email.id} className="flex flex-col gap-1.5 p-2 rounded-md hover:bg-white transition-colors border border-transparent hover:border-slate-200">
-                              <div className="flex items-start gap-2">
-                                <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => toggleEmailInGroup(group.id, email.id)}
-                                    disabled={isCompleted}
-                                    className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-semibold text-slate-800 break-words leading-snug">
-                                      {email.subject || '(No Subject)'}
-                                    </p>
-                                  </div>
-                                </label>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                                    {email.date ? new Date(email.date).toLocaleDateString() : ''}
-                                  </span>
-                                  <a
-                                    href={`https://mail.google.com/mail/u/0/#all/${email.threadId || email.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors"
-                                    title="Open in Gmail"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                  </a>
-                                </div>
-                              </div>
-                              <div className="pl-6">
-                                <p className="text-[11px] text-slate-500 line-clamp-3 break-words">
-                                  <span className="font-medium text-slate-700 mr-1">{email.sender}</span>
-                                  {email.snippet}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        
+                          </AnimatePresence>
+                        </div>
+                      </>
+                    )
+                  }
+                >
+                  {isExpanded && (
+                    <ReviewPanel>
+                      {sampleEmails.length === 0 ? (
+                        <p className="px-3 py-4 text-[11px] text-slate-500 text-center">
+                          These messages are no longer in the current sample.
+                        </p>
+                      ) : (
+                        <>
+                          {sampleEmails.map(email =>
+                            reviewRow(
+                              email,
+                              !(group.deselectedEmailIds || []).includes(email.id),
+                              () => toggleEmailInGroup(group.id, email.id),
+                              isCompleted || isExecuting
+                            )
+                          )}
+                          {excluded > 0 && (
+                            <p className="px-3 py-2 text-[10px] text-slate-500 bg-slate-100/70">
+                              {excluded.toLocaleString()} excluded — the action will skip {excluded === 1 ? 'it' : 'them'}.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </ReviewPanel>
+                  )}
+                </AutomationCard>
+              );
+            })}
+          </AutomationGrid>
+        )}
+      </div>
     </>
   );
+
+  // Inside Smart Automations the portal already supplies the panel. Drawing a second
+  // one here is what gave that tab a card-inside-a-card border the other tabs lacked.
+  if (embedded) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        {showHeader && headerElement}
+        {folderPicker}
+        {mainBodyContent}
+      </div>
+    );
+  }
 
   if (isPage) {
     return (
       <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
         {showHeader && headerElement}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[600px] relative">
+          {folderPicker}
           {mainBodyContent}
         </div>
       </div>
@@ -1359,10 +1375,11 @@ export function SmartTriageModal({
       aria-labelledby="smart-organizer-title"
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden ring-1 ring-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {headerElement}
+        {folderPicker}
         {mainBodyContent}
       </div>
     </div>

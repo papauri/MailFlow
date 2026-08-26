@@ -1,8 +1,24 @@
 import { getAccessToken, logout } from "./firebase";
+import { quotaFetch, withQuota, inferCost, reportThrottle, MESSAGES_GET_COST } from "./gmailQuota";
 
 const BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me";
 
-export async function fetchGmailAPI(endpoint: string, options: RequestInit = {}, retries = 3, backoff = 1000): Promise<any> {
+/**
+ * Every Gmail call in the app goes through here, and therefore through the quota
+ * governor in `gmailQuota.ts`.
+ *
+ * Pacing, retrying, and backoff used to live in this function: three retries on a
+ * fixed 1.5× backoff, with no idea what anything cost and no coordination between
+ * concurrent callers. Two views opening at once each backed off privately and
+ * together still overspent. That is all the governor's job now, so what remains here
+ * is the part specific to Gmail's payloads — decoding, and telling a genuine
+ * authorisation failure apart from congestion.
+ */
+export async function fetchGmailAPI(
+  endpoint: string,
+  options: RequestInit = {},
+  signal?: AbortSignal
+): Promise<any> {
   const token = await getAccessToken();
   if (!token) throw new Error("Authentication required");
 
@@ -12,28 +28,27 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
     "Content-Type": "application/json",
   };
 
-  let response;
-  try {
-    response = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
-  } catch (err) {
-    if (retries > 0) {
-      console.warn(`Network error on ${endpoint} (${err.message || err}). Retrying in ${backoff}ms...`);
-      await new Promise(r => setTimeout(r, backoff));
-      return fetchGmailAPI(endpoint, options, retries - 1, backoff * 1.5);
+  const response = await quotaFetch(
+    `${BASE_URL}${endpoint}`,
+    { ...options, headers, signal },
+    {
+      cost: inferCost(endpoint, (options.method as string) || 'GET'),
+      signal,
+      label: endpoint.split('?')[0],
     }
-    throw err;
-  }
-  
-  if ((response.status === 429 || response.status >= 500) && retries > 0) {
-    console.warn(`Status ${response.status} hit on ${endpoint}. Retrying in ${backoff}ms...`);
-    await new Promise(r => setTimeout(r, backoff));
-    return fetchGmailAPI(endpoint, options, retries - 1, backoff * 1.5);
-  }
+  );
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    const errMsg = err.error?.message || '';
-    if (response.status === 401 || errMsg.toLowerCase().includes('invalid authentication credentials') || errMsg.toLowerCase().includes('expired') || (response.status === 403 && (errMsg.toLowerCase().includes('insufficient permission') || errMsg.toLowerCase().includes('insufficient authentication scopes') || errMsg.toLowerCase().includes('insufficient')))) {
+    const errMsg = (err.error?.message || '').toLowerCase();
+    // Scope and credential failures are terminal — the governor has already retried
+    // anything that was merely congestion, so reaching here means re-auth is needed.
+    if (
+      response.status === 401 ||
+      errMsg.includes('invalid authentication credentials') ||
+      errMsg.includes('expired') ||
+      (response.status === 403 && errMsg.includes('insufficient'))
+    ) {
       logout().catch(() => {});
       setTimeout(() => {
         window.location.reload();
@@ -42,7 +57,7 @@ export async function fetchGmailAPI(endpoint: string, options: RequestInit = {},
     }
     throw new Error(err.error?.message || `Gmail API Error: ${response.status}`);
   }
-  
+
   if (response.status === 204) return null;
   const text = await response.text();
   if (!text || text.trim() === '') return null;
@@ -67,17 +82,24 @@ export interface EmailData {
   messages?: { id: string; sender: string; snippet: string; date: Date; subject: string; labelIds: string[]; listUnsubscribe?: string; }[];
 }
 
-// Simple chunking to avoid slamming the API too hard at once
+/**
+ * Runs `processor` over `items`, `chunkSize` at a time.
+ *
+ * This used to carry its own rate limiting: a fixed 200ms pause between chunks,
+ * justified in a comment that priced `threads.get` at 5 units when it is 10. Ten
+ * threads per 200ms is 500 units per second — twice the ceiling — so the mechanism
+ * meant to protect the quota was the thing spending it.
+ *
+ * Pacing belongs to the quota governor, which prices each call and sees every caller
+ * at once. `chunkSize` is now only a batching hint; the governor decides when each
+ * request actually leaves.
+ */
 export async function processInChunks<T, R>(items: T[], chunkSize: number, processor: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunk = items.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(chunk.map(processor));
     results.push(...chunkResults);
-    // Add delay between chunks to respect 250 quota units / second limit (threads.get is 5 units)
-    if (i + chunkSize < items.length) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
   }
   return results;
 }
@@ -365,22 +387,40 @@ export async function markAllAsReadByQuery(
   return totalMarked;
 }
 
+/**
+ * Pages a query to count it exactly, up to a bound.
+ *
+ * This used to page the entire mailbox with no ceiling, and Inbox Health opens eight
+ * of them at once. On a large account that is hundreds of sequential requests before
+ * the first number appears — the dominant cost in the app, spent to distinguish
+ * "31,402" from "20,000+" in a summary tile nobody reads that precisely.
+ *
+ * Past the bound it returns Gmail's own estimate, which is dependable at this page
+ * size. Never reports less than the messages actually seen, so the number can be
+ * imprecise but not wrong in the direction that matters.
+ */
+const COUNT_MAX_PAGES = 20; // 10,000 messages counted exactly
+
 export async function countEmails(query: string): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
-    
-    do {
+    let lastEstimate = 0;
+
+    for (let page = 0; page < COUNT_MAX_PAGES; page++) {
       let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
       if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
-      
-      if (!res || !res.messages || res.messages.length === 0) break;
+
+      if (!res || !res.messages || res.messages.length === 0) return total;
       total += res.messages.length;
+      if (typeof res.resultSizeEstimate === 'number') lastEstimate = res.resultSizeEstimate;
+
       pageToken = res.nextPageToken;
-    } while (pageToken); // Check all emails to get accurate count
-    
-    return total;
+      if (!pageToken) return total;
+    }
+
+    return Math.max(total, lastEstimate);
   } catch (err) {
     return 0;
   }
@@ -479,7 +519,23 @@ export async function createFilter(query: string, addLabelIds: string[], removeL
  */
 
 const BATCH_URL = 'https://www.googleapis.com/batch/gmail/v1';
-const BATCH_SIZE = 100;
+
+/**
+ * Sub-requests per batch call.
+ *
+ * Gmail allows 100, and this used to send 100 — but a batch is billed per inner
+ * request, so that is 500 quota units in a single HTTP call against a ceiling of 250
+ * per second, and they were sent back to back with no pause at all.
+ *
+ * Fifteen costs 75 units, which fits inside what the governor's bucket holds. That
+ * matters: a request dearer than the bucket has to overdraw it, and the overdraft
+ * lands on top of the sustained rate in the worst-case second. Keeping every request
+ * within capacity is what makes the ceiling a guarantee rather than an average.
+ *
+ * Total throughput is set by the quota rate, not the round trips, so a smaller batch
+ * costs little beyond a few more requests.
+ */
+const BATCH_SIZE = 15;
 
 const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe'];
 
@@ -559,6 +615,9 @@ export async function fetchMessagesMetadataBatch(
   if (!token) throw new Error('Authentication required');
 
   const out: any[] = [];
+  /** Retries for the chunk currently being fetched; reset whenever we move on. */
+  let chunkAttempt = 0;
+  const MAX_CHUNK_ATTEMPTS = 4;
 
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     if (signal?.aborted) break;
@@ -566,21 +625,39 @@ export async function fetchMessagesMetadataBatch(
     const boundary = `batch_${Math.random().toString(36).slice(2)}`;
 
     try {
-      const res = await fetch(BATCH_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/mixed; boundary=${boundary}`,
-        },
-        body: buildBatchBody(chunk, boundary),
-        signal,
-      });
+      // Priced as what it really is: one `messages.get` per sub-request. Sending this
+      // unmetered was the single largest source of quota overruns in the app.
+      const res = await withQuota(
+        chunk.length * MESSAGES_GET_COST,
+        () => fetch(BATCH_URL, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': `multipart/mixed; boundary=${boundary}`,
+          },
+          body: buildBatchBody(chunk, boundary),
+          signal,
+        }),
+        signal
+      );
 
       if (!res.ok) {
-        // One failed batch should not lose the rest of the scan.
+        // A throttle is not a failure, it is a "wait" — dropping the chunk here meant
+        // silently analysing a mailbox with fifty messages missing from the sample.
+        // Rewind so the same chunk is retried once the governor's cooldown expires,
+        // bounded so a persistent error cannot spin.
+        const retryable = res.status === 429 || res.status === 403 || res.status >= 500;
+        if (retryable && chunkAttempt < MAX_CHUNK_ATTEMPTS) {
+          chunkAttempt++;
+          reportThrottle();
+          i -= BATCH_SIZE;
+          continue;
+        }
         console.warn(`Batch metadata request failed (${res.status}); skipping ${chunk.length} messages.`);
+        chunkAttempt = 0;
         continue;
       }
+      chunkAttempt = 0;
 
       // Content-Type carries the boundary: multipart/mixed; boundary=batch_xxx
       const contentType = res.headers?.get?.('content-type') || '';

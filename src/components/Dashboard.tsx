@@ -1425,11 +1425,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             connectionStatus={connectionStatus}
             onClose={() => { window.location.hash = '#health'; }}
             onRefresh={() => handleSearch()}
-            onSearchQuery={(q) => {
-              setQuery(q);
-              window.location.hash = '#dashboard';
-              setTimeout(() => handleSearch(undefined, q, ['anywhere'], true), 0);
-            }}
           />
         )}
         {currentHash === 'health-score' && (
@@ -1444,6 +1439,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         
         {currentHash === 'folder-optimizer' && (
           <FolderOptimizer
+            isPage={true}
             userEmail={user?.email}
             userLabels={userLabels}
             aiSettings={aiSettings}

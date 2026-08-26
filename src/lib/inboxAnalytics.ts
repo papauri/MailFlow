@@ -237,8 +237,21 @@ export async function fetchCategoryPage(
 export const categoryScanKey = (categoryId: string, userEmail?: string) =>
   `category-scan:${categoryId}:${userEmail || 'anon'}`;
 
-/** Upper bound on one category scan, so the cost of "scan everything" stays bounded. */
-export const CATEGORY_SCAN_LIMIT = Infinity;
+/**
+ * Upper bound on one category scan, so the cost of "scan everything" stays bounded.
+ *
+ * This had been set to `Infinity`, which contradicted the bound it documents and made
+ * the scan the most expensive thing in the app: metadata is billed per message, so an
+ * unbounded scan of a 40,000-message Promotions folder is 200,000 quota units — over
+ * eighteen minutes of a user's entire Gmail budget, for one tab, repeated for every
+ * category by the background warmer.
+ *
+ * Three thousand is roughly a minute of budget per category and is well past the
+ * point where the clustering stops changing its mind: the models here rank senders
+ * and recurring shapes, and a sender that matters is not hiding below the top few
+ * thousand messages.
+ */
+export const CATEGORY_SCAN_LIMIT = 3000;
 
 /**
  * Full metadata scan of one category.

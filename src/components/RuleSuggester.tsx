@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { ArrowLeft, Filter, CheckCircle } from 'lucide-react';
+import { Filter, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
+import { AutomationToolbar, AutomationGrid, AutomationCard, AutomationState } from './AutomationShell';
 import { buildRoutingSuggestions } from '../lib/foldingModel';
 import { PageHeader } from './PageHeader';
 import { useCachedResource } from '../lib/useCachedResource';
@@ -26,6 +27,8 @@ interface RuleSuggesterProps {
   isPage?: boolean;
   /** False when shown as a tab inside another page, which supplies its own header. */
   showHeader?: boolean;
+  /** Rendered inside a panel the parent already drew — so draw no panel of our own. */
+  embedded?: boolean;
   onClose?: () => void;
 }
 
@@ -47,6 +50,7 @@ export function RuleSuggester({
   aiSettings,
   isPage = false,
   showHeader = true,
+  embedded = false,
   onClose
 }: RuleSuggesterProps) {
   const [createdRulesLog, setCreatedRulesLog] = useState<CreatedRuleRecord[]>([]);
@@ -103,8 +107,106 @@ export function RuleSuggester({
     }
   };
 
+  /**
+   * Suggested / Active is a switch between two views of the same tool, so it uses the
+   * shared toolbar chips rather than a third style of pill tab. Before this, the page
+   * carried its own tab strip that looked nothing like the portal's above it or the
+   * filter chips below.
+   *
+   * On the Suggested view it is handed to `RoutingSuggestions` to render as the
+   * leading group of its one toolbar; the Active view has no suggestion filters of its
+   * own, so it renders the switch itself.
+   */
+  const viewChips = [
+    { id: 'suggestions', label: 'Suggested', count: suggestions.length },
+    { id: 'active_rules', label: 'Active', count: createdRulesLog.length },
+  ];
+
+  const selectView = (id: string) => setActiveTab(id as typeof activeTab);
+
+  const refreshButton = (
+    <button
+      onClick={() => sample.refresh()}
+      disabled={sample.loading || sample.refreshing}
+      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+      title="Refresh mail sample"
+      aria-label="Refresh mail sample"
+    >
+      <RefreshCw className={cn("w-4 h-4", (sample.loading || sample.refreshing) && "animate-spin")} />
+    </button>
+  );
+
+  const activeRulesView = (
+    <>
+    <AutomationToolbar
+      leadingChips={viewChips}
+      activeLeadingChip={activeTab}
+      onLeadingChipSelect={selectView}
+      actions={refreshButton}
+    />
+    <div className="flex-1 bg-slate-50/50 overflow-y-auto">
+      {createdRulesLog.length === 0 ? (
+        <AutomationState
+          kind="empty"
+          title="No rules created yet"
+          body="Rules you set up from the Suggested tab appear here."
+        />
+      ) : (
+        <div className="p-3 sm:p-4">
+          <AutomationGrid>
+            {createdRulesLog.map(rule => (
+              <AutomationCard
+                key={rule.id}
+                icon={<Filter className="w-3.5 h-3.5" />}
+                title={`Files into "${rule.labelName}"`}
+                tags={[
+                  { label: 'Active', tone: 'good' },
+                  { label: new Date(rule.createdAt).toLocaleDateString() },
+                ]}
+                description={
+                  <code className="text-[10px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 break-all inline-block">
+                    {rule.query}
+                  </code>
+                }
+              />
+            ))}
+          </AutomationGrid>
+          <p className="text-[10px] text-slate-500 leading-relaxed mt-3 px-1">
+            This lists rules created through MailFlow. Gmail's own filter settings remain the source of truth
+            and can be edited there.
+          </p>
+        </div>
+      )}
+    </div>
+    </>
+  );
+
+  const suggestionsView = (
+    <RoutingSuggestions
+      embedded
+      mode="rule"
+      suggestions={suggestions}
+      sendersAnalysed={senderCount}
+      loading={sample.loading}
+      filedCount={sample.data?.filedCount ?? 0}
+      sampleSize={sampleEmails.length}
+      sampleEmails={sampleEmails}
+      aiSettings={aiSettings}
+      toolbarActions={refreshButton}
+      leadingChips={viewChips}
+      activeLeadingChip={activeTab}
+      onLeadingChipSelect={selectView}
+      onApplied={(s) => { recordCreatedRule(s.query, s.labelName); sample.refresh(); }}
+    />
+  );
+
+  const inner = activeTab === 'suggestions' ? suggestionsView : activeRulesView;
+
+  // The portal draws the panel; standalone, this draws its own.
+  if (embedded) return <div className="flex flex-col flex-1 min-h-0">{inner}</div>;
+
   return (
-    <div className={cn("flex flex-col gap-4", isPage ? "w-full animate-in fade-in duration-150" : "mt-6 sm:mt-8")}>
+    <div className={cn("flex flex-col", isPage ? "w-full animate-in fade-in duration-150" : "mt-6 sm:mt-8")}>
       {isPage && showHeader && (
         <PageHeader
           title="Automated Sorting Rules"
@@ -117,88 +219,9 @@ export function RuleSuggester({
           backLabel="Back to Inbox Health"
         />
       )}
-
-      <div className="flex space-x-1 bg-slate-200/60 p-1 rounded-xl w-fit">
-        <button
-          onClick={() => setActiveTab('suggestions')}
-          className={cn(
-            "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer",
-            activeTab === 'suggestions' ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
-          )}
-        >
-          Suggested ({suggestions.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('active_rules')}
-          className={cn(
-            "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer",
-            activeTab === 'active_rules' ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
-          )}
-        >
-          Active ({createdRulesLog.length})
-        </button>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[480px]">
+        {inner}
       </div>
-
-      {activeTab === 'suggestions' ? (
-        <RoutingSuggestions
-          mode="rule"
-          suggestions={suggestions}
-          sendersAnalysed={senderCount}
-          loading={sample.loading}
-          filedCount={sample.data?.filedCount ?? 0}
-          sampleSize={sampleEmails.length}
-          aiSettings={aiSettings}
-          onInspect={(query, title) => {
-            const params = new URLSearchParams();
-            params.set('q', query);
-            params.set('title', title);
-            params.set('badge', 'Suggested routing');
-            params.set('sub', 'Messages this rule would file');
-            params.set('source', isPage ? 'rule-suggester' : 'health');
-            window.location.hash = `#filter-view?${params.toString()}`;
-          }}
-          onApplied={(s) => { recordCreatedRule(s.query, s.labelName); sample.refresh(); }}
-        />
-      ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-          {createdRulesLog.length === 0 ? (
-            <div className="p-8 flex flex-col items-center text-center gap-2">
-              <CheckCircle className="w-8 h-8 text-slate-300" />
-              <p className="text-sm font-semibold text-slate-800">No rules created yet</p>
-              <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-                Rules you set up from the suggestions tab appear here.
-              </p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {createdRulesLog.map(rule => (
-                <li key={rule.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                      <Filter className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-semibold text-slate-900">Files into "{rule.labelName}"</h4>
-                      <code className="text-[10px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 break-all inline-block mt-1">
-                        {rule.query}
-                      </code>
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-slate-500 shrink-0">
-                    {new Date(rule.createdAt).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="px-3.5 py-2.5 bg-slate-50 border-t border-slate-100">
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              This lists rules created through MailFlow. Gmail's own filter settings remain the source of truth
-              and can be edited there.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

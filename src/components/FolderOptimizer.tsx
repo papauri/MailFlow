@@ -17,6 +17,8 @@ interface Props {
   userEmail?: string;
   onReload?: () => void;
   isPage?: boolean;
+  /** Rendered inside a panel the parent already drew — so draw no panel of our own. */
+  embedded?: boolean;
 }
 
 /**
@@ -32,7 +34,7 @@ interface Props {
  * page opens rather than after a scan.
  */
 export function FolderOptimizer({
-  userLabels, aiSettings, userEmail, onReload, isPage
+  userLabels, aiSettings, userEmail, onReload, isPage, embedded
 }: Omit<Props, 'isOpen' | 'onClose'>) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -60,6 +62,39 @@ export function FolderOptimizer({
     [sampleEmails]
   );
 
+  const refreshButton = (
+    <button
+      onClick={() => { sample.refresh(); if (onReload) onReload(); }}
+      disabled={sample.loading || sample.refreshing}
+      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+      title="Refresh mail sample"
+      aria-label="Refresh mail sample"
+    >
+      <RefreshCw className={cn("w-4 h-4", (sample.loading || sample.refreshing) && "animate-spin")} />
+    </button>
+  );
+
+  // Inside Smart Automations the portal supplies the panel, the title and the back
+  // control, so this renders only its content — matching the other two tabs.
+  if (embedded) {
+    return (
+      <RoutingSuggestions
+        embedded
+        mode="folder"
+        suggestions={suggestions}
+        sendersAnalysed={senderCount}
+        loading={sample.loading}
+        filedCount={sample.data?.filedCount ?? 0}
+        sampleSize={sampleEmails.length}
+        sampleEmails={sampleEmails}
+        aiSettings={aiSettings}
+        toolbarActions={refreshButton}
+        onApplied={() => { sample.refresh(); if (onReload) onReload(); }}
+        onLabelsChanged={() => { sample.refresh(); if (onReload) onReload(); }}
+      />
+    );
+  }
+
   return (
     <div className={cn(
       "bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden shadow-xs relative",
@@ -73,16 +108,7 @@ export function FolderOptimizer({
           onBack={() => { window.location.hash = '#health'; }}
           backLabel="Back to Inbox Health"
           className="mb-0 rounded-b-none border-b-0"
-          actions={
-            <button
-              onClick={() => { sample.refresh(); if (onReload) onReload(); }}
-              disabled={sample.loading || sample.refreshing}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
-              title="Refresh mail sample"
-            >
-              <RefreshCw className={cn("w-4 h-4", (sample.loading || sample.refreshing) && "animate-spin")} />
-            </button>
-          }
+          actions={refreshButton}
         />
       ) : (
         <div
@@ -108,30 +134,19 @@ export function FolderOptimizer({
       )}
 
       {isExpanded && (
-        <div className="p-4 sm:p-6 bg-slate-50/40">
-          {(
-            <RoutingSuggestions
-              mode="folder"
-              suggestions={suggestions}
-              sendersAnalysed={senderCount}
-              loading={sample.loading}
-              filedCount={sample.data?.filedCount ?? 0}
-              sampleSize={sampleEmails.length}
-              aiSettings={aiSettings}
-              onInspect={(query, title) => {
-                const params = new URLSearchParams();
-                params.set('q', query);
-                params.set('title', title);
-                params.set('badge', 'Suggested routing');
-                params.set('sub', 'Messages this rule would file');
-                params.set('source', 'folder-optimizer');
-                window.location.hash = `#filter-view?${params.toString()}`;
-              }}
-              onApplied={() => { sample.refresh(); if (onReload) onReload(); }}
-              onLabelsChanged={() => { sample.refresh(); if (onReload) onReload(); }}
-            />
-          )}
-        </div>
+        <RoutingSuggestions
+          embedded
+          mode="folder"
+          suggestions={suggestions}
+          sendersAnalysed={senderCount}
+          loading={sample.loading}
+          filedCount={sample.data?.filedCount ?? 0}
+          sampleSize={sampleEmails.length}
+          sampleEmails={sampleEmails}
+          aiSettings={aiSettings}
+          onApplied={() => { sample.refresh(); if (onReload) onReload(); }}
+          onLabelsChanged={() => { sample.refresh(); if (onReload) onReload(); }}
+        />
       )}
     </div>
   );

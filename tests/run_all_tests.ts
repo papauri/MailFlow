@@ -10,6 +10,12 @@ interface TestSuite {
 
 const testSuites: TestSuite[] = [
   {
+    name: 'Gmail Quota Governor Verification',
+    file: 'tests/quota_governor_test.ts',
+    milestone: 'Platform',
+    description: 'Per-endpoint pricing, 250 u/s ceiling under concurrent load, 403/429 throttle handling'
+  },
+  {
     name: 'M1 Mobile Responsive Design Stress Test',
     file: 'tests/m1_stress_test.tsx',
     milestone: 'M1 (R1)',

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Loader2, FolderTree, ChevronDown, ChevronUp, Filter, CheckCircle2,
-  AlertTriangle, X, Brain
+  Loader2, FolderTree, Filter, CheckCircle2, AlertTriangle, Brain, Search,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { createLabel, createFilter, batchModifyEmails } from '../lib/gmail';
@@ -9,7 +8,10 @@ import { RoutingSuggestion } from '../lib/foldingModel';
 import { recordDecision, memoryStats } from '../lib/suggestionMemory';
 import { enrichSuggestions, EnrichedText } from '../lib/enrichSuggestions';
 import { useActionCompletion } from '../lib/useActionCompletion';
-import { SketchLoader } from './SketchLoader';
+import {
+  AutomationToolbar, AutomationGrid, AutomationCard, AutomationState,
+  ReviewToggle, ReviewPanel,
+} from './AutomationShell';
 
 /**
  * The two tools answer different questions about the same analysis:
@@ -34,22 +36,42 @@ interface Props {
   /** Messages in the sample that carry a user label — the evidence to learn from. */
   filedCount?: number;
   sampleSize?: number;
+  /**
+   * The messages the suggestions were built from.
+   *
+   * Reviewing used to navigate to a separate filtered page, which both left the tool
+   * and re-ran the query against Gmail. Every message a suggestion refers to is
+   * already in this sample by id, so the inline review costs nothing and is instant —
+   * and it matches how the rest of the app reviews a batch.
+   */
+  sampleEmails?: any[];
   aiSettings?: any;
-  onInspect: (query: string, title: string) => void;
   onApplied: (suggestion: RoutingSuggestion) => void;
   onLabelsChanged?: () => void;
+  /** Rendered by a parent that already drew the panel. */
+  embedded?: boolean;
+  /** Right-hand controls for the shared toolbar, e.g. refresh. */
+  toolbarActions?: React.ReactNode;
+  /**
+   * A parent-level view switch to show ahead of the filter chips, so a tool with both
+   * (Automated Rules: Suggested vs Active) gets one toolbar rather than two.
+   */
+  leadingChips?: { id: string; label: string; count: number }[];
+  activeLeadingChip?: string;
+  onLeadingChipSelect?: (id: string) => void;
 }
 
 /**
  * Uniform presentation for folder and rule suggestions.
  *
- * Shares its shell with the cleanup panel — same card, same fixed-width action
- * group, same "why this was suggested" disclosure — so every recommendation in the
- * app reads the same way regardless of which model produced it.
+ * Built from the same `AutomationShell` pieces as the Batch Organizer, so a
+ * recommendation reads identically whichever of the three tools produced it: same
+ * card, same review toggle, same inline message list, same confirmation.
  */
 export function RoutingSuggestions({
   mode, suggestions, sendersAnalysed, loading = false, filedCount = 0, sampleSize = 0,
-  aiSettings, onInspect, onApplied, onLabelsChanged
+  sampleEmails = [], aiSettings, onApplied, onLabelsChanged, embedded = false, toolbarActions,
+  leadingChips, activeLeadingChip, onLeadingChipSelect,
 }: Props) {
   const [enriched, setEnriched] = useState<Map<string, EnrichedText>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -57,7 +79,17 @@ export function RoutingSuggestions({
   const completion = useActionCompletion();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const stats = memoryStats();
+
+  /** Message lookup for the inline review, built once per sample. */
+  const emailsById = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const e of sampleEmails) {
+      if (e?.id) map.set(e.id, e);
+    }
+    return map;
+  }, [sampleEmails]);
 
   // Wording only — the routing decisions are already made and on screen.
   useEffect(() => {
@@ -152,205 +184,275 @@ export function RoutingSuggestions({
     ? suggestions.filter(s => s.unfiled > 0).sort((a, b) => b.unfiled - a.unfiled)
     : suggestions;
 
-  const visible = completion.visible(relevant).filter(s => !dismissed.has(s.id));
+  const visible = completion.visible(relevant)
+    .filter(s => !dismissed.has(s.id))
+    .filter(s => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return s.senderName.toLowerCase().includes(q)
+        || displayLabel(s).toLowerCase().includes(q)
+        || (s.rationale || '').toLowerCase().includes(q);
+    });
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
-        <div className="flex items-start gap-3">
-          <div className="p-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl shrink-0 hidden sm:block">
-            <FolderTree className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+  const chips = useMemo(() => {
+    const pool = completion.visible(relevant).filter(s => !dismissed.has(s.id));
+    return [
+      // Deliberately "All", not "Suggested": Automated Rules already has a Suggested
+      // chip for its view switch, and two chips reading the same word in one toolbar
+      // is worse than a slightly duller label.
+      { id: 'all', label: 'All', count: pool.length },
+      { id: 'new', label: 'New folders', count: pool.filter(s => s.kind === 'new_folder').length },
+      { id: 'existing', label: 'Existing', count: pool.filter(s => s.kind === 'route_existing').length },
+    ].filter(c => c.count > 0 || c.id === 'all');
+  }, [relevant, dismissed, completion]);
+
+  const [chip, setChip] = useState('all');
+  const shown = visible.filter(s =>
+    chip === 'all' ? true : chip === 'new' ? s.kind === 'new_folder' : s.kind === 'route_existing'
+  );
+
+  /** The explanation banner. Identical structure in both modes, different words. */
+  const intro = (
+    <div className="px-3 sm:px-4 py-3 bg-white border-b border-slate-200 shrink-0">
+      <div className="flex items-start gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+          <FolderTree className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-bold text-slate-900 text-[13px]">
               {isFolderMode ? 'Tidy up the mail you already have' : 'Automate what arrives next'}
             </h3>
-              <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                {isEnhanced ? 'Enhanced analysis' : 'Pattern analysis'}
-              </span>
-            </div>
-            <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-              {isFolderMode ? (
-                <>Files messages sitting loose in your mailbox into folders. Nothing changes about mail that
-                arrives later — set up a rule for that. Read from{' '}
-                <strong className="text-slate-900">{sendersAnalysed.toLocaleString()} senders</strong>.</>
-              ) : (
-                <>Creates Gmail filters so future mail files itself. Your existing mail is left where it is —
-                use the Folder Optimizer to tidy that up. Learned from{' '}
-                <strong className="text-slate-900">{filedCount.toLocaleString()} filed messages</strong>.</>
-              )}
-            </p>
+            <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md border border-slate-200">
+              {isEnhanced ? 'Enhanced analysis' : 'Pattern analysis'}
+            </span>
             {stats.patterns > 0 && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg mt-3">
-                <Brain className="w-3 h-3" />
-                Tuned by your {stats.accepted + stats.dismissed} past decision{stats.accepted + stats.dismissed === 1 ? '' : 's'}
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">
+                <Brain className="w-2.5 h-2.5" />
+                Tuned by {stats.accepted + stats.dismissed} past decision{stats.accepted + stats.dismissed === 1 ? '' : 's'}
               </span>
             )}
           </div>
+          <p className="text-slate-500 text-[11px] leading-relaxed mt-0.5">
+            {isFolderMode ? (
+              <>Files messages sitting loose in your mailbox into folders. Nothing changes about mail that
+              arrives later — set up a rule for that. Read from{' '}
+              <strong className="text-slate-700">{sendersAnalysed.toLocaleString()} senders</strong>.</>
+            ) : (
+              <>Creates Gmail filters so future mail files itself. Your existing mail is left where it is —
+              use the Folder Optimizer to tidy that up. Learned from{' '}
+              <strong className="text-slate-700">{filedCount.toLocaleString()} filed messages</strong>.</>
+            )}
+          </p>
         </div>
       </div>
+    </div>
+  );
+
+  let content: React.ReactNode;
+
+  if (loading) {
+    content = (
+      <AutomationState
+        kind="loading"
+        title="Learning from your mail…"
+        body="Reading how you already file things so the suggestions match your habits."
+      />
+    );
+  } else if (sampleSize === 0) {
+    content = (
+      <AutomationState
+        kind="error"
+        title="Couldn't read your mail"
+        body="No messages came back, so there is nothing to analyse yet. Try refreshing — if it keeps happening the Gmail connection may need reconnecting."
+      />
+    );
+  } else if (shown.length === 0 && filedCount === 0) {
+    content = (
+      <AutomationState
+        kind="empty"
+        title="Nothing to learn from yet"
+        body={`This works by spotting where you already file mail, and none of the ${sampleSize.toLocaleString()} messages checked are in a folder yet. Label a handful by hand — once a sender goes to the same place a few times, the rule will show up here.`}
+      />
+    );
+  } else if (shown.length === 0) {
+    content = (
+      <AutomationState
+        kind={search.trim() ? 'empty' : 'done'}
+        title={
+          search.trim()
+            ? 'No suggestions match that filter'
+            : isFolderMode ? 'Nothing loose worth filing' : 'No consistent pattern yet'
+        }
+        body={
+          search.trim()
+            ? 'Clear the filter to see everything again.'
+            : isFolderMode
+              ? `Checked ${sendersAnalysed.toLocaleString()} senders — nothing is sitting loose in large enough numbers to be worth filing in bulk.`
+              : `Checked ${filedCount.toLocaleString()} filed messages across ${sendersAnalysed.toLocaleString()} senders. None goes to one folder reliably enough to automate safely — a rule built on a mixed pattern would misfile your mail.`
+        }
+      />
+    );
+  } else {
+    content = (
+      <AutomationGrid>
+        {shown.map(s => {
+          const isOpen = expanded.has(s.id);
+          const isBusy = busy === s.id;
+          const doneLabel = completion.labelFor(s.id);
+          const isDone = !!doneLabel;
+          const reviewable = s.ids.map(id => emailsById.get(id)).filter(Boolean);
+
+          return (
+            <AutomationCard
+              key={s.id}
+              icon={<FolderTree className="w-3.5 h-3.5" />}
+              title={`${s.senderName} → ${displayLabel(s)}`}
+              done={isDone}
+              doneLabel={doneLabel}
+              expanded={isOpen}
+              onDismiss={isBusy ? undefined : () => dismiss(s)}
+              dismissTitle="Not useful — stop suggesting this"
+              tags={[
+                { label: s.kind === 'new_folder' ? 'New folder' : 'Existing folder' },
+                { label: `${Math.round(s.confidence * 100)}% confident`, tone: s.confidence >= 0.75 ? 'good' : 'neutral' },
+                ...(isFolderMode ? [{ label: `${s.unfiled.toLocaleString()} unfiled` as string }] : []),
+              ]}
+              description={enriched.get(s.id)?.rationale || s.rationale}
+              footerLeft={
+                <ReviewToggle
+                  open={isOpen}
+                  count={reviewable.length}
+                  onClick={() => toggle(s.id)}
+                />
+              }
+              footerRight={
+                <button
+                  onClick={() => apply(s)}
+                  disabled={isBusy || isDone}
+                  className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-semibold shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}
+                  <span className="whitespace-nowrap">
+                    {isDone
+                      ? (isFolderMode ? 'Filed' : 'Rule on')
+                      : (isFolderMode ? `File ${s.unfiled.toLocaleString()}` : 'Create rule')}
+                  </span>
+                </button>
+              }
+            >
+              {isOpen && (
+                <ReviewPanel>
+                  {/* Why the model suggested this… */}
+                  <div className="px-3 py-2.5 bg-white/70">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Signals the model used
+                    </p>
+                    <ul className="flex flex-col gap-1">
+                      {s.evidence.map((line, i) => (
+                        <li key={i} className="text-[11px] text-slate-600 flex items-start gap-1.5">
+                          <span className="text-slate-300 mt-0.5">•</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-2 pt-2 border-t border-slate-200 flex items-center gap-1.5 flex-wrap">
+                      <Filter className="w-3 h-3 text-slate-400 shrink-0" />
+                      <code className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded px-1.5 py-0.5 break-all">
+                        {s.query}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* …and exactly which messages it means. */}
+                  <div className="px-3 py-1.5 bg-slate-100/70">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {isFolderMode
+                        ? `Messages this would file (${reviewable.length.toLocaleString()})`
+                        : `Mail like this (${reviewable.length.toLocaleString()} in the sample)`}
+                    </p>
+                  </div>
+                  {reviewable.length === 0 ? (
+                    <p className="px-3 py-3 text-[11px] text-slate-500 text-center bg-white/60">
+                      {isFolderMode
+                        ? 'Nothing from this sender is currently unfiled.'
+                        : 'No matching messages in the current sample.'}
+                    </p>
+                  ) : (
+                    reviewable.map((email: any) => (
+                      <div key={email.id} className="flex items-start gap-2 px-3 py-2 bg-white/60 hover:bg-white transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[12px] font-semibold text-slate-800 leading-snug truncate">
+                            {email.subject || '(No Subject)'}
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            <span className="font-medium text-slate-600">{email.sender}</span>
+                            {email.snippet ? ` — ${email.snippet}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap hidden sm:inline">
+                            {email.date ? new Date(email.date).toLocaleDateString() : ''}
+                          </span>
+                          <a
+                            href={`https://mail.google.com/mail/u/0/#all/${email.threadId || email.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-300 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors"
+                            title="Open in Gmail"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                          </a>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </ReviewPanel>
+              )}
+            </AutomationCard>
+          );
+        })}
+      </AutomationGrid>
+    );
+  }
+
+  const inner = (
+    <>
+      {intro}
 
       {error && (
-        <div className="bg-white border border-amber-200 rounded-xl p-3.5 flex items-start gap-2.5 shadow-2xs">
+        <div className="px-3 sm:px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-700">{error}</p>
+          <p className="text-[11px] text-slate-700">{error}</p>
         </div>
       )}
 
-      {loading ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
-          <Loader2 className="w-7 h-7 animate-spin text-slate-500" />
-          <p className="text-sm font-semibold text-slate-800">Learning from your mail…</p>
-          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            Reading how you already file things so the suggestions match your habits.
-          </p>
-        </div>
-      ) : sampleSize === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
-          <AlertTriangle className="w-8 h-8 text-amber-500" />
-          <p className="text-sm font-semibold text-slate-800">Couldn't read your mail</p>
-          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            No messages came back, so there is nothing to analyse yet. Try refreshing — if it keeps happening the
-            Gmail connection may need reconnecting.
-          </p>
-        </div>
-      ) : visible.length === 0 && filedCount === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
-          <FolderTree className="w-8 h-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-800">Nothing to learn from yet</p>
-          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            This works by spotting where you already file mail, and none of the {sampleSize.toLocaleString()} messages
-            checked are in a folder yet. Label a handful by hand — once a sender goes to the same place a few times,
-            the rule will show up here.
-          </p>
-        </div>
-      ) : visible.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xs flex flex-col items-center text-center gap-2">
-          <CheckCircle2 className="w-8 h-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-800">
-            {isFolderMode ? 'Nothing loose worth filing' : 'No consistent pattern yet'}
-          </p>
-          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-            {isFolderMode
-              ? `Checked ${sendersAnalysed.toLocaleString()} senders — nothing is sitting loose in large enough
-                 numbers to be worth filing in bulk.`
-              : `Checked ${filedCount.toLocaleString()} filed messages across ${sendersAnalysed.toLocaleString()}
-                 senders. None goes to one folder reliably enough to automate safely — a rule built on a mixed
-                 pattern would misfile your mail.`}
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {visible.map(s => {
-            const isOpen = expanded.has(s.id);
-            const isBusy = busy === s.id;
-            const doneLabel = completion.labelFor(s.id);
-            const isDone = !!doneLabel;
-
-            return (
-              <div key={s.id} className={cn(
-                "bg-white border rounded-xl shadow-2xs transition-colors",
-                isDone ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 hover:border-slate-300"
-              )}>
-                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                      <FolderTree className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-semibold text-slate-900">
-                          {s.senderName} → {displayLabel(s)}
-                        </h4>
-                        <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
-                          {s.kind === 'new_folder' ? 'New folder' : 'Existing folder'}
-                        </span>
-                        {isDone && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            <CheckCircle2 className="w-3 h-3" />
-                            {doneLabel}
-                            {completion.impactFor(s.id)?.effect
-                              ? ` · ${completion.impactFor(s.id)!.effect}`
-                              : ''}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{enriched.get(s.id)?.rationale || s.rationale}</p>
-                      <button
-                        onClick={() => toggle(s.id)}
-                        className="mt-1.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-                      >
-                        {isOpen ? 'Hide evidence' : 'Why this was suggested'}
-                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
-                    <span className="text-[11px] font-medium text-slate-500 w-[92px] text-right shrink-0 hidden sm:block">
-                      {Math.round(s.confidence * 100)}% confident
-                    </span>
-                    <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
-                      <button
-                        onClick={() => onInspect(s.query, `${s.senderName} → ${displayLabel(s)}`)}
-                        disabled={isBusy}
-                        className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
-                      >
-                        Inspect
-                      </button>
-                      <button
-                        onClick={() => apply(s)}
-                        disabled={isBusy || isDone}
-                        className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center justify-center gap-1"
-                      >
-                        {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}
-                        {isDone
-                          ? (isFolderMode ? 'Filed' : 'Rule on')
-                          : (isFolderMode ? `File ${s.unfiled}` : 'Create rule')}
-                      </button>
-                    </div>
-                    {!isDone && (
-                      <button
-                        onClick={() => dismiss(s)}
-                        disabled={isBusy}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-                        title="Not useful — stop suggesting this"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {isOpen && (
-                  <div className="px-3.5 pb-3.5 pt-0">
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                      <p className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                        Signals the model used
-                      </p>
-                      <ul className="flex flex-col gap-1">
-                        {s.evidence.map((line, i) => (
-                          <li key={i} className="text-[11px] text-slate-600 flex items-start gap-1.5">
-                            <span className="text-slate-400 mt-0.5">•</span>
-                            <span>{line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="mt-2.5 pt-2.5 border-t border-slate-200 flex items-center gap-2 flex-wrap">
-                        <Filter className="w-3 h-3 text-slate-400 shrink-0" />
-                        <code className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded px-1.5 py-0.5 break-all">
-                          {s.query}
-                        </code>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {!loading && sampleSize > 0 && (
+        <AutomationToolbar
+          leadingChips={leadingChips}
+          activeLeadingChip={activeLeadingChip}
+          onLeadingChipSelect={onLeadingChipSelect}
+          chips={chips}
+          activeChip={chip}
+          onChipSelect={setChip}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Filter senders…"
+          actions={toolbarActions}
+        />
       )}
+
+      <div className="flex-1 bg-slate-50/50 p-3 sm:p-4 overflow-y-auto">
+        {content}
+      </div>
+    </>
+  );
+
+  if (embedded) return <div className="flex flex-col flex-1 min-h-0">{inner}</div>;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[480px]">
+      {inner}
     </div>
   );
 }
