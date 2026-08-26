@@ -150,6 +150,14 @@ export function AutomationGrid({ children, className }: { children: React.ReactN
 // ---------------------------------------------------------------------------
 
 export interface AutomationCardProps {
+  /**
+   * Declared explicitly because this project has no `@types/react`, so there is no JSX
+   * namespace and TypeScript does not know `key` is a React-reserved prop — without
+   * this, every `<AutomationCard key={…}>` in a map fails to compile. Declaring it
+   * here keeps the rest of the props genuinely type-checked, which typing the whole
+   * component as `React.FC` (itself `any` here) would silently give up.
+   */
+  key?: React.Key;
   icon?: React.ReactNode;
   title: string;
   /** Short badges under the title: category, destination, count. */
@@ -181,17 +189,11 @@ const TAG_TONES = {
   warn: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
-/**
- * Declared as `React.FC` to match the rest of the codebase. The project ships without
- * `@types/react`, so `React` resolves to `any` and JSX has no `key` handling — a
- * plainly annotated props parameter makes `key` look like an unknown prop and fails
- * the build wherever these are mapped over.
- */
-export const AutomationCard: React.FC<AutomationCardProps> = ({
+export function AutomationCard({
   icon, title, tags, description, footerLeft, footerRight,
   onDismiss, dismissTitle = 'Dismiss this recommendation',
   children, expanded = false, done = false, doneLabel,
-}) => {
+}: AutomationCardProps) {
   return (
     <motion.div
       layout
@@ -272,7 +274,7 @@ export const AutomationCard: React.FC<AutomationCardProps> = ({
       {children}
     </motion.div>
   );
-};
+}
 
 /**
  * The review toggle every card uses, so the affordance is identical everywhere.
