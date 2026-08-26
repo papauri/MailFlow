@@ -377,8 +377,18 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     // Seed from the last result for this exact query so moving back and forth
     // between pages shows the previous list instantly instead of blanking out,
     // while the fresh results load behind it and replace them.
-    const cacheKey = searchCacheKey(textQuery, customFilters ?? folderFilters);
-    const cached = searchCacheRef.current.get(cacheKey);
+    // Only cache deterministic searches.
+    //
+    // With AI parsing on, the same typed text can resolve to a different Gmail query
+    // and even a different folder, so a key built from the raw text does not identify
+    // the results it was stored against — which is how the cache started serving mail
+    // that did not match what was asked for. Internal navigation always bypasses AI,
+    // so the fast paths that matter are still cached.
+    const isDeterministic = bypassAI || !useAI || !textQuery.trim();
+    const cacheKey = isDeterministic
+      ? searchCacheKey(textQuery, customFilters ?? folderFilters)
+      : null;
+    const cached = cacheKey ? searchCacheRef.current.get(cacheKey) : undefined;
 
     setIsSearching(true);
     if (cached) {
@@ -526,12 +536,15 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         if (searchIdRef.current === searchId) {
           const fresh = detailed.filter(Boolean) as EmailData[];
           setEmails(fresh);
-          rememberSearch(cacheKey, fresh, results.nextPageToken || null);
+          // Store under what was actually executed, not what was typed.
+          if (isDeterministic && cacheKey) {
+            rememberSearch(cacheKey, fresh, results.nextPageToken || null);
+          }
         }
       } else {
         setEmails([]);
         setNextPageToken(null);
-        rememberSearch(cacheKey, [], null);
+        if (isDeterministic && cacheKey) rememberSearch(cacheKey, [], null);
       }
     } catch (err) {
       console.error(err);

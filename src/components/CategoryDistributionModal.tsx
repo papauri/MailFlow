@@ -157,7 +157,6 @@ export function CategoryDistributionModal({
   const [deepenToken, setDeepenToken] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const [diagnostic, setDiagnostic] = useState<CategoryDiagnostic | null>(null);
   const [dismissedAttentionIds, setDismissedAttentionIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('mf_dismissed_attention');
@@ -339,6 +338,51 @@ export function CategoryDistributionModal({
     [categoryEmails, selectedCategory]
   );
 
+  /**
+   * Summary of the current scan. Derived rather than stored: it is a view of the
+   * scan result, and keeping it as separate state is what let it fall out of sync
+   * and blank the page when the scan moved into the cache.
+   */
+  const diagnostic: CategoryDiagnostic | null = useMemo(() => {
+    if (categoryEmails.length === 0) return null;
+    const cfg = CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0];
+    const unread = categoryEmails.filter(e => (e.labelIds || []).includes('UNREAD')).length;
+    const bulk = categoryEmails.filter(e => !!e.listUnsubscribe).length;
+    const total = categoryEmails.length;
+    return {
+      headline: `${cfg.name}: ${total.toLocaleString()} messages analysed`,
+      clutterPercentage: Math.round((bulk / total) * 100),
+      importantPercentage: Math.round(((total - bulk) / total) * 100),
+      relocatablePercentage: Math.round((unread / total) * 100),
+      overview: `${unread.toLocaleString()} unread · ${bulk.toLocaleString()} bulk mail.`,
+      practicalAdvice: 'Recommendations below are ranked by what each is worth.',
+    };
+  }, [categoryEmails, selectedCategory]);
+
+  /**
+   * One scan covering every folder, rather than a scan per folder as you click into
+   * each. Afterwards every tab is already analysed and switching is instant, which
+   * is the point: the scan is the slow part, so it should happen once, deliberately,
+   * for everything — not repeatedly and implicitly.
+   */
+  const [scanAllState, setScanAllState] = useState<{ current: string; done: number; total: number } | null>(null);
+
+  const scanAllFolders = useCallback(async () => {
+    setScanAllState({ current: '', done: 0, total: CATEGORY_CONFIG.length });
+    for (let i = 0; i < CATEGORY_CONFIG.length; i++) {
+      const cfg = CATEGORY_CONFIG[i];
+      setScanAllState({ current: cfg.name, done: i, total: CATEGORY_CONFIG.length });
+      const key = categoryScanKey(cfg.id, userEmail);
+      // Already-scanned folders are skipped, so pressing this twice is cheap.
+      if (!isCacheWarm(key)) {
+        await warmCachedResource(key, () => fetchCategoryScan(cfg.query)).catch(() => undefined);
+      }
+    }
+    setScanAllState(null);
+  }, [userEmail]);
+
+  const scannedCount = CATEGORY_CONFIG.filter(c => isCacheWarm(categoryScanKey(c.id, userEmail))).length;
+
   const rescan = useCallback(() => {
     invalidateCachedResource(categoryScanKey(selectedCategory, userEmail));
     scan.refresh();
@@ -383,15 +427,26 @@ export function CategoryDistributionModal({
       onBack={onClose}
       backLabel="Back to Inbox Health"
       actions={
-        <button
-          onClick={rescan}
-          disabled={scanLoading || scan.refreshing}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-          title="Scan this category again"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5", (scanLoading || scan.refreshing) && "animate-spin")} />
-          <span className="hidden sm:inline">Rescan</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={scanAllFolders}
+            disabled={!!scanAllState}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            title="Scan every folder once, then switch between them instantly"
+          >
+            {scanAllState
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline">{scanAllState.current}… {scanAllState.done}/{scanAllState.total}</span></>
+              : <><Layers className="w-3.5 h-3.5" /><span className="hidden sm:inline">Scan all folders</span></>}
+          </button>
+          <button
+            onClick={rescan}
+            disabled={scanLoading || scan.refreshing || !!scanAllState}
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+            title="Rescan just this folder"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", (scanLoading || scan.refreshing) && "animate-spin")} />
+          </button>
+        </div>
       }
     />
   ) : (
@@ -509,14 +564,14 @@ export function CategoryDistributionModal({
                   key={cat.id} 
                   className={cn(
                     "p-3 sm:p-4 border-b border-slate-100 last:border-0 flex items-center justify-between gap-4 cursor-pointer transition-colors group", 
-                    isSelected ? "bg-indigo-50/50" : "hover:bg-slate-50"
+                    isSelected ? "bg-slate-100" : "hover:bg-slate-50"
                   )} 
                   onClick={() => setSelectedCategory(cat.id)}
                 >
                    <div className="flex items-center gap-3">
                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: cat.color }} />
                      <div>
-                       <h4 className={cn("font-semibold text-sm transition-colors", isSelected ? "text-indigo-900" : "text-slate-900")}>{cat.name}</h4>
+                       <h4 className={cn("font-semibold text-sm transition-colors", isSelected ? "text-slate-900" : "text-slate-800")}>{cat.name}</h4>
                        <p className="text-xs text-slate-500">{cat.displayCount} emails ({percent}%)</p>
                      </div>
                    </div>
@@ -531,10 +586,14 @@ export function CategoryDistributionModal({
                        </button>
                      )}
                      <button className={cn(
-                       "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs", 
-                       isSelected ? "bg-indigo-600 text-white" : "bg-white border border-slate-200 text-slate-700 group-hover:border-slate-300"
+                       "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs whitespace-nowrap",
+                       isSelected ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700 group-hover:border-slate-300"
                      )}>
-                       {scanLoading && isSelected ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Scan</span>}
+                       {scanLoading && isSelected
+                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                         : isCacheWarm(categoryScanKey(cat.id, userEmail))
+                           ? <><CheckCircle2 className="w-3.5 h-3.5" /><span>{isSelected ? 'Viewing' : 'Scanned'}</span></>
+                           : <span>Not scanned</span>}
                      </button>
                    </div>
                 </div>
