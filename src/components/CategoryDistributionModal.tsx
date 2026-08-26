@@ -38,7 +38,8 @@ import {
 } from 'lucide-react';
 
 import { 
-  countEmails, 
+  countEmails,
+  estimateMessageCount,
   fetchGmailAPI, 
   processInChunks,
   listMessageIds,
@@ -239,7 +240,7 @@ export function CategoryDistributionModal({
     try {
       const results: CategoryItem[] = await Promise.all(
         CATEGORY_CONFIG.map(async (cat) => {
-          const rawCount = await countEmails(cat.query);
+          const rawCount = await estimateMessageCount(cat.query);
           const numValue =
             typeof rawCount === 'number'
               ? rawCount
@@ -638,6 +639,7 @@ export function CategoryDistributionModal({
                 <CategoryAuditPanel
                   audit={audit}
                   categoryName={currentCategoryConfig.name}
+                  emails={categoryEmails}
                   aiSettings={aiSettings}
                   onInspect={(cluster) => {
                     // The cluster's own query, derived from the subject template it

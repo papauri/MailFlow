@@ -616,3 +616,25 @@ export async function listMessageIds(
 
   return ids.slice(0, limit);
 }
+
+
+/**
+ * Approximate message count for a query, in a single request.
+ *
+ * countEmails walks pages to count exactly, which costs up to ten requests per
+ * query — six of those running at once for a distribution chart is sixty requests
+ * competing with whatever else is loading, and it was starving the chart.
+ *
+ * Gmail returns resultSizeEstimate on any list call, so one request with
+ * maxResults=1 gives the size. It is an estimate, which is the right precision for
+ * a proportional chart; anything needing an exact figure should still count.
+ */
+export async function estimateMessageCount(query: string): Promise<number> {
+  try {
+    const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(query)}&maxResults=1`);
+    const est = res?.resultSizeEstimate;
+    return typeof est === 'number' ? est : 0;
+  } catch {
+    return 0;
+  }
+}

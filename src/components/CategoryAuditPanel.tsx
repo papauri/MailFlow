@@ -14,6 +14,8 @@ import { useBackgroundStatus } from '../lib/useBackgroundTask';
 interface Props {
   audit: CategoryAudit;
   categoryName: string;
+  /** The scanned messages, so a cluster can show its real members inline. */
+  emails: any[];
   aiSettings?: any;
   onInspect: (cluster: TemplateCluster) => void;
   onCleared: (cluster: TemplateCluster, count: number) => void;
@@ -32,7 +34,21 @@ const VERDICT_META: Record<TemplateCluster['verdict'], { label: string; tone: st
  * Ordering is deliberate: what needs you first, then what can go. A cleanup tool
  * that leads with deletion invites people to bin something that was waiting on them.
  */
-export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect, onCleared }: Props) {
+export function CategoryAuditPanel({ audit, categoryName, emails, aiSettings, onInspect, onCleared }: Props) {
+  const [inspecting, setInspecting] = useState<string | null>(null);
+
+  /**
+   * Resolve a cluster to the messages it was actually built from.
+   *
+   * Inspecting used to leave for a filtered page driven by a subject-phrase query,
+   * which could match a different set than the cluster — a group of 7 could show 1,
+   * because the phrase did not select the same messages. These are the exact members,
+   * already in memory, so what is shown is what would be acted on.
+   */
+  const membersOf = (cluster: TemplateCluster) => {
+    const ids = new Set(cluster.ids);
+    return emails.filter((e: any) => ids.has(e.id));
+  };
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ id: string; done: number; total: number } | null>(null);
@@ -271,11 +287,11 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                     </span>
                     <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                       <button
-                        onClick={() => onInspect(cluster)}
+                        onClick={() => setInspecting(inspecting === cluster.id ? null : cluster.id)}
                         disabled={isRunning}
                         className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
                       >
-                        Inspect
+                        {inspecting === cluster.id ? 'Hide' : `Inspect ${cluster.volume}`}
                       </button>
                       <button
                         onClick={() => clearCluster(cluster)}
@@ -300,6 +316,45 @@ export function CategoryAuditPanel({ audit, categoryName, aiSettings, onInspect,
                     <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-slate-800 rounded-full transition-all duration-300"
                         style={{ width: `${Math.round((progress!.done / Math.max(1, progress!.total)) * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {inspecting === cluster.id && (
+                  <div className="px-3.5 pb-3.5">
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-slate-700">
+                          All {cluster.volume.toLocaleString()} messages in this group
+                        </span>
+                        <button
+                          onClick={() => onInspect(cluster)}
+                          className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 cursor-pointer whitespace-nowrap"
+                          title="Open these as a full page"
+                        >
+                          Open as page
+                        </button>
+                      </div>
+                      <ul className="max-h-64 overflow-y-auto divide-y divide-slate-200/70">
+                        {membersOf(cluster).map((email: any) => (
+                          <li key={email.id} className="px-3 py-2 flex items-center gap-3 bg-white">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-medium text-slate-800 truncate">
+                                {email.subject || '(No Subject)'}
+                              </p>
+                              <p className="text-[10px] text-slate-500 truncate">{email.sender}</p>
+                            </div>
+                            <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
+                              {new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {membersOf(cluster).length < cluster.volume && (
+                        <p className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
+                          Showing {membersOf(cluster).length} of {cluster.volume} — the rest were cleared or fell out of the scan.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
