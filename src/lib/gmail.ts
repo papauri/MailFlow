@@ -504,9 +504,14 @@ function buildBatchBody(ids: string[], boundary: string): string {
  * permissions edge) is skipped rather than failing the whole batch, since losing one
  * message from a sample of thousands changes nothing but losing the batch does.
  */
-function parseBatchResponse(text: string): any[] {
+function parseBatchResponse(text: string, boundary?: string): any[] {
   const results: any[] = [];
-  for (const part of text.split(/--batch[^\r\n]*/)) {
+  // Split on the boundary the server actually used. Guessing it from a "--batch"
+  // prefix worked only while Google chose a boundary starting that way; if it ever
+  // did not, parts would merge and the scan would silently return a fraction of the
+  // messages rather than failing outright.
+  const parts = boundary ? text.split(`--${boundary}`) : text.split(/--batch\S*/);
+  for (const part of parts) {
     const start = part.indexOf('{');
     if (start === -1) continue;
     const end = part.lastIndexOf('}');
@@ -579,7 +584,21 @@ export async function fetchMessagesMetadataBatch(
         continue;
       }
 
-      out.push(...parseBatchResponse(await res.text()).map(shapeMessage));
+      // Content-Type carries the boundary: multipart/mixed; boundary=batch_xxx
+      const contentType = res.headers?.get?.('content-type') || '';
+      const declared = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
+      const responseBoundary = declared ? (declared[1] || declared[2]) : undefined;
+
+      const parsed = parseBatchResponse(await res.text(), responseBoundary);
+      // A batch that returns far fewer parts than requested means the response was
+      // not parsed properly, and silently analysing a fraction of the mailbox is
+      // worse than saying so.
+      if (parsed.length < chunk.length / 2) {
+        console.warn(
+          `Batch returned ${parsed.length} of ${chunk.length} messages — response may not have parsed correctly.`
+        );
+      }
+      out.push(...parsed.map(shapeMessage));
     } catch (err) {
       if (signal?.aborted) break;
       console.warn('Batch metadata request errored; continuing.', err);
@@ -619,21 +638,27 @@ export async function listMessageIds(
 
 
 /**
- * Approximate message count for a query, in a single request.
+ * Message count for a query, in one request where possible.
  *
- * countEmails walks pages to count exactly, which costs up to ten requests per
- * query — six of those running at once for a distribution chart is sixty requests
- * competing with whatever else is loading, and it was starving the chart.
- *
- * Gmail returns resultSizeEstimate on any list call, so one request with
- * maxResults=1 gives the size. It is an estimate, which is the right precision for
- * a proportional chart; anything needing an exact figure should still count.
+ * An earlier version asked for resultSizeEstimate with maxResults=1. Gmail's
+ * estimate is unreliable at that page size — it returned the same figure for every
+ * folder, which made the distribution chart meaningless. Requesting a full page
+ * instead gives an exact count whenever the folder fits in one, and only falls back
+ * to the estimate for folders larger than that, where a proportional chart does not
+ * need exactness anyway.
  */
 export async function estimateMessageCount(query: string): Promise<number> {
   try {
-    const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(query)}&maxResults=1`);
-    const est = res?.resultSizeEstimate;
-    return typeof est === 'number' ? est : 0;
+    const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(query)}&maxResults=500`);
+    const messages = res?.messages || [];
+
+    // No next page means we have seen everything: this is exact.
+    if (!res?.nextPageToken) return messages.length;
+
+    // Larger than one page. The estimate is far more sensible at this page size,
+    // but never report less than what we have actually seen.
+    const est = typeof res?.resultSizeEstimate === 'number' ? res.resultSizeEstimate : 0;
+    return Math.max(est, messages.length);
   } catch {
     return 0;
   }

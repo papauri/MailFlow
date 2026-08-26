@@ -178,13 +178,16 @@ export function groupEmails(
 
 const GROUPING_PREF_KEY = 'mailflow_group_messages_v1';
 
-/** Grouping is on by default; the preference persists across sessions. */
+/**
+ * Off by default. Grouping reorganises a list the user did not ask to have
+ * reorganised, so it is offered rather than imposed — the toggle is right there and
+ * the choice persists once made.
+ */
 export function readGroupingPref(): boolean {
   try {
-    const raw = localStorage.getItem(GROUPING_PREF_KEY);
-    return raw === null ? true : raw === 'true';
+    return localStorage.getItem(GROUPING_PREF_KEY) === 'true';
   } catch {
-    return true;
+    return false;
   }
 }
 
