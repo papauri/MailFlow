@@ -63,6 +63,11 @@ in `src/lib/gmailQuota.ts`, which prices, paces, queues and retries it.
 - `LabelManagerModal.tsx`: Two-pane interface for managing Gmail labels safely.
 
 ## 5. Coding Guidelines
+- **Component props are type-checked — keep them that way.** `@types/react` is installed, so a missing,
+  misspelled or wrongly-typed prop is a build error. Declare components as
+  `function Foo({ ... }: Props)`. **Do not write `React.FC<Props>`**: it adds nothing, and while the
+  types were missing it silently resolved to `any` and disabled prop checking on the components that
+  used it. `key` is handled by the JSX types — never declare it on a props interface.
 - **Always preserve imports:** When modifying files, do not accidentally remove `motion`, `lucide-react` icons, or core React hooks.
 - **Client-Side Gmail API:** Do not move Gmail API execution to the Node.js backend. User tokens live in the browser memory for security; the backend only handles AI.
 - **Backend API Handling:** The Express server handles `/api/*` endpoints. If you add a new endpoint, update `server.ts` and ensure it handles CORS/JSON parsing correctly.

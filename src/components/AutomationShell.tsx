@@ -150,14 +150,6 @@ export function AutomationGrid({ children, className }: { children: React.ReactN
 // ---------------------------------------------------------------------------
 
 export interface AutomationCardProps {
-  /**
-   * Declared explicitly because this project has no `@types/react`, so there is no JSX
-   * namespace and TypeScript does not know `key` is a React-reserved prop — without
-   * this, every `<AutomationCard key={…}>` in a map fails to compile. Declaring it
-   * here keeps the rest of the props genuinely type-checked, which typing the whole
-   * component as `React.FC` (itself `any` here) would silently give up.
-   */
-  key?: React.Key;
   icon?: React.ReactNode;
   title: string;
   /** Short badges under the title: category, destination, count. */
