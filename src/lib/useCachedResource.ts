@@ -118,6 +118,30 @@ export function useCachedResource<T>(key: string | null, fetcher: () => Promise<
     };
   }, [key, revalidate]);
 
+  /**
+   * Refetch when the entry goes stale underneath a view that is already mounted.
+   *
+   * The effect above only runs on mount or a key change, so it caught the first
+   * load and nothing else. `invalidateInboxCache` marks every entry stale and
+   * notifies, which re-rendered subscribers — but a re-render does not re-run that
+   * effect, so nothing ever called `revalidate` and the view kept showing the data
+   * it already had. Staleness was recorded and then ignored for as long as the
+   * component stayed on screen; only unmounting and coming back refreshed it.
+   *
+   * That is why the Inbox Health cards held their numbers after a cleanup: the
+   * cache knew it was out of date and had no way to act on it.
+   *
+   * Deliberately no dependency array — it has to run after every render, since a
+   * render is the only signal that `notify` produces. `inFlight` makes it
+   * idempotent: `revalidate` sets it synchronously and clears `stale` when the
+   * fetch settles, so this can never spin.
+   */
+  useEffect(() => {
+    if (!key) return;
+    const entry = getEntry(key);
+    if (entry.stale && !entry.inFlight) revalidate();
+  });
+
   const entry = key ? cache.get(key) : undefined;
   const hasData = entry?.data != null;
 

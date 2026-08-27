@@ -25,6 +25,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const loading = statsResource.loading;
   const isLoadingEmails = clustersResource.loading;
 
+  /** Bumped when the hygiene bonus changes, so the score memo recomputes. */
+  const [bonusVersion, setBonusVersion] = useState(0);
+
   const openFilterPage = (
     query: string,
     title: string,
@@ -79,8 +82,20 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       });
     };
 
+    /**
+     * Unsubscribes and new filter rules move the score through the hygiene bonus,
+     * which is read from localStorage rather than from `stats` — so the score memo
+     * below, which depends on `stats`, had no reason to recompute and the card sat
+     * on its old number. This state exists purely to give it one.
+     */
+    const handleBonusUpdate = () => setBonusVersion(v => v + 1);
+
     window.addEventListener('inbox_metrics_updated', handleMetricsUpdated);
-    return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
+    window.addEventListener('health-score-update', handleBonusUpdate);
+    return () => {
+      window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
+      window.removeEventListener('health-score-update', handleBonusUpdate);
+    };
   }, [userEmail]);
 
   /**
@@ -106,7 +121,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       mailboxTotal: stats.mailboxTotal,
       inboxTotal: stats.inboxTotal,
     });
-  }, [stats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats, bonusVersion]);
 
   // Personalised, ranked next steps derived from this inbox's real numbers.
   const recommendations = useMemo(

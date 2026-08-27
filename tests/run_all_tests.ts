@@ -16,6 +16,12 @@ const testSuites: TestSuite[] = [
     description: 'Per-endpoint pricing, 250 u/s ceiling under concurrent load, 403/429 throttle handling'
   },
   {
+    name: 'Cached Resource Staleness & Optimistic Updates',
+    file: 'tests/cached_resource_test.tsx',
+    milestone: 'Platform',
+    description: 'Stale-while-mounted refetch, dedupe across views, optimistic writes reaching the screen'
+  },
+  {
     name: 'Inbox Health Analytics & Algorithm Verification',
     file: 'tests/inbox_health_analytics_verification.ts',
     milestone: 'Analytics',

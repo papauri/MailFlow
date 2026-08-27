@@ -200,11 +200,18 @@ export function StorageBreakdownBar({
 
     loadStorageBreakdown();
 
+    // Both events, because they mean different things and this bar cares about
+    // both. It listened only for `health-score-update`, which unsubscribes and new
+    // filter rules fire — but every trash, archive and empty dispatches
+    // `inbox_metrics_updated` instead, so the one thing that actually changes the
+    // storage picture was the one thing that never refreshed it.
     const handleUpdate = () => loadStorageBreakdown();
     window.addEventListener('health-score-update', handleUpdate);
+    window.addEventListener('inbox_metrics_updated', handleUpdate);
     return () => {
       isMounted = false;
       window.removeEventListener('health-score-update', handleUpdate);
+      window.removeEventListener('inbox_metrics_updated', handleUpdate);
     };
   }, []);
 
