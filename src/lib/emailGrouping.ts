@@ -12,13 +12,15 @@
  * distinction the user came to make.
  */
 
-export type GroupingStrategy = 'category' | 'folder' | 'size' | 'age' | 'none';
+export type GroupingStrategy = 'category' | 'folder' | 'size' | 'year' | 'none';
 
 export interface EmailGroup {
   id: string;
   title: string;
   /** Icon hint resolved by the view layer, so this module stays free of JSX. */
   icon: 'inbox' | 'updates' | 'promotions' | 'social' | 'forums' | 'spam' | 'trash' | 'archive' | 'size' | 'clock';
+  /** Calendar year for a year group, so the view can order groups numerically. */
+  year?: number;
   emails: any[];
   /** Summed sizeEstimate, shown where storage is the point of the page. */
   bytes: number;
@@ -40,22 +42,24 @@ const SIZE_BANDS: { id: string; title: string; min: number }[] = [
   { id: 'tiny', title: 'Under 1 MB', min: 0 },
 ];
 
-const AGE_BANDS: { id: string; title: string; minDays: number }[] = [
-  { id: 'ancient', title: 'Older than 3 years', minDays: 1095 },
-  { id: 'old', title: '1 – 3 years old', minDays: 365 },
-  { id: 'recent', title: '6 – 12 months old', minDays: 180 },
-  { id: 'fresh', title: 'Last 6 months', minDays: 0 },
-];
+/**
+ * Calendar years, not relative age bands.
+ *
+ * Age bands ("1 – 3 years old", "Older than 3 years") answer a question nobody
+ * asks. Someone filtering by year wants to know *which year* — a band spanning
+ * 2023 and 2025 hides exactly the thing they opened the page to see. Grouping by
+ * the actual year also lines up with what Gmail's own `older_than:` and `before:`
+ * operators select.
+ */
+function yearOf(email: any): number | null {
+  const d = email?.date instanceof Date ? email.date : new Date(email?.date);
+  const t = d.getTime();
+  if (isNaN(t)) return null;
+  return d.getFullYear();
+}
 
 function bytesOf(email: any): number {
   return email?.sizeEstimate || 0;
-}
-
-function ageDays(email: any, now: number): number {
-  const d = email?.date instanceof Date ? email.date : new Date(email?.date);
-  const t = d.getTime();
-  if (isNaN(t)) return 0;
-  return Math.max(0, Math.floor((now - t) / 86400000));
 }
 
 /**
@@ -83,9 +87,10 @@ export function chooseGrouping(context: {
     return 'size';
   }
 
-  // Age-based sweeps read best oldest-first in bands.
-  if (query.includes('older_than:')) {
-    return 'age';
+  // Anything scoped by time groups by calendar year, so the year is visible on
+  // screen rather than inferred from a date column that omits it.
+  if (/\b(older_than:|newer_than:|after:|before:)/.test(query)) {
+    return 'year';
   }
 
   return 'category';
@@ -94,24 +99,29 @@ export function chooseGrouping(context: {
 /** Sort that matches the grouping, so the ordering reinforces the same decision. */
 export function sortForGrouping(strategy: GroupingStrategy): { sortBy: 'date' | 'size' | 'sender'; sortDesc: boolean } | null {
   if (strategy === 'size') return { sortBy: 'size', sortDesc: true };
-  if (strategy === 'age') return { sortBy: 'date', sortDesc: false }; // oldest first
+  if (strategy === 'year') return { sortBy: 'date', sortDesc: false }; // oldest first
   return null;
 }
 
 export function groupEmails(
   emails: any[],
   strategy: GroupingStrategy,
-  now: number = Date.now()
+  /**
+   * Direction of the row sort. Year groups follow it, so the headers read in the
+   * same order as the rows underneath them — a list sorted oldest-first under
+   * headers running newest-first is worse than no headers at all.
+   */
+  sortDesc: boolean = true
 ): EmailGroup[] {
   if (strategy === 'none' || emails.length === 0) {
     return [{ id: 'all', title: 'All messages', icon: 'inbox', emails, bytes: emails.reduce((s, e) => s + bytesOf(e), 0) }];
   }
 
   const buckets = new Map<string, EmailGroup>();
-  const push = (key: string, title: string, icon: EmailGroup['icon'], email: any) => {
+  const push = (key: string, title: string, icon: EmailGroup['icon'], email: any, year?: number) => {
     let g = buckets.get(key);
     if (!g) {
-      g = { id: key, title, icon, emails: [], bytes: 0 };
+      g = { id: key, title, icon, emails: [], bytes: 0, year };
       buckets.set(key, g);
     }
     g.emails.push(email);
@@ -137,10 +147,10 @@ export function groupEmails(
       continue;
     }
 
-    if (strategy === 'age') {
-      const days = ageDays(email, now);
-      const band = AGE_BANDS.find(x => days >= x.minDays) || AGE_BANDS[AGE_BANDS.length - 1];
-      push(band.id, band.title, 'clock', email);
+    if (strategy === 'year') {
+      const year = yearOf(email);
+      if (year === null) push('year-unknown', 'Date unknown', 'clock', email);
+      else push(`year-${year}`, String(year), 'clock', email, year);
       continue;
     }
 
@@ -159,6 +169,16 @@ export function groupEmails(
     }
   }
 
+  // Years are ordered numerically in whichever direction the rows are sorted,
+  // rather than by a fixed table. Undated mail sorts last either way.
+  if (strategy === 'year') {
+    return Array.from(buckets.values()).sort((a, b) => {
+      if (a.year === undefined) return 1;
+      if (b.year === undefined) return -1;
+      return sortDesc ? b.year - a.year : a.year - b.year;
+    });
+  }
+
   const order: Record<string, number> = {};
   if (strategy === 'category') {
     CATEGORY_ORDER.forEach((c, i) => { order[c.id] = i; });
@@ -167,8 +187,6 @@ export function groupEmails(
     order['inbox'] = 0; order['archive'] = 1; order['spam'] = 2; order['trash'] = 3;
   } else if (strategy === 'size') {
     SIZE_BANDS.forEach((b, i) => { order[b.id] = i; });
-  } else if (strategy === 'age') {
-    AGE_BANDS.forEach((b, i) => { order[b.id] = i; });
   }
 
   return Array.from(buckets.values()).sort(
@@ -195,4 +213,32 @@ export function writeGroupingPref(enabled: boolean) {
   try {
     localStorage.setItem(GROUPING_PREF_KEY, String(enabled));
   } catch { }
+}
+
+/**
+ * What the sort direction means, in the terms of the field being sorted.
+ *
+ * "Desc" is accurate and tells you nothing — descending *what*? For a year filter,
+ * which is the case this matters most for, the useful words are "Newest" and
+ * "Oldest". The Dashboard was worse still: an unlabelled funnel icon that rotated,
+ * so the only way to learn the current direction was to click it and watch the list
+ * move.
+ */
+export function sortDirectionLabel(
+  sortBy: 'date' | 'size' | 'sender',
+  sortDesc: boolean
+): string {
+  if (sortBy === 'date') return sortDesc ? 'Newest' : 'Oldest';
+  if (sortBy === 'size') return sortDesc ? 'Largest' : 'Smallest';
+  return sortDesc ? 'Z → A' : 'A → Z';
+}
+
+/** The same, phrased as the action the control performs. */
+export function sortDirectionHint(
+  sortBy: 'date' | 'size' | 'sender',
+  sortDesc: boolean
+): string {
+  const current = sortDirectionLabel(sortBy, sortDesc);
+  const next = sortDirectionLabel(sortBy, !sortDesc);
+  return `${current} first — click for ${next.toLowerCase()} first`;
 }

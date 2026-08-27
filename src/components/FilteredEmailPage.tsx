@@ -10,7 +10,8 @@ import { EmailData } from '../lib/gmail';
 import { routeLabel } from '../lib/routes';
 import { EmailGroupHeader } from './EmailGroupHeader';
 import {
-  chooseGrouping, groupEmails, sortForGrouping, readGroupingPref, writeGroupingPref
+  chooseGrouping, groupEmails, sortForGrouping, readGroupingPref, writeGroupingPref,
+  sortDirectionLabel, sortDirectionHint
 } from '../lib/emailGrouping';
 
 export interface FilterPageParams {
@@ -121,6 +122,24 @@ export function FilteredEmailPage({
   const [selectedFolderForMove, setSelectedFolderForMove] = useState('');
   const [groupingEnabled, setGroupingEnabled] = useState(readGroupingPref);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  /**
+   * Which rows have their preview open.
+   *
+   * This is local because the eye button used to call back into the Dashboard,
+   * which toggled a row in its own list — a list that is `display: none` on every
+   * full-page route, this page included. The click was handled, the state changed,
+   * and nothing was ever visible, on any filter.
+   */
+  const [previewIds, setPreviewIds] = useState<Set<string>>(new Set());
+
+  const togglePreview = (id: string) => {
+    setPreviewIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   /**
    * The grouping dimension follows the job this page was opened for — size bands for
@@ -176,8 +195,10 @@ export function FilteredEmailPage({
   }, [emails, localSearch]);
 
   const groups = useMemo(
-    () => groupEmails(filteredEmails, strategy),
-    [filteredEmails, strategy]
+    // `sortDesc` matters for year groups: headers running newest-first over rows
+    // sorted oldest-first is worse than showing no headers at all.
+    () => groupEmails(filteredEmails, strategy, sortDesc),
+    [filteredEmails, strategy, sortDesc]
   );
   // A single group is just a list with an extra bar over it — don't show the header.
   const showGroupHeaders = strategy !== 'none' && groups.length > 1;
@@ -462,9 +483,13 @@ export function FilteredEmailPage({
               <button
                 onClick={() => onSortChange(sortBy, !sortDesc)}
                 className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer whitespace-nowrap"
-                title={sortDesc ? 'Sorted descending — click for ascending' : 'Sorted ascending — click for descending'}
+                title={sortDirectionHint(sortBy, sortDesc)}
+                aria-label={sortDirectionHint(sortBy, sortDesc)}
               >
-                {sortDesc ? 'Desc' : 'Asc'}
+                <span className="flex items-center gap-1">
+                  <ArrowUpDown className={cn("w-3 h-3 transition-transform", !sortDesc && "rotate-180")} />
+                  {sortDirectionLabel(sortBy, sortDesc)}
+                </span>
               </button>
             </div>
           </div>
@@ -573,12 +598,14 @@ export function FilteredEmailPage({
                     const isUnread = email.labelIds?.includes('UNREAD');
                     const bigEnough = (email.sizeEstimate || 0) > 1024 * 1024;
 
+                    const isPreviewOpen = previewIds.has(email.id);
+
                     return (
+                      <div key={email.id} className="border-b border-slate-100 last:border-b-0">
                       <div
-                        key={email.id}
                         onClick={() => onToggleSelect(email.id)}
                         className={cn(
-                          "flex items-center gap-3 px-3 sm:px-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/80 transition-colors cursor-pointer group",
+                          "flex items-center gap-3 px-3 sm:px-4 hover:bg-slate-50/80 transition-colors cursor-pointer group",
                           isSelected ? "bg-blue-50/40" : "",
                           isUnread ? "bg-white" : "text-slate-600",
                           viewDensity === 'compact' ? "py-2" : "py-3"
@@ -627,14 +654,65 @@ export function FilteredEmailPage({
                           </span>
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onInspectEmail?.(email); }}
-                            className="p-2 sm:p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
-                            title="Preview message"
-                            aria-label="Preview message"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePreview(email.id);
+                              onInspectEmail?.(email);
+                            }}
+                            className={cn(
+                              "p-2 sm:p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 focus:opacity-100",
+                              previewIds.has(email.id)
+                                ? "text-slate-900 bg-slate-200/80 opacity-100"
+                                : "text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                            )}
+                            title={previewIds.has(email.id) ? 'Hide preview' : 'Preview message'}
+                            aria-label={previewIds.has(email.id) ? 'Hide preview' : 'Preview message'}
+                            aria-expanded={previewIds.has(email.id)}
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      </div>
+
+                      {isPreviewOpen && (
+                        <div
+                          className="px-3 sm:px-4 pb-3 pt-0.5 bg-slate-50/70 text-xs text-slate-600"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="rounded-lg border border-slate-200 bg-white p-3 flex flex-col gap-2">
+                            <div className="font-semibold text-slate-900 break-words">
+                              {email.subject || '(No Subject)'}
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                              <span className="break-all">{email.sender}</span>
+                              <span>{formatEmailDate(email.date)}</span>
+                              {(email.sizeEstimate || 0) > 0 && <span>{formatSize(email.sizeEstimate)}</span>}
+                            </div>
+                            <p className="leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
+                              {email.snippet || 'No preview text available for this message.'}
+                            </p>
+                            {email.labelIds?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {email.labelIds.slice(0, 8).map((l: string) => (
+                                  <span key={l} className="text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
+                                    {l}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {/* The snippet is all the metadata scan carries; opening the
+                                full message means leaving for Gmail, which owns the body. */}
+                            <a
+                              href={`https://mail.google.com/mail/u/0/#all/${email.threadId || email.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="self-start text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2"
+                            >
+                              Open in Gmail
+                            </a>
+                          </div>
+                        </div>
+                      )}
                       </div>
                     );
                   })}

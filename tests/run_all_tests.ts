@@ -22,6 +22,12 @@ const testSuites: TestSuite[] = [
     description: 'Stale-while-mounted refetch, dedupe across views, optimistic writes reaching the screen'
   },
   {
+    name: 'Email Grouping & Sort Presentation',
+    file: 'tests/email_grouping_test.ts',
+    milestone: 'Platform',
+    description: 'Calendar-year grouping and ordering, grouping-dimension choice, legible sort direction labels'
+  },
+  {
     name: 'Inbox Health Analytics & Algorithm Verification',
     file: 'tests/inbox_health_analytics_verification.ts',
     milestone: 'Analytics',

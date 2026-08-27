@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense, FormEvent } from "react";
-import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive, SlidersHorizontal } from "lucide-react";
+import { Mail, Search, CheckCircle, Clock, Trash2, Archive, LogOut, ChevronDown, Filter, Calendar, Loader2, Settings, Inbox, RefreshCw, ShieldAlert, Eye, EyeOff, ChevronUp, HelpCircle, AlertTriangle, Flame, Activity, LayoutList, Folder, Tag, AlignJustify, HardDrive, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { fetchGmailAPI, batchDeleteEmails, batchTrashEmails, batchArchiveEmails, batchMarkAsRead, processInChunks, countEmails, EmailData, emptyAllTrash, markAllAsReadByQuery } from "../lib/gmail";
 import { SketchLoadingState } from './SketchLoader';
 import { OnboardingWalkthrough } from "./OnboardingWalkthrough";
@@ -14,6 +14,7 @@ import { useInboxWarmup } from "../lib/useInboxWarmup";
 import { useRoutePrefetch } from "../lib/useRoutePrefetch";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
 import { cn, formatEmailDate } from "../lib/utils";
+import { sortDirectionLabel, sortDirectionHint } from "../lib/emailGrouping";
 
 function formatSize(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -1735,12 +1736,14 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                         <option value="size">Size</option>
                         <option value="sender">Sender</option>
                       </select>
-                      <button 
-                        onClick={() => setSortDesc(!sortDesc)} 
-                        className="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors cursor-pointer" 
-                        title="Toggle sort direction"
+                      <button
+                        onClick={() => setSortDesc(!sortDesc)}
+                        className="flex items-center gap-1 px-1.5 py-1 hover:bg-slate-200 rounded text-[11px] font-semibold text-slate-600 transition-colors cursor-pointer whitespace-nowrap"
+                        title={sortDirectionHint(sortBy, sortDesc)}
+                        aria-label={sortDirectionHint(sortBy, sortDesc)}
                       >
-                        <Filter className={cn("w-3.5 h-3.5 transition-transform", !sortDesc && "rotate-180")} />
+                        <ArrowUpDown className={cn("w-3 h-3 transition-transform", !sortDesc && "rotate-180")} />
+                        <span className="hidden sm:inline">{sortDirectionLabel(sortBy, sortDesc)}</span>
                       </button>
                     </div>
 
