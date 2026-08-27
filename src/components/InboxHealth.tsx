@@ -4,7 +4,7 @@ import { buildRecommendations } from '../lib/recommendations';
 import { formatBytes } from '../lib/csvExport';
 import { PageHeader } from './PageHeader';
 import {
-  fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult, InboxStats
+  fetchInboxStats, fetchInboxSizes, inboxStatsKey, inboxSizesKey, InboxStatsResult, InboxStats
 } from '../lib/inboxAnalytics';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -15,15 +15,29 @@ import { computeInboxHealthScore, getUserManagementCounts } from '../lib/emailUt
 export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
   // Data lives in the shared cache, so this component can unmount freely without
   // costing a full re-analysis on the way back in.
+  /**
+   * This page is a hub: its job is to show what is worth doing and let you leave.
+   * It should therefore load the cheapest thing that answers that, and nothing on
+   * behalf of the pages it links to.
+   *
+   * It used to await two resources before rendering anything, one of which —
+   * sender clustering — reads metadata for every message in the mailbox. That is
+   * the right cost on the Sender Analytics page, which exists to show the result,
+   * and absurd in front of a menu. Clusters are no longer fetched here at all; the
+   * card that links to them is a link, and Sender Analytics loads its own data.
+   */
   const statsResource = useCachedResource(inboxStatsKey(userEmail), () => fetchInboxStats());
-  const clustersResource = useCachedResource(senderClustersKey(userEmail), () => fetchSenderClusters(userEmail));
-
   const stats = statsResource.data?.stats ?? null;
-  const sizes = statsResource.data?.sizes ?? {};
-  const topSenders = clustersResource.data?.topSenders ?? [];
-  const topDomains = clustersResource.data?.topDomains ?? [];
+
+  // Sizes are a second, slower request behind the counts, so the byte badges fill
+  // in after the cards rather than delaying them. Not started until counts land.
+  const sizesResource = useCachedResource(
+    stats ? inboxSizesKey(userEmail) : null,
+    () => fetchInboxSizes(stats!)
+  );
+  const sizes = sizesResource.data ?? {};
+
   const loading = statsResource.loading;
-  const isLoadingEmails = clustersResource.loading;
 
   /** Bumped when the hygiene bonus changes, so the score memo recomputes. */
   const [bonusVersion, setBonusVersion] = useState(0);
@@ -126,8 +140,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
   // Personalised, ranked next steps derived from this inbox's real numbers.
   const recommendations = useMemo(
-    () => buildRecommendations(stats, sizes, topSenders),
-    [stats, sizes, topSenders]
+    () => buildRecommendations(stats, sizes),
+    [stats, sizes]
   );
   /**
    * A reclaimable figure that is actually true.
@@ -147,9 +161,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     [recommendations]
   );
 
-  if (loading || isLoadingEmails) {
-    return <SketchLoadingState scene="measuring" title="Sizing up your inbox" messages={["Scanning folders…", "Weighing storage…", "Finding the heavy stuff…", "Spotting subscriptions…"]} />;
-  }
+  // No full-page loader. Every card below either needs no data or has its own
+  // placeholder, so the page is usable — and navigable — while the counts arrive.
+  // Blocking the whole hub on the slowest request is what made it feel broken.
 
   return (
     <div className="flex flex-col gap-6">
@@ -159,13 +173,13 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         icon={<Activity className="w-4 h-4" />}
         actions={
           <button
-            onClick={() => { statsResource.refresh(); clustersResource.refresh(); }}
-            disabled={statsResource.refreshing || clustersResource.refreshing}
+            onClick={() => { statsResource.refresh(); sizesResource.refresh(); }}
+            disabled={statsResource.refreshing || sizesResource.refreshing}
             className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
             title="Refresh inbox analysis"
           >
-            <Loader2 className={cn("w-4 h-4", (statsResource.refreshing || clustersResource.refreshing) ? "animate-spin" : "hidden")} />
-            <Activity className={cn("w-4 h-4", (statsResource.refreshing || clustersResource.refreshing) && "hidden")} />
+            <Loader2 className={cn("w-4 h-4", (statsResource.refreshing || sizesResource.refreshing) ? "animate-spin" : "hidden")} />
+            <Activity className={cn("w-4 h-4", (statsResource.refreshing || sizesResource.refreshing) && "hidden")} />
           </button>
         }
       />
@@ -308,7 +322,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
 
       
       {/* Compact Sender Analytics Card */}
-      {topSenders.length > 0 && (
+      {true && (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xs transition-all overflow-hidden mb-4 sm:mb-6">
           <div className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3">
@@ -318,7 +332,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
               <div>
                 <h3 className="text-sm sm:text-base font-bold text-slate-900">Top Senders</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  You have <span className="font-semibold text-slate-700">{topSenders.length} frequent senders</span> and <span className="font-semibold text-slate-700">{topDomains.length} frequent domains</span>.
+                  Who emails you most, and which companies dominate your mailbox.
                 </p>
               </div>
             </div>

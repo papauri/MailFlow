@@ -70,6 +70,18 @@ export async function fetchRoutingSample(): Promise<RoutingSample> {
   };
 }
 
+/**
+ * Sender clustering over the whole mailbox.
+ *
+ * Expensive by nature: it reads metadata for every message, which is the only way
+ * to rank senders across the entire account rather than a sample of it. That is
+ * the right trade on the Sender Analytics page, which exists to show the result.
+ *
+ * It is the wrong trade anywhere else. Inbox Health used to await this on mount to
+ * render one summary line — "You have 6 frequent senders" — so a page whose whole
+ * job is choosing where to go next waited on a full-mailbox scan to draw a label
+ * over two numbers that are capped at six either way.
+ */
 export async function fetchSenderClusters(userEmail?: string): Promise<SenderClusters> {
   const normalizedUser = (userEmail || '').toLowerCase().trim();
   const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
@@ -175,14 +187,19 @@ export const INBOX_HEALTH_QUERIES = {
   withAttachments: INBOX_STAT_QUERIES.withAttachments,
 } as const;
 
+export const inboxSizesKey = (userEmail?: string) => `inbox-sizes:${userEmail || 'anon'}`;
+
+/**
+ * The counts every Inbox Health card needs, and nothing else.
+ *
+ * Sizes used to be fetched in the same call, so the page could not show a single
+ * number until six storage samples had also come back. They are split out into
+ * `fetchInboxSizes` because they are needed by two byte badges and a tie-breaker,
+ * not by the cards themselves — the page should not wait on them.
+ */
 export async function fetchInboxStats(): Promise<InboxStatsResult> {
   const Q = INBOX_HEALTH_QUERIES;
 
-  // Counted to completion. These were bounded to two pages for a fast first paint,
-  // which meant every figure past 1,000 was Gmail's estimate presented as a count.
-  //
-  // Two extra requests costing one quota unit each, against the ~40 units the
-  // counts below spend. Fetched in the same round so they cost no extra latency.
   const [size, unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
     fetchMailboxComposition(),
     countEmails(Q.unread),
@@ -202,39 +219,35 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
     inboxTotal: size.inboxTotal,
   };
 
-  /**
-   * Measured, not assumed.
-   *
-   * These were briefly replaced by fixed per-message constants — 7 MB for every
-   * large attachment, 120 KB for every stale promo — to save round trips on first
-   * paint. The saving is real but what it buys is a fabricated number: the figure
-   * renders in the same "~2.3 GB reclaimable" badge as a measured one with nothing
-   * to distinguish them, and it drives the ranking of the recommendations. A
-   * mailbox whose attachments average 6 MB and one whose average 40 MB would report
-   * the identical total.
-   *
-   * The six run concurrently, and each is now one list call plus two batched
-   * metadata calls, so the cost is a fraction of what it was when this was written.
-   */
+  return { stats, sizes: {} };
+}
+
+/**
+ * Storage estimates for the counts above.
+ *
+ * Deliberately a second request so the page paints on counts alone. Each estimate
+ * is a list call plus a couple of batched metadata calls, and six of them in front
+ * of the first render was most of the wait on a large mailbox.
+ */
+export async function fetchInboxSizes(stats: InboxStats): Promise<Record<string, number>> {
+  const Q = INBOX_HEALTH_QUERIES;
+
   const [oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize] = await Promise.all([
-    estimateQuerySize(Q.oldPromo, oldPromo),
-    estimateQuerySize(Q.large, large),
-    estimateQuerySize(Q.spamAndTrash, spamAndTrash),
-    estimateQuerySize(Q.withAttachments, withAttachments),
-    estimateQuerySize(Q.oldMail, oldMail),
-    estimateQuerySize(Q.updatesAndSocial, updatesAndSocial),
+    estimateQuerySize(Q.oldPromo, stats.oldPromo),
+    estimateQuerySize(Q.large, stats.large),
+    estimateQuerySize(Q.spamAndTrash, stats.spamAndTrash),
+    estimateQuerySize(Q.withAttachments, stats.withAttachments),
+    estimateQuerySize(Q.oldMail, stats.oldMail),
+    estimateQuerySize(Q.updatesAndSocial, stats.updatesAndSocial),
   ]);
 
   return {
-    stats,
-    sizes: {
-      oldPromo: oldPromoSize,
-      large: largeSize,
-      spamAndTrash: spamAndTrashSize,
-      withAttachments: attachmentsSize,
-      oldMail: oldMailSize,
-      updatesAndSocial: updatesAndSocialSize,
-    },
+    oldPromo: oldPromoSize,
+    large: largeSize,
+    spamAndTrash: spamAndTrashSize,
+    withAttachments: attachmentsSize,
+    oldMail: oldMailSize,
+    updatesAndSocial: updatesAndSocialSize,
   };
 }
 

@@ -8,7 +8,8 @@ import { PageHeader } from './PageHeader';
 import { scanFolderMetadata } from '../lib/gmail';
 import { useCachedResource } from '../lib/useCachedResource';
 import {
-  fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey,
+  fetchInboxStats, fetchInboxSizes, fetchSenderClusters,
+  inboxStatsKey, inboxSizesKey, senderClustersKey,
   InboxStatsResult, SenderClusters
 } from '../lib/inboxAnalytics';
 import {
@@ -85,7 +86,15 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
   const clustersResource = useCachedResource<SenderClusters>(senderClustersKey(userEmail), () => fetchSenderClusters(userEmail));
 
   const stats = statsResource.data?.stats ?? null;
-  const sizes = statsResource.data?.sizes ?? {};
+
+  // Sizes moved out of the stats fetch so Inbox Health could paint on counts alone.
+  // The summary export wants them, so it asks for them here — after the counts,
+  // and without holding up the dataset list.
+  const sizesResource = useCachedResource<Record<string, number>>(
+    stats ? inboxSizesKey(userEmail) : null,
+    () => fetchInboxSizes(stats!)
+  );
+  const sizes = sizesResource.data ?? {};
   const topSenders = clustersResource.data?.topSenders ?? [];
   const topDomains = clustersResource.data?.topDomains ?? [];
   const recentEmails = clustersResource.data?.recentEmails ?? [];

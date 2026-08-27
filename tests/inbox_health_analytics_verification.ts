@@ -122,6 +122,52 @@ section('Gmail query integrity');
 }
 
 // ---------------------------------------------------------------------------
+section('Inbox Health loads like a hub');
+// ---------------------------------------------------------------------------
+{
+  // The page exists to show what is worth doing and let you leave. It used to
+  // await sender clustering on mount — a metadata read of every message in the
+  // mailbox — to render one summary line over two numbers capped at six. On a
+  // 40,000-message account that is roughly 2,700 requests in front of a menu.
+  const healthSource = fs.readFileSync('src/components/InboxHealth.tsx', 'utf-8');
+
+  assert(!healthSource.includes('fetchSenderClusters'),
+    'Inbox Health does not run the whole-mailbox sender scan');
+  assert(!healthSource.includes('senderClustersKey'),
+    'Inbox Health does not even subscribe to the cluster cache');
+
+  // Nothing may gate the whole page on a request. Every card either needs no data
+  // or carries its own placeholder.
+  assert(!/if \(loading[^)]*\)\s*\{\s*return <SketchLoadingState/.test(healthSource),
+    'No full-page loader blocks the hub on its slowest request');
+
+  // Counts and sizes are separate requests so the cards paint on counts alone.
+  const analyticsSource = fs.readFileSync('src/lib/inboxAnalytics.ts', 'utf-8');
+  assert(analyticsSource.includes('export async function fetchInboxSizes'),
+    'Storage estimates are a separate fetch from the counts');
+  const statsBody = analyticsSource.slice(
+    analyticsSource.indexOf('export async function fetchInboxStats'),
+    analyticsSource.indexOf('export async function fetchInboxSizes')
+  );
+  assert(!statsBody.includes('estimateQuerySize'),
+    'The count fetch does not wait on any storage estimate');
+
+  // The recommendation ranking must work without the sender list, or the hub is
+  // pulled back into paying for the scan just to rank a list.
+  const recs = buildRecommendations(
+    {
+      unread: 400, oldPromo: 900, large: 8, spamAndTrash: 300,
+      importantUnread: 12, updatesAndSocial: 500, withAttachments: 200, oldMail: 2000,
+      mailboxTotal: 40000, inboxTotal: 1500,
+    },
+    {}
+  );
+  assert(recs.length > 0, 'Recommendations rank without a sender list');
+  assert(recs.every(r => Number.isFinite(r.pointsGain)),
+    'Recommendations stay well-formed when sizes have not arrived yet');
+}
+
+// ---------------------------------------------------------------------------
 section('Optimistic metric events');
 // ---------------------------------------------------------------------------
 {

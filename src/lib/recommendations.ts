@@ -51,7 +51,15 @@ function gainFromClearing(base: HealthScoreMetrics, key: keyof HealthScoreMetric
 export function buildRecommendations(
   stats: InboxStats | null,
   sizes: Record<string, number>,
-  topSenders: { email: string; name: string; count: number }[]
+  /**
+   * Top senders, when the caller already has them.
+   *
+   * Optional because computing them means reading metadata for the whole mailbox,
+   * and Inbox Health — the main caller — is a navigation page that must not pay
+   * that to rank a list. Given them, it adds one more recommendation; without
+   * them, the other six still rank on their own merits.
+   */
+  topSenders: { email: string; name: string; count: number }[] = []
 ): Recommendation[] {
   if (!stats) return [];
 
