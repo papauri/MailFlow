@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 import { useCachedResource } from '../lib/useCachedResource';
 import { fetchSenderClusters, senderClustersKey, SenderClusters } from '../lib/inboxAnalytics';
 import { PageHeader } from './PageHeader';
+import { SketchLoadingState } from './SketchLoader';
 
 interface Props {
   userEmail?: string;
@@ -72,9 +73,18 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs min-h-[400px] p-4 sm:p-6">
         {clusters.loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[320px] text-slate-400">
-            <Loader2 className="w-7 h-7 animate-spin mb-3 text-slate-500" />
-            <p className="text-sm font-medium text-slate-600">Analyzing sender patterns...</p>
+          <div className="flex flex-col items-center justify-center min-h-[320px]">
+            <SketchLoadingState 
+              scene="searching"
+              title="Analyzing Sender & Domain History"
+              messages={[
+                "Scanning recent messages across all folders...",
+                "Extracting and normalizing sender addresses...",
+                "Clustering organization domains...",
+                "Calculating exact contact engagement metrics..."
+              ]}
+              progressLabel="Auditing contacts"
+            />
           </div>
         ) : topSenders.length === 0 && topDomains.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[320px] text-center">

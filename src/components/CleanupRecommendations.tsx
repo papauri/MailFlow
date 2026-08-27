@@ -268,7 +268,7 @@ export function CleanupRecommendations({
                   <div className="px-3.5 pb-3.5 pt-0">
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                       <p className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                        Signals the model used
+                        Why this was suggested
                       </p>
                       <ul className="flex flex-col gap-1">
                         {rec.evidence.map((line, i) => (

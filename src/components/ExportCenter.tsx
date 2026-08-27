@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { PageHeader } from './PageHeader';
-import { searchEmails } from '../lib/gmail';
+import { scanFolderMetadata } from '../lib/gmail';
 import { useCachedResource } from '../lib/useCachedResource';
 import {
   fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey,
@@ -40,10 +40,10 @@ interface Dataset {
 }
 
 /** How many messages a query-backed export will pull at most. */
-const MESSAGE_EXPORT_LIMIT = 500;
+const MESSAGE_EXPORT_LIMIT = 1000;
 
 async function messageDataset(query: string) {
-  const emails = await searchEmails(query, MESSAGE_EXPORT_LIMIT);
+  const emails = await scanFolderMetadata(query, MESSAGE_EXPORT_LIMIT);
   return {
     headers: MESSAGE_HEADERS,
     rows: emails.map((e: any) => messageToRow(e, extractSenderDetails(e.sender))),

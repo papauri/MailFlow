@@ -401,13 +401,13 @@ export async function markAllAsReadByQuery(
  */
 const COUNT_MAX_PAGES = 20; // 10,000 messages counted exactly
 
-export async function countEmails(query: string): Promise<number> {
+export async function countEmails(query: string, maxPages: number = COUNT_MAX_PAGES): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
     let lastEstimate = 0;
 
-    for (let page = 0; page < COUNT_MAX_PAGES; page++) {
+    for (let page = 0; page < maxPages; page++) {
       let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
       if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
@@ -432,7 +432,7 @@ export async function estimateQuerySize(query: string, countStr: number | string
 
   try {
     // 1. Fetch a single small page of results
-    const res = await fetchGmailAPI(`/threads?q=${encodeURIComponent(query)}&maxResults=10`);
+    const res = await fetchGmailAPI(`/threads?q=${encodeURIComponent(query)}&maxResults=5`);
     if (!res || !res.threads || res.threads.length === 0) return 0;
     
     // 2. Fetch details for this sample
@@ -709,6 +709,40 @@ export async function listMessageIds(
   }
 
   return ids.slice(0, limit);
+}
+
+/**
+ * High-speed whole-folder metadata scanner using Gmail's multipart batch endpoint.
+ *
+ * 1. Retrieves message IDs in 500-message pages (~0.2s).
+ * 2. Fetches metadata in 15-subrequest multipart batches via Google Batch API.
+ * 3. Uses `messages.get` (5 quota units) instead of `threads.get` (10 units), cutting
+ *    quota consumption in half and HTTP roundtrips by 15x.
+ * 4. Yields live progress metrics to callers for real-time progress bars.
+ */
+export async function scanFolderMetadata(
+  query: string,
+  limit: number = 3000,
+  onProgress?: (done: number, total: number, phase: 'listing' | 'fetching') => void,
+  signal?: AbortSignal
+): Promise<EmailData[]> {
+  const targetLimit = limit <= 0 ? 5000 : limit;
+  if (onProgress) onProgress(0, 0, 'listing');
+
+  const ids = await listMessageIds(query, targetLimit, signal);
+  if (ids.length === 0) return [];
+
+  if (onProgress) onProgress(0, ids.length, 'fetching');
+
+  const rawMessages = await fetchMessagesMetadataBatch(
+    ids,
+    (done, total) => {
+      if (onProgress) onProgress(done, total, 'fetching');
+    },
+    signal
+  );
+
+  return rawMessages as EmailData[];
 }
 
 

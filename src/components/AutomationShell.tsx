@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Loader2, Search, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { SketchLoadingState } from './SketchLoader';
 
 /**
  * The shared shell for every Smart Automations module.
@@ -137,7 +138,7 @@ export function AutomationToolbar({
 export function AutomationGrid({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn(
-      "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start",
+      "grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2.5 items-start",
       className
     )}>
       {children}
@@ -193,9 +194,9 @@ export function AutomationCard({
       animate={{ opacity: done ? 0.7 : 1, y: 0 }}
       transition={{ duration: 0.22, ease: 'easeOut' }}
       className={cn(
-        "rounded-xl border bg-white shadow-2xs flex flex-col transition-colors",
+        "rounded-xl border bg-white shadow-2xs flex flex-col transition-colors overflow-hidden",
         done ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 hover:border-slate-300",
-        expanded && "sm:col-span-2 xl:col-span-3 ring-1 ring-slate-900/5"
+        expanded && "lg:col-span-2 2xl:col-span-3 ring-1 ring-slate-900/5"
       )}
     >
       <div className="p-3 flex flex-col gap-2">
@@ -320,15 +321,35 @@ export function ReviewPanel({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 export function AutomationState({
-  kind, title, body, action,
+  kind, title, body, action, progress, progressLabel,
 }: {
   kind: 'loading' | 'empty' | 'error' | 'done';
   title: string;
   body?: React.ReactNode;
   action?: React.ReactNode;
+  progress?: { done: number; total: number } | null;
+  progressLabel?: string;
 }) {
+  if (kind === 'loading') {
+    return (
+      <div className="flex flex-col items-center justify-center text-center py-10 px-6">
+        <SketchLoadingState
+          scene="sorting"
+          title={title}
+          messages={
+            typeof body === 'string'
+              ? [body, "Streaming message headers and labels...", "Calculating optimal grouping strategies..."]
+              : ["Reading and learning from email history...", "Structuring smart recommendations..."]
+          }
+          progress={progress}
+          progressLabel={progressLabel}
+        />
+        {action && <div className="mt-3">{action}</div>}
+      </div>
+    );
+  }
+
   const ICONS = {
-    loading: <Loader2 className="w-7 h-7 animate-spin text-slate-400" />,
     empty: <Inbox className="w-7 h-7 text-slate-300" />,
     error: <AlertTriangle className="w-7 h-7 text-amber-500" />,
     done: <CheckCircle2 className="w-7 h-7 text-emerald-500" />,

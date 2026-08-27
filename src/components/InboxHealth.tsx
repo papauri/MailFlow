@@ -13,9 +13,6 @@ import { SketchLoadingState } from "./SketchLoader";
 import { CategoryDistributionModal } from './CategoryDistributionModal';
 import { UnsubscribeManager } from "./UnsubscribeManager";
 import { LabelManagerModal } from "./LabelManagerModal";
-import { FolderOptimizer } from "./FolderOptimizer";
-import { RuleSuggester } from './RuleSuggester';
-import { SmartTriageModal } from './SmartTriageModal';
 import { HealthScoreModal } from './HealthScoreModal';
 import { StorageBreakdownBar } from './StorageBreakdownBar';
 import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
@@ -24,7 +21,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
-  const [isSmartTriageOpen, setIsSmartTriageOpen] = useState(false);
   const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
 
   // Data lives in the shared cache, so this component can unmount freely without
@@ -205,12 +201,20 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
           </div>
           
           <div className="p-4 sm:p-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <HealthCard 
+                id="card-omni-clean"
+                title="Smart Cleanup"
+                count="Clean"
+                desc="Group similar emails together to archive, delete, or file in bulk."
+                actionText="Start Cleanup"
+                onAction={() => { window.location.hash = '#omni-clean'; }}
+              />
               <HealthCard 
                 id="card-category-breakdown"
                 title="Category Breakdown"
                 count="Analyze"
-                desc="Visualize what takes up the most space and volume in your inbox."
+                desc="See what takes up the most space and volume in your inbox."
                 actionText="View Breakdown"
                 onAction={() => { window.location.hash = '#category-distribution'; }}
               />
@@ -218,7 +222,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
                 id="card-smart-automations"
                 title="Smart Automations"
                 count="Automate"
-                desc="Batch organize recurring senders, optimize folders, and create rules."
+                desc="Organize frequent senders, clean up folders, and create rules."
                 actionText="Open Automations"
                 onAction={() => { window.location.hash = '#smart-automations'; }}
               />
@@ -262,9 +266,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
                 <Target className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm sm:text-base font-bold text-slate-900">Sender Analytics</h3>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">Top Senders</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  You have <span className="font-semibold text-slate-700">{topSenders.length} frequent senders</span> and <span className="font-semibold text-slate-700">{topDomains.length} domain clusters</span>.
+                  You have <span className="font-semibold text-slate-700">{topSenders.length} frequent senders</span> and <span className="font-semibold text-slate-700">{topDomains.length} frequent domains</span>.
                 </p>
               </div>
             </div>
@@ -273,7 +277,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
               onClick={() => { window.location.hash = '#sender-analytics'; }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer w-full sm:w-auto justify-center"
             >
-              <span>View Analytics</span>
+              <span>View Senders</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -286,16 +290,16 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
             <div className="p-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl">
               <Folder className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">AI Folder Optimizer</h3>
+            <h3 className="text-base font-bold text-slate-900">Folder Organizer</h3>
           </div>
           <p className="text-sm text-slate-500 mb-6 flex-1">
-            Automatically group recurring senders, shopping receipts, and newsletters into smart categorized folders using precision clustering.
+            Automatically group senders, shopping receipts, and newsletters into neat categorized folders.
           </p>
           <button 
             onClick={() => { window.location.hash = '#folder-optimizer'; }}
             className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
           >
-            <span>Optimize Folders</span>
+            <span>Organize Folders</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
@@ -305,16 +309,16 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
             <div className="p-2.5 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl">
               <Filter className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Automated Sorting Rules</h3>
+            <h3 className="text-base font-bold text-slate-900">Automatic Rules</h3>
           </div>
           <p className="text-sm text-slate-500 mb-6 flex-1">
-            Discover inbox patterns and generate permanent Gmail filter rules to route future emails instantly without manual effort.
+            Create Gmail filters so incoming emails automatically sort themselves without manual work.
           </p>
           <button 
             onClick={() => { window.location.hash = '#rule-suggester'; }}
             className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
           >
-            <span>Create Auto-Rules</span>
+            <span>Create Rules</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
@@ -388,7 +392,7 @@ function HealthCard({ id, title, count, desc, actionText, onAction, sizeEstimate
   );
 }
 
-function PipelineLayer({ step, title, modelName, icon, description, count, actionText, onAction }: any) {
+function PipelineLayer({ step, title, icon, description, count, actionText, onAction }: any) {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-start md:items-center shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
       <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 group-hover:bg-slate-1000 transition-colors"></div>
@@ -401,7 +405,6 @@ function PipelineLayer({ step, title, modelName, icon, description, count, actio
         <div className="flex items-center gap-2 mb-1">
           <span className="text-[10px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{step}</span>
           <h4 className="font-bold text-slate-900 text-base">{title}</h4>
-          <span className="hidden sm:inline-block text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded ml-1 border border-slate-100">powered by {modelName}</span>
         </div>
         <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">{description}</p>
       </div>

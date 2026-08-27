@@ -1,7 +1,7 @@
 import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect } from 'react';
 import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, Sparkles, ArrowLeft } from 'lucide-react';
-import { searchEmails, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
+import { scanFolderMetadata, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { useActionCompletion } from '../lib/useActionCompletion';
 import { WalkthroughTip } from "./WalkthroughTip";
@@ -23,6 +23,7 @@ export function UnsubscribeManager({
   const [activeTab, setActiveTab] = useState<'active' | 'unsubscribed' | 'ghost_blocked'>('active');
   const [activeSubTab, setActiveSubTab] = useState<'easy_unsub' | 'block'>('easy_unsub');
   const [loading, setLoading] = useState(true);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [actionLog, setActionLog] = useState<any[]>([]);
   // Rows confirm what happened before leaving, matching every other actioned list
@@ -69,8 +70,13 @@ export function UnsubscribeManager({
     if (!isOpen) return;
     async function loadSubs() {
       setLoading(true);
+      setScanProgress(null);
       try {
-        const emails = await searchEmails("category:promotions OR category:updates OR unsubscribe OR label:unread", 300);
+        const emails = await scanFolderMetadata(
+          "category:promotions OR category:updates OR unsubscribe OR label:unread",
+          1500,
+          (done, total) => setScanProgress({ done, total })
+        );
         
         const senders = new Map();
         emails.forEach(email => {
@@ -158,7 +164,7 @@ export function UnsubscribeManager({
     try {
       launchUnsubscribeLink(sub);
       
-      const existing = await searchEmails(`from:${sub.email}`, 150);
+      const existing = await scanFolderMetadata(`from:${sub.email}`, 300);
       let affectedIds: string[] = [];
       if (existing.length > 0) {
         affectedIds = existing.flatMap(e => e.messageIds || [e.id]);
@@ -199,7 +205,7 @@ export function UnsubscribeManager({
   const handleGhostBlock = async (sub: any) => {
     setProcessing(prev => new Set(prev).add(sub.email));
     try {
-      const existing = await searchEmails(`from:${sub.email}`, 150);
+      const existing = await scanFolderMetadata(`from:${sub.email}`, 300);
       let trashedIds: string[] = [];
       if (existing.length > 0) {
         trashedIds = existing.flatMap(e => e.messageIds || [e.id]);
@@ -414,6 +420,8 @@ export function UnsubscribeManager({
                       "Extracting unsubscribe links...",
                       "Grouping by sender..."
                     ]} 
+                    progress={scanProgress}
+                    progressLabel="Auditing newsletters"
                   />
                 </div>
               ) : subscriptions.length === 0 ? (

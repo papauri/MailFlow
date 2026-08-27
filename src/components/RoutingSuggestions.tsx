@@ -330,6 +330,7 @@ export function RoutingSuggestions({
                 <button
                   onClick={() => apply(s)}
                   disabled={isBusy || isDone}
+                  title={isDone ? (isFolderMode ? 'Filed' : 'Rule created') : (isFolderMode ? `File ${s.unfiled.toLocaleString()} messages to ${displayLabel(s)}` : `Create a rule to file future mail in ${displayLabel(s)}`)}
                   className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-semibold shadow-2xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}

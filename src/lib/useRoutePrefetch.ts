@@ -22,7 +22,7 @@ const ROUTE_CHUNKS: { id: string; label: string; load: () => Promise<unknown> }[
   { id: 'chunk:senders', label: 'Preparing Sender Analytics…', load: () => import('../components/SenderAnalyticsPage') },
   { id: 'chunk:folders', label: 'Preparing Folder Optimizer…', load: () => import('../components/FolderOptimizer') },
   { id: 'chunk:rules', label: 'Preparing Sorting Rules…', load: () => import('../components/RuleSuggester') },
-  { id: 'chunk:triage', label: 'Preparing Smart Organizer…', load: () => import('../components/SmartTriageModal') },
+  { id: 'chunk:omni', label: 'Preparing OmniClean…', load: () => import('../components/OmniCleanPage') },
   { id: 'chunk:subs', label: 'Preparing Subscriptions…', load: () => import('../components/UnsubscribeManager') },
   { id: 'chunk:export', label: 'Preparing Export Center…', load: () => import('../components/ExportCenter') },
 ];

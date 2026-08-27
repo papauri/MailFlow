@@ -1,4 +1,4 @@
-import { countEmails, searchEmails, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch } from './gmail';
+import { countEmails, searchEmails, scanFolderMetadata, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch } from './gmail';
 import { extractSenderDetails, GENERIC_FREEMAIL_DOMAINS } from './emailUtils';
 
 /**
@@ -50,8 +50,8 @@ export interface RoutingSample {
  */
 export async function fetchRoutingSample(): Promise<RoutingSample> {
   const [filed, recent] = await Promise.all([
-    searchEmails('has:userlabels -in:trash -in:spam -in:chats', 300).catch(() => []),
-    searchEmails('in:inbox -in:chats -is:draft', 200).catch(() => []),
+    scanFolderMetadata('has:userlabels -in:trash -in:spam -in:chats', 400).catch(() => []),
+    scanFolderMetadata('in:inbox -in:chats -is:draft', 300).catch(() => []),
   ]);
 
   // A message can appear in both halves; keep one copy so counts stay honest.
@@ -70,7 +70,7 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
   const normalizedUser = (userEmail || '').toLowerCase().trim();
   const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
 
-  const recentEmails = await searchEmails("in:anywhere -in:trash -in:spam -in:sent -is:draft", 250);
+  const recentEmails = await scanFolderMetadata("in:anywhere -in:trash -in:spam -in:sent -is:draft", 100);
 
   const senderCounts = new Map<string, SenderCluster>();
   const domainCounts = new Map<string, DomainCluster>();
@@ -93,28 +93,20 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
     }
   });
 
-  const rawSenders = Array.from(senderCounts.values())
+  const topSenders = Array.from(senderCounts.values())
     .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  const exactSenders = await Promise.all(rawSenders.map(async (s) => {
-    const exactCount = await countEmails(`from:(${s.email}) -in:trash`);
-    return { ...s, count: typeof exactCount === 'number' ? exactCount : s.count };
-  }));
+    .slice(0, 6);
 
-  const rawDomains = Array.from(domainCounts.values())
+  const topDomains = Array.from(domainCounts.values())
     .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  const exactDomains = await Promise.all(rawDomains.map(async (d) => {
-    const exactCount = await countEmails(`from:(${d.domain}) -in:trash`);
-    return { ...d, count: typeof exactCount === 'number' ? exactCount : d.count };
-  }));
+    .slice(0, 6);
 
   return {
     recentEmails,
-    topSenders: exactSenders.filter(s => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 6),
-    topDomains: exactDomains.filter(d => d.count > 0).sort((a, b) => b.count - a.count).slice(0, 6),
+    topSenders: topSenders.filter(s => s.count > 0),
+    topDomains: topDomains.filter(d => d.count > 0),
   };
 }
 
@@ -135,15 +127,16 @@ export interface InboxStatsResult {
 }
 
 export async function fetchInboxStats(): Promise<InboxStatsResult> {
+  // Use bound of 1-2 pages for initial fast inbox stats calculation (up to 1,000 exact + estimate)
   const [unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
-    countEmails("is:unread in:inbox"),
-    countEmails("category:promotions older_than:6m -in:trash"),
-    countEmails("larger:5M -in:trash"),
-    countEmails("in:spam OR in:trash"),
-    countEmails("is:unread is:important -category:promotions -in:trash"),
-    countEmails("category:updates OR category:social -in:trash"),
-    countEmails("has:attachment -in:trash"),
-    countEmails("older_than:1y -in:trash")
+    countEmails("is:unread in:inbox", 2),
+    countEmails("category:promotions older_than:6m -in:trash", 2),
+    countEmails("larger:5M -in:trash", 2),
+    countEmails("in:spam OR in:trash", 2),
+    countEmails("is:unread is:important -category:promotions -in:trash", 2),
+    countEmails("category:updates OR category:social -in:trash", 2),
+    countEmails("has:attachment -in:trash", 2),
+    countEmails("older_than:1y -in:trash", 2)
   ]);
 
   const stats: InboxStats = {
@@ -151,14 +144,13 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
     importantUnread, updatesAndSocial, withAttachments, oldMail
   };
 
-  const [oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize] = await Promise.all([
-    estimateQuerySize("category:promotions older_than:6m -in:trash", oldPromo),
-    estimateQuerySize("larger:5M -in:trash", large),
-    estimateQuerySize("in:spam OR in:trash", spamAndTrash),
-    estimateQuerySize("has:attachment -in:trash", withAttachments),
-    estimateQuerySize("older_than:1y -in:trash", oldMail),
-    estimateQuerySize("category:updates OR category:social -in:trash", updatesAndSocial)
-  ]);
+  // Quick heuristic size estimates to avoid 6 sequential network round trips on initial load
+  const oldPromoSize = oldPromo * 120 * 1024;
+  const largeSize = large * 7 * 1024 * 1024;
+  const spamAndTrashSize = spamAndTrash * 90 * 1024;
+  const attachmentsSize = withAttachments * 2 * 1024 * 1024;
+  const oldMailSize = oldMail * 100 * 1024;
+  const updatesAndSocialSize = updatesAndSocial * 80 * 1024;
 
   return {
     stats,

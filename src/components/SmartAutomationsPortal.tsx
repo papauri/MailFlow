@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SmartTriageModal } from './SmartTriageModal';
+import { OmniCleanPage } from './OmniCleanPage';
 import { FolderOptimizer } from './FolderOptimizer';
 import { RuleSuggester } from './RuleSuggester';
 import { Zap, SlidersHorizontal, Settings, ArrowLeft } from 'lucide-react';
@@ -11,37 +11,31 @@ import { EmailData } from '../lib/gmail';
  *
  * The three tools answer three different questions about the same mailbox:
  *
- *   Batch Organizer  — "what is sitting in front of me right now?"
- *   Folder Optimizer — "where should the mail I already have live?"
- *   Automated Rules  — "what should happen to mail that arrives next?"
+ *   Batch Triage & Clean — "what is sitting in my inbox/folder that I can clean in bulk?"
+ *   Folder Optimizer     — "where should the mail I already have live?"
+ *   Automated Rules      — "what should happen to mail that arrives next?"
  *
- * Each used to render its own page furniture inside this one, so switching tabs
- * changed the container, the card shape and the toolbar all at once. The portal now
- * owns the frame — one panel, one description line, one scroll context — and each tab
- * supplies only its content, built from the shared pieces in `AutomationShell`.
- *
- * It is also wider than it was. The cards are laid out in a grid now, and a `max-w-5xl`
- * column could only ever show two of them.
+ * All three share high-throughput scanning, live progress streaming, and inline reviews.
  */
 
 const TABS = [
   {
     id: 'batch' as const,
-    label: 'Batch Organizer',
+    label: 'Batch Cleanup',
     icon: Zap,
-    blurb: 'Groups what is in your mailbox now into one-click actions. Review every message inside the card before it runs.',
+    blurb: 'Group similar emails together to archive, delete, or file in one click.',
   },
   {
     id: 'optimizer' as const,
-    label: 'Folder Optimizer',
+    label: 'Folder Organizer',
     icon: SlidersHorizontal,
-    blurb: 'Files mail you already have into folders. Nothing changes about mail that arrives later.',
+    blurb: 'Organize existing emails into folders. Future emails are not affected.',
   },
   {
     id: 'rules' as const,
-    label: 'Automated Rules',
+    label: 'Automatic Rules',
     icon: Settings,
-    blurb: 'Creates Gmail filters so future mail files itself. Your existing mail is left where it is.',
+    blurb: 'Create Gmail rules so new incoming emails sort themselves automatically.',
   },
 ];
 
@@ -121,16 +115,13 @@ export function SmartAutomationsPortal({
       {/* One panel for every tab, so the frame never changes underneath the content. */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[560px]">
         {activeTab === 'batch' && (
-          <SmartTriageModal
-            isPage={true}
-            isOpen={true}
-            showHeader={false}
+          <OmniCleanPage
             embedded={true}
-            onClose={onClose}
-            aiSettings={aiSettings}
-            userLabels={userLabels}
             userEmail={userEmail}
-            onRefresh={onRefresh}
+            userLabels={userLabels}
+            aiSettings={aiSettings}
+            isAiWorking={connectionStatus === 'success'}
+            onRefreshInbox={onRefresh}
           />
         )}
 

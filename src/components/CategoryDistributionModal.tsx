@@ -606,16 +606,19 @@ export function CategoryDistributionModal({
       {/* Bottom: Scanner Results */}
       <div id="cleanup-recommendations" className="w-full mt-2">
          {scanLoading ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 shadow-xs flex flex-col items-center justify-center gap-3 text-center">
-              <Loader2 className="w-7 h-7 animate-spin text-slate-700" />
-              <div>
-                <h3 className="text-sm sm:text-base font-semibold text-slate-800">
-                  Reviewing emails in "{currentCategoryConfig.name}"...
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Checking for expired login codes, receipts, and repetitive notifications.
-                </p>
-              </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 shadow-xs flex flex-col items-center justify-center gap-3 text-center">
+              <SketchLoadingState 
+                scene="measuring"
+                title={`Reviewing "${currentCategoryConfig.name}"...`}
+                messages={[
+                  `Streaming metadata for ${currentCategoryConfig.name.toLowerCase()}...`,
+                  "Clustering repetitive sender patterns...",
+                  "Identifying disposable verification codes and receipts...",
+                  "Preparing automated cleanup rules..."
+                ]}
+                progress={scanProgress}
+                progressLabel="Scanning category"
+              />
             </div>
           ) : scanError ? (
             <div className="bg-white border border-red-200 rounded-2xl p-8 shadow-xs flex flex-col items-center justify-center gap-3 text-center">

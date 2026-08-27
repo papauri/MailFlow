@@ -283,20 +283,25 @@ export function SketchLoadingState({
 
       {/* The bar is always here: determinate when the work can be counted, a moving
           shuttle when it cannot. Either way the wait shows something happening. */}
-      <div className="w-full max-w-[220px] mt-3">
+      <div className="w-full max-w-[260px] sm:max-w-[300px] mt-3.5 flex flex-col gap-1.5">
         {measurable && (
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-medium text-slate-500">{progressLabel}</span>
-            <span className="text-[11px] font-medium text-slate-600 tabular-nums">
-              {progress!.done.toLocaleString()} / {progress!.total.toLocaleString()}
-            </span>
+          <div className="flex items-center justify-between text-[11px] font-medium px-0.5">
+            <span className="text-slate-500 truncate mr-2">{progressLabel}</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-slate-700 font-semibold tabular-nums">
+                {progress!.done.toLocaleString()} / {progress!.total.toLocaleString()}
+              </span>
+              <span className="bg-slate-100 border border-slate-200/80 text-slate-800 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md shadow-2xs">
+                {pct}%
+              </span>
+            </div>
           </div>
         )}
-        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="w-full h-2 bg-slate-100 border border-slate-200/60 rounded-full overflow-hidden p-0.5">
           {measurable ? (
             <div
-              className="h-full bg-slate-800 rounded-full transition-all duration-300"
-              style={{ width: `${pct}%` }}
+              className="h-full bg-slate-900 rounded-full transition-all duration-200 ease-out shadow-xs"
+              style={{ width: `${Math.max(3, pct)}%` }}
             />
           ) : (
             <div className="sk-bar-shuttle h-full w-[28%] bg-slate-800/80 rounded-full" />

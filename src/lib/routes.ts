@@ -22,6 +22,7 @@ export const HEALTH_SECTION_ROUTES = [
   'rule-suggester',
   'rules',
   'export',
+  'omni-clean',
 ] as const;
 
 /** Message-list views reached by drilling into a metric. */
@@ -59,6 +60,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   'rule-suggester': 'Automated Rules',
   'rules': 'Automated Rules',
   'export': 'Export Center',
+  'omni-clean': 'OmniClean Batch Triage',
   'dashboard': 'Dashboard',
 };
 

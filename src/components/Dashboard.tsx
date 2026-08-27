@@ -36,11 +36,11 @@ const ExportCenter = lazy(() => import("./ExportCenter").then(m => ({ default: m
 const SenderAnalyticsPage = lazy(() => import("./SenderAnalyticsPage").then(m => ({ default: m.SenderAnalyticsPage })));
 const FolderOptimizer = lazy(() => import("./FolderOptimizer").then(m => ({ default: m.FolderOptimizer })));
 const RuleSuggester = lazy(() => import("./RuleSuggester").then(m => ({ default: m.RuleSuggester })));
-const SmartTriageModal = lazy(() => import("./SmartTriageModal").then(m => ({ default: m.SmartTriageModal })));
 const UnsubscribeManager = lazy(() => import("./UnsubscribeManager").then(m => ({ default: m.UnsubscribeManager })));
 const LabelManagerModal = lazy(() => import("./LabelManagerModal").then(m => ({ default: m.LabelManagerModal })));
 const ManageInboxPortal = lazy(() => import("./ManageInboxPortal").then(m => ({ default: m.ManageInboxPortal })));
 const SmartAutomationsPortal = lazy(() => import("./SmartAutomationsPortal").then(m => ({ default: m.SmartAutomationsPortal })));
+const OmniCleanPage = lazy(() => import("./OmniCleanPage").then(m => ({ default: m.OmniCleanPage })));
 const AdminPanel = lazy(() => import("./AdminPanel").then(m => ({ default: m.AdminPanel })));
 const InboxHealth = lazy(() => import("./InboxHealth").then(m => ({ default: m.InboxHealth })));
 
@@ -1457,6 +1457,17 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
             userEmail={user?.email}
             aiSettings={aiSettings}
             isAiWorking={connectionStatus === 'success'}
+          />
+        )}
+
+        {(currentHash === 'omni-clean' || currentHash === 'smart-triage') && (
+          <OmniCleanPage
+            userEmail={user?.email}
+            userLabels={userLabels}
+            aiSettings={aiSettings}
+            isAiWorking={connectionStatus === 'success'}
+            onBack={() => { window.location.hash = '#health'; }}
+            onRefreshInbox={() => handleSearch()}
           />
         )}
 
