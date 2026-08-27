@@ -5,7 +5,7 @@ import {
   ChevronDown, Layers, Target, AlertCircle, Clock, HardDrive, 
   SlidersHorizontal, Check, Eye, ArrowUpDown
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, formatEmailDate } from '../lib/utils';
 import { EmailData } from '../lib/gmail';
 import { routeLabel } from '../lib/routes';
 import { EmailGroupHeader } from './EmailGroupHeader';
@@ -623,7 +623,7 @@ export function FilteredEmailPage({
                             {bigEnough ? formatSize(email.sizeEstimate) : ''}
                           </span>
                           <span className="w-[46px] sm:w-[52px] text-right text-[11px] text-slate-400 tabular-nums shrink-0">
-                            {email.date ? new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                            {formatEmailDate(email.date)}
                           </span>
                           <button
                             type="button"

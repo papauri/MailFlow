@@ -40,6 +40,7 @@ import { buildRecommendations } from '../src/lib/recommendations';
 import { messageToRow, MESSAGE_HEADERS } from '../src/lib/csvExport';
 import { SEGMENT_QUERIES } from '../src/components/StorageBreakdownBar';
 import * as fs from 'fs';
+import { formatEmailDate } from '../src/lib/utils';
 
 let passed = 0;
 let failed = 0;
@@ -784,6 +785,65 @@ section('Category audit — template clustering');
 
   assert(audit.clearableVolume + audit.keepVolume <= audit.totalAnalysed,
     'Clearable and kept volumes never exceed what was analysed');
+}
+
+// ---------------------------------------------------------------------------
+section('Email row dates');
+// ---------------------------------------------------------------------------
+{
+  // Rows rendered { month, day } only, so a message from March 2019 and one from
+  // last March both read "Mar 4". In a mailbox whose whole purpose is sorting out
+  // years of accumulated mail, the year is the thing the row most needed to say.
+  const now = new Date();
+  const thisYear = now.getFullYear();
+
+  const old = formatEmailDate(new Date(2019, 2, 4, 9, 30));
+  assert(old.includes('2019'), 'A message from a previous year shows its year', old);
+
+  const older = formatEmailDate(new Date(2011, 10, 22));
+  assert(older.includes('2011'), 'A very old message shows its year', older);
+
+  // Recent mail stays compact — adding the year to every row would pad the column
+  // for the mail people actually look at.
+  const earlierThisYear = new Date(thisYear, 0, 15);
+  if (earlierThisYear.getTime() < now.getTime()) {
+    const s2 = formatEmailDate(earlierThisYear);
+    assert(!s2.includes(String(thisYear)), 'A message from this year omits the year', s2);
+    assert(s2.length > 0, 'A message from this year still renders a date', s2);
+  }
+
+  // Today collapses to a time, which is what separates this morning from this
+  // afternoon — a date would be the same on every one of them.
+  const todayStr = formatEmailDate(new Date(now.getTime() - 60 * 1000));
+  assert(/\d/.test(todayStr) && !todayStr.includes(String(thisYear)),
+    "Today's mail shows a time rather than a date", todayStr);
+
+  // A future date is clock skew or a malformed header, not a prediction; it keeps
+  // its year so it is visibly odd rather than silently reading as recent.
+  const future = formatEmailDate(new Date(thisYear + 1, 5, 1));
+  assert(future.includes(String(thisYear + 1)), 'A future-dated message shows its year', future);
+
+  // Rows render whatever the header gave them, which is not always a date.
+  for (const bad of [null, undefined, '', 'not a date', NaN]) {
+    assert(formatEmailDate(bad as any) === '',
+      `An unparseable date renders empty rather than "Invalid Date" (${String(bad)})`);
+  }
+  assert(formatEmailDate('2018-07-04T10:00:00Z').includes('2018'),
+    'An ISO string is accepted, not just a Date');
+
+  // No email row may go back to dropping the year.
+  const rowFiles = [
+    'src/components/Dashboard.tsx',
+    'src/components/FilteredEmailPage.tsx',
+    'src/components/LabelManagerModal.tsx',
+  ];
+  for (const f of rowFiles) {
+    const src = fs.readFileSync(f, 'utf-8');
+    assert(
+      !src.includes("toLocaleDateString(undefined, { month: 'short', day: 'numeric' })"),
+      `${f} formats row dates through the shared formatter`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

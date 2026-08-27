@@ -142,7 +142,7 @@ Located in `src/lib/gmail.ts`, this module powers high-speed communication with 
 - **`batchMarkAsRead(ids)`**: Removes `UNREAD` label across messages.
 - **`emptyAllTrash(onProgress)`**: Iteratively scans `in:trash` in 1,000-message pages and permanently purges them with live progress callback.
 - **`markAllAsReadByQuery(query, onProgress)`**: Finds all unread emails matching a query and removes `UNREAD` in 1,000-message batches.
-- **`countEmails(query)`**: Concurrently paginates search queries up to 5,000 items to return exact matching counts (or `"5,000+"` cap) without blowing API quotas.
+- **`countEmails(query, maxPages?)`**: Pages a query to count it exactly, bounded by `COUNT_MAX_PAGES` (20 pages = 10,000 messages). Past the bound it returns Gmail's own `resultSizeEstimate`, never less than the messages actually seen. Returns a `number`. Callers that need a fast first paint pass a smaller `maxPages`.
 
 ---
 
@@ -211,7 +211,7 @@ Located in `server.ts`, the Express backend serves as a universal AI router:
 
 ### 6.6 Pagination & Accurate Mailbox Counting
 - **Cursor Pagination (`nextPageToken`)**: Seamlessly fetches subsequent pages of 50–100 threads via "Load More Emails".
-- **Accurate Count Calculation**: Concurrently runs `countEmails(query)` on search execution to display total mailbox matches up to the 5,000 cap.
+- **Accurate Count Calculation**: Concurrently runs `countEmails(query)` on search execution to display total mailbox matches, exact to 10,000 and estimated beyond.
 
 ### 6.7 Inbox Health Analytics & Aggregations (`src/components/InboxHealth.tsx`)
 - **Key Metric Cards**:
@@ -260,12 +260,28 @@ Located in `server.ts`, the Express backend serves as a universal AI router:
 
 ### 6.13 Inbox Health Score Widget (`src/components/HealthScoreWidget.tsx`)
 - Circular SVG progress dial displayed in the main navigation bar.
-- Mathematical scoring formula (0–100%):
-  - Starts at 100%.
-  - Deducts up to -40% for high unread email ratios.
-  - Deducts up to -30% for spam and trash accumulation.
-  - Deducts up to -20% for stale promotional buildup (>6 months).
-- Listens to `health-score-update` custom events to update in real time when subscriptions are cleaned.
+- **Scoring is relative to the mailbox, not to fixed targets.** Both denominators
+  are read from Gmail — `users.getProfile` for the mailbox total and the `INBOX`
+  label for the inbox total, one quota unit each and exact.
+  - Starts at 100.
+  - **Attention** (`ATTENTION_SHARE_OF_SCORE`, currently 30% of the score):
+    deducts in proportion to `unread in inbox / messages in inbox`.
+  - **Storage** (the remaining 70%): deducts in proportion to
+    `clearable messages / all messages`, where clearable means spam and trash,
+    stale promotions, large attachments and mail over a year old. Every clutter
+    message counts the same; there are no per-category weights.
+  - **Hygiene bonus**: +1.5 per unsubscribe (max +8) and +2 per filter rule
+    (max +7), capped at +15 combined.
+  - A mailbox whose size is not yet known deducts nothing rather than falling back
+    to an invented reference.
+- Earlier revisions used fixed reference counts (full penalty at 600 unread, 400
+  spam) and then fixed shares. Both pinned any real mailbox to the score floor,
+  because every penalty saturated at once and cleanup stopped registering.
+- Score bands (`healthBand()`, shared with the Inbox Score page so the ring and the
+  panel never disagree): 85+ Optimal, 70+ Good, 50+ Needs Attention, below 50
+  Action Required.
+- Updates optimistically from `inbox_metrics_updated` (carrying the changed metric)
+  and recomputes the bonus in place on `health-score-update`.
 
 ### 6.14 BYOK Multi-LLM Settings
 - Accessible via the gear icon in the header.

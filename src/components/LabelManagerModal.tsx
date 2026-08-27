@@ -41,7 +41,7 @@ import {
   renameLabel,
   EmailData 
 } from '../lib/gmail';
-import { cn } from '../lib/utils';
+import { cn, formatEmailDate } from '../lib/utils';
 
 export interface LabelManagerModalProps {
   isOpen?: boolean;
@@ -1166,7 +1166,7 @@ export function LabelManagerModal({
                                 )}
                               </div>
                               <span className="text-[10px] text-slate-400 shrink-0">
-                                {email.date ? new Date(email.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                                {formatEmailDate(email.date)}
                               </span>
                             </div>
 

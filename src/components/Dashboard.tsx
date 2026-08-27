@@ -13,7 +13,7 @@ import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes
 import { useInboxWarmup } from "../lib/useInboxWarmup";
 import { useRoutePrefetch } from "../lib/useRoutePrefetch";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
-import { cn } from "../lib/utils";
+import { cn, formatEmailDate } from "../lib/utils";
 
 function formatSize(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -2088,7 +2088,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                             )}
 
                             <span className={cn("text-[11px] sm:text-xs tabular-nums shrink-0 whitespace-nowrap", isUnread ? "font-bold text-slate-700" : "font-medium text-slate-500")}>
-                              {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              {formatEmailDate(email.date)}
                             </span>
 
                             <button
@@ -2242,7 +2242,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                                  </span>
                               )}
                               <span className={cn("text-[11px] sm:text-xs tabular-nums", isUnread ? "font-bold text-slate-700" : "font-medium text-slate-500")}>
-                                {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                {formatEmailDate(email.date)}
                                 <span className="hidden sm:inline">, {(email.date instanceof Date && !isNaN(email.date.getTime()) ? email.date : new Date(email.date)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
                               </span>
                               <button

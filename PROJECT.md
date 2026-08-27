@@ -12,7 +12,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
    - `src/components/LoginScreen.tsx`: Google OAuth login landing view.
    - `src/components/CategoryDistributionModal.tsx`: On-demand Recharts-based email category distribution modal with legends and filtering.
 2. **Services & Utilities**:
-   - `src/lib/gmail.ts`: Gmail REST API client with OAuth bearer token injection, rate limit handling with exponential backoff (HTTP 429), chunked message fetching, email counting up to 5,000 cap (`countEmails`), and bulk actions (trash, archive, mark read).
+   - `src/lib/gmail.ts`: Gmail REST API client with OAuth bearer token injection, rate limit handling with exponential backoff (HTTP 429), chunked message fetching, bounded exact email counting (`countEmails`, 10,000 then estimate), and bulk actions (trash, archive, mark read).
    - `src/lib/firebase.ts`: Firebase Google Auth popup integration and OAuth token caching.
    - `src/lib/ai.ts`: AI query translator and natural language inbox pattern recognition.
    - `src/lib/utils.ts`: Tailwind class merger (`cn`).
@@ -29,7 +29,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
 | 5 | BYOK Modal Viewport Scaling | Max-height scaling (`max-h-[85vh]` / `max-h-[90dvh]`), responsive grid for AI provider buttons | M1 | Survey 1 / R1 |
 | 6 | Inbox Health Aggregations Responsiveness | Responsive metric cards, non-wrapping quick filter badges, and compact sender/domain rows | M1 | Survey 1 / R1 |
 | 7 | Search Result Pagination (`nextPageToken`) | Capture `nextPageToken` from Gmail API results and provide "Load More" / "Next Page" functionality | M2 | Survey 2 / R2 |
-| 8 | Accurate Total Matching Count (up to 5,000 cap) | Concurrently trigger `countEmails(query)` on search to display exact total count (capped at 5,000) | M2 | Survey 2 / R2 |
+| 8 | Accurate Total Matching Count | Concurrently trigger `countEmails(query)` on search to display the total; exact to 10,000 (`COUNT_MAX_PAGES`), Gmail's estimate beyond | M2 | Survey 2 / R2 |
 | 9 | In-Memory Safe Sorting on Loaded Page | Sort visible loaded emails by Date, Size, or Sender using memoized null-safe comparators | M2 | Survey 2 / R2 |
 | 10 | Recharts Package Integration | Install `recharts` (^3.x) in `package.json` compatible with React 19 | M3 | Survey 3 / R3 |
 | 11 | Inbox Health Chart Trigger Button | Add visible "Category Breakdown" button in `InboxHealth.tsx` top banner | M3 | Survey 3 / R3 |
@@ -53,7 +53,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
 
 ### `Dashboard.tsx` ↔ `gmail.ts`
 - `fetchGmailAPI(endpoint: string, options?: RequestInit)` -> returns `{ messages?: Array<{ id: string, threadId: string }>, nextPageToken?: string, resultSizeEstimate?: number }`
-- `countEmails(query: string)` -> returns `Promise<number | string>` (integer up to 5000, or `"5,000+"`)
+- `countEmails(query: string, maxPages?: number)` -> returns `Promise<number>` (exact to 10,000; Gmail's estimate beyond, never below what was counted)
 - `processInChunks<T, R>(items: T[], chunkSize: number, processor: (item: T) => Promise<R>)` -> returns `Promise<R[]>`
 
 ### `Dashboard.tsx` ↔ `InboxHealth.tsx`
@@ -68,7 +68,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
     onApplyCategory?: (query: string, filter: string) => void;
   }
   ```
-- Categories: `Primary` (`category:primary in:anywhere`), `Promotions` (`category:promotions in:anywhere`), `Updates` (`category:updates in:anywhere`), `Social` (`category:social in:anywhere`), `Forums` (`category:forums in:anywhere`), `Spam & Trash` (`in:spam OR in:trash`).
+- Categories (`CATEGORY_CONFIG`): the five live buckets are scoped `-in:trash -in:spam -in:sent` so their slices are shares of the same mailbox — e.g. `category:primary -in:trash -in:spam -in:sent`. `Spam & Trash` (`in:spam OR in:trash`) is the exception, since it exists to count exactly what the others exclude. They previously used `in:anywhere`, which pulled discarded and sent mail into a chart of the live mailbox.
 
 ---
 
