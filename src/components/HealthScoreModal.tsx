@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
-  countEmails, markAllAsReadByQuery, emptyAllTrash, trashAllByQuery
+  countEmails, markAllAsReadByQuery, emptyAllTrash, trashAllByQuery, fetchMailboxSize
 } from '../lib/gmail';
 import {
   computeInboxHealthScore,
@@ -51,7 +51,9 @@ export function HealthScoreModal({
     largeFiles: 0,
     oldMail: 0,
     unsubscribedCount: 0,
-    activeFiltersCount: 0
+    activeFiltersCount: 0,
+    mailboxTotal: 0,
+    inboxTotal: 0
   });
   
   /**
@@ -79,7 +81,8 @@ export function HealthScoreModal({
   const fetchMetrics = async () => {
     setLoading(true);
     try {
-      const [unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
+      const [size, unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
+        fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
@@ -98,7 +101,9 @@ export function HealthScoreModal({
         largeFiles: large,
         oldMail: old,
         unsubscribedCount,
-        activeFiltersCount
+        activeFiltersCount,
+        mailboxTotal: size.mailboxTotal,
+        inboxTotal: size.inboxTotal
       };
       setMetrics(fetchedMetrics);
       // Reset simulator targets to live metrics
@@ -117,7 +122,8 @@ export function HealthScoreModal({
 
   const fetchMetricsSilent = async () => {
     try {
-      const [unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
+      const [size, unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
+        fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
@@ -137,7 +143,9 @@ export function HealthScoreModal({
         largeFiles: large,
         oldMail: old,
         unsubscribedCount,
-        activeFiltersCount
+        activeFiltersCount,
+        mailboxTotal: size.mailboxTotal,
+        inboxTotal: size.inboxTotal
       }));
     } catch (e) {
       console.error(e);
@@ -200,9 +208,13 @@ export function HealthScoreModal({
       largeFiles: simLarge,
       oldMail: metrics.oldMail,
       unsubscribedCount: (metrics.unsubscribedCount || 0) + simExtraUnsubs,
-      activeFiltersCount: (metrics.activeFiltersCount || 0) + simExtraRules
+      activeFiltersCount: (metrics.activeFiltersCount || 0) + simExtraRules,
+      // The simulator must score against the same mailbox as the live breakdown, or
+      // its "what if" number is computed from a different model than the one beside it.
+      mailboxTotal: metrics.mailboxTotal,
+      inboxTotal: metrics.inboxTotal
     };
-  }, [simUnread, simSpam, simPromo, simLarge, metrics.oldMail, metrics.unsubscribedCount, metrics.activeFiltersCount, simExtraUnsubs, simExtraRules]);
+  }, [simUnread, simSpam, simPromo, simLarge, metrics.oldMail, metrics.unsubscribedCount, metrics.activeFiltersCount, metrics.mailboxTotal, metrics.inboxTotal, simExtraUnsubs, simExtraRules]);
 
   const simBreakdown: HealthScoreBreakdown = useMemo(() => {
     return computeInboxHealthBreakdown(simMetrics);

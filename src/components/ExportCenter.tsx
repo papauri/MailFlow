@@ -51,7 +51,7 @@ const MESSAGE_EXPORT_LIMIT = 1000;
  */
 /** Rows the Inbox Health Summary emits. Kept beside its builder so the two agree —
  *  the card had said 20 while the builder produced 18. */
-const SUMMARY_ROW_COUNT = 18;
+const SUMMARY_ROW_COUNT = 20;
 
 function cappedRows(total?: number): number | undefined {
   if (total === undefined) return undefined;
@@ -105,8 +105,14 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
           oldMail: stats.oldMail,
           unsubscribedCount,
           activeFiltersCount,
+          // Same denominators as every other surface, or the exported score would
+          // not match the one the user is looking at when they export it.
+          mailboxTotal: stats.mailboxTotal,
+          inboxTotal: stats.inboxTotal,
         });
         const rows: unknown[][] = [
+          ['Volume', 'Total messages in mailbox', stats.mailboxTotal, 'denominator for clutter shares'],
+          ['Volume', 'Messages in inbox', stats.inboxTotal, 'denominator for unread pressure'],
           ['Volume', 'Unread in inbox', stats.unread, ''],
           ['Volume', 'Important unread', stats.importantUnread, ''],
           ['Volume', 'Updates & social', stats.updatesAndSocial, formatBytes(sizes.updatesAndSocial || 0)],

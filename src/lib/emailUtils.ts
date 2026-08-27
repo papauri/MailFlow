@@ -397,6 +397,15 @@ export interface HealthScoreMetrics {
   oldMail?: number;
   unsubscribedCount?: number;
   activeFiltersCount?: number;
+  /**
+   * Real message count for the whole mailbox, from `users.getProfile`.
+   *
+   * Optional so a caller that has not fetched it yet still gets a score; the model
+   * falls back to fixed reference points when it is missing. See LEGACY_REFERENCE.
+   */
+  mailboxTotal?: number;
+  /** Real message count for the inbox, from `labels.get('INBOX')`. */
+  inboxTotal?: number;
 }
 
 export interface HealthScoreBreakdown {
@@ -418,6 +427,81 @@ export interface HealthScoreBreakdown {
 }
 
 /**
+ * How much of the mailbox a metric has to occupy before its penalty is (almost)
+ * fully earned.
+ *
+ * These are shares, not counts, which is the whole point. The previous model set
+ * the full-penalty point at a fixed number of messages — 600 unread, 400 in spam
+ * and trash, 500 stale promotions — and any mailbox in real use passes all of them
+ * at once. Measured against a genuinely cluttered account the result was:
+ *
+ *   unread 35/35, spam 25/25, promos 20/20, bloat 10/10  ->  score 12, the floor
+ *
+ * Every penalty pinned simultaneously, so clearing three hundred promotions moved
+ * the score by nothing at all and the number looked broken. Worse, it was least
+ * informative for exactly the people with the most to gain from it.
+ *
+ * A share is comparable across mailboxes: half your inbox unread means the same
+ * thing whether the inbox holds four hundred messages or forty thousand.
+ */
+const FULL_PENALTY_SHARE = {
+  /** Of the inbox. Half of it unread is a backlog you are not on top of. */
+  unread: 0.50,
+  /** Of the mailbox. */
+  spamAndTrash: 0.15,
+  oldPromotions: 0.30,
+  /** Attachments over 5MB are rare, so a small share is already heavy. */
+  largeFiles: 0.03,
+  /** Old mail is normal in an archive, so this is deliberately lenient. */
+  oldMail: 0.60,
+} as const;
+
+/**
+ * Reference counts used when the real mailbox size is not known yet.
+ *
+ * The first paint happens before `users.getProfile` resolves, and a caller may not
+ * fetch it at all. These are the original fixed points, kept so behaviour degrades
+ * to the previous model rather than to nonsense.
+ */
+const LEGACY_REFERENCE = {
+  unread: 600,
+  spamAndTrash: 400,
+  oldPromotions: 500,
+} as const;
+
+/**
+ * Penalty curve: approaches its maximum without ever reaching it.
+ *
+ * `1 - e^(-k*x)` where x is progress toward the full-penalty share. At x = 1 the
+ * penalty is 95% of its maximum, at x = 2 it is 99.75%, and it is strictly
+ * increasing everywhere — so there is no dead zone at the top where clearing mail
+ * changes nothing. That was the practical failure of the old `min(MAX, ...)` cap:
+ * once you were past the cap, progress was invisible until you fell back under it.
+ *
+ * Still heavily damped at the low end, which was the point of the original
+ * logarithm: the first hundred junk messages should cost more than the thousandth.
+ */
+const CURVE_K = 3;
+
+function saturatingPenalty(count: number, reference: number, maxPenalty: number): number {
+  if (count <= 0 || reference <= 0) return 0;
+  const x = count / reference;
+  return maxPenalty * (1 - Math.exp(-CURVE_K * x));
+}
+
+/**
+ * The count at which a metric earns ~95% of its penalty.
+ *
+ * Uses the real mailbox size when it is known, and the legacy fixed point when it
+ * is not. Floored so a nearly-empty mailbox does not treat three stray messages as
+ * a crisis.
+ */
+function referenceFor(total: number | undefined, share: number, fallback: number): number {
+  if (!total || total <= 0) return fallback;
+  return Math.max(50, total * share);
+}
+
+/**
  * Multi-Factor Adaptive Inbox Health Index Breakdown
  * Calculates transparent, mathematically precise point deductions and bonuses.
  */
@@ -429,29 +513,46 @@ export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): Health
     largeFiles = 0,
     oldMail = 0,
     unsubscribedCount = 0,
-    activeFiltersCount = 0
+    activeFiltersCount = 0,
+    mailboxTotal = 0,
+    inboxTotal = 0,
   } = metrics;
 
-  // 1. Unread Pressure: Logarithmic decay (max 35 pts)
-  const unreadPenalty = Math.min(35, unreadInbox > 0 ? (Math.log(1 + unreadInbox) / Math.log(1 + 600)) * 35 : 0);
+  // Unread is judged against the inbox, not the whole mailbox: an archive of
+  // 100,000 read messages says nothing about whether the inbox is under control.
+  const unreadReference = referenceFor(
+    inboxTotal || mailboxTotal, FULL_PENALTY_SHARE.unread, LEGACY_REFERENCE.unread
+  );
+  const unreadPenalty = saturatingPenalty(unreadInbox, unreadReference, 35);
 
-  // 2. Clutter Factor: Spam & Trash (max 25 pts)
-  const spamPenalty = Math.min(25, spamAndTrash > 0 ? (Math.log(1 + spamAndTrash) / Math.log(1 + 400)) * 25 : 0);
+  const spamPenalty = saturatingPenalty(
+    spamAndTrash,
+    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.spamAndTrash, LEGACY_REFERENCE.spamAndTrash),
+    25
+  );
 
-  // 3. Stale Promotions > 6 Months (max 20 pts)
-  const promoPenalty = Math.min(20, oldPromotions > 0 ? (Math.log(1 + oldPromotions) / Math.log(1 + 500)) * 20 : 0);
+  const promoPenalty = saturatingPenalty(
+    oldPromotions,
+    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.oldPromotions, LEGACY_REFERENCE.oldPromotions),
+    20
+  );
 
-  // 4. Bloat Factor: Large Emails > 5MB & Obsolete Mails > 1 Year (max 10 pts)
-  const rawLargeFiles = largeFiles * 0.5;
-  const rawOldMail = Math.min(500, oldMail) * 0.01;
-  const bloatPenalty = Math.min(10, rawLargeFiles + rawOldMail);
-
-  // Split the (capped) bloat deduction proportionally between its two causes so the
-  // breakdown can show, and let the user actually clear, each half independently.
-  // The two reported figures always sum back to bloatPenalty.
-  const rawBloatTotal = rawLargeFiles + rawOldMail;
-  const largeFilesPenalty = rawBloatTotal > 0 ? bloatPenalty * (rawLargeFiles / rawBloatTotal) : 0;
-  const oldMailPenalty = rawBloatTotal > 0 ? bloatPenalty * (rawOldMail / rawBloatTotal) : 0;
+  // Bloat is one 10-point budget split between its two causes, so the breakdown can
+  // show — and the user can clear — each half independently. Each half is bounded by
+  // its own share of the budget, so the two always sum back to bloatPenalty exactly
+  // without needing a proportional rescale.
+  const largeFilesPenalty = saturatingPenalty(
+    largeFiles,
+    // 20 messages is the legacy full-penalty point for large files.
+    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.largeFiles, 20),
+    6
+  );
+  const oldMailPenalty = saturatingPenalty(
+    oldMail,
+    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.oldMail, 500),
+    4
+  );
+  const bloatPenalty = largeFilesPenalty + oldMailPenalty;
 
   const totalDeductions = unreadPenalty + spamPenalty + promoPenalty + bloatPenalty;
 

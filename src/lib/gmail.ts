@@ -762,6 +762,77 @@ export async function scanFolderMetadata(
 
 
 /**
+ * The real size of this mailbox.
+ *
+ * Every health figure used to be judged against fixed constants — full unread
+ * penalty at 600 messages, full spam penalty at 400 — chosen without reference to
+ * how big the mailbox actually is. On any well-used account all of them are
+ * exceeded at once, so the score pins to its floor and stops responding to real
+ * progress. Judging clutter as a *share* of the mailbox needs the denominator, and
+ * this is it.
+ *
+ * `users.getProfile` is one request costing a single quota unit, against the 5 units
+ * per page a counting walk spends, so this is the cheapest number the API sells.
+ */
+export interface MailboxProfile {
+  emailAddress: string;
+  messagesTotal: number;
+  threadsTotal: number;
+}
+
+export async function fetchMailboxProfile(): Promise<MailboxProfile | null> {
+  try {
+    const res = await fetchGmailAPI('/profile');
+    if (!res) return null;
+    return {
+      emailAddress: res.emailAddress || '',
+      messagesTotal: Number(res.messagesTotal) || 0,
+      threadsTotal: Number(res.threadsTotal) || 0,
+    };
+  } catch {
+    // Size-relative scoring degrades to the fixed reference points without this,
+    // so a failure here is a loss of precision rather than of function.
+    return null;
+  }
+}
+
+/**
+ * Exact message totals for one system label, for 1 quota unit.
+ *
+ * Gmail maintains these counters itself, so `labels.get('INBOX')` is both cheaper
+ * and more accurate than paging a query — no 10,000-message bound, no estimate.
+ */
+export async function fetchLabelTotals(
+  labelId: string
+): Promise<{ messagesTotal: number; messagesUnread: number } | null> {
+  try {
+    const res = await fetchGmailAPI(`/labels/${encodeURIComponent(labelId)}`);
+    if (!res) return null;
+    return {
+      messagesTotal: Number(res.messagesTotal) || 0,
+      messagesUnread: Number(res.messagesUnread) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The two denominators the health score needs, in two cheap requests.
+ */
+export async function fetchMailboxSize(): Promise<{ mailboxTotal: number; inboxTotal: number }> {
+  const [profile, inbox] = await Promise.all([
+    fetchMailboxProfile(),
+    fetchLabelTotals('INBOX'),
+  ]);
+  return {
+    mailboxTotal: profile?.messagesTotal ?? 0,
+    inboxTotal: inbox?.messagesTotal ?? 0,
+  };
+}
+
+
+/**
  * Message count for a query, in one request where possible.
  *
  * An earlier version asked for resultSizeEstimate with maxResults=1. Gmail's

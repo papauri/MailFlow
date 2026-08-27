@@ -103,6 +103,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       oldMail: stats.oldMail,
       unsubscribedCount,
       activeFiltersCount,
+      mailboxTotal: stats.mailboxTotal,
+      inboxTotal: stats.inboxTotal,
     });
   }, [stats]);
 

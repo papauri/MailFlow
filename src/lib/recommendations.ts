@@ -35,6 +35,10 @@ function metricsFrom(stats: InboxStats): HealthScoreMetrics {
     oldMail: stats.oldMail || 0,
     unsubscribedCount,
     activeFiltersCount,
+    // Without these the ranking is computed against a different scoring model than
+    // the one the Inbox Score page shows, and the "+N pts" on each card is wrong.
+    mailboxTotal: stats.mailboxTotal || 0,
+    inboxTotal: stats.inboxTotal || 0,
   };
 }
 

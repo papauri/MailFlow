@@ -321,6 +321,120 @@ section('Health score model');
 }
 
 // ---------------------------------------------------------------------------
+section('Size-relative scoring');
+// ---------------------------------------------------------------------------
+{
+  // A realistically cluttered account. Under the old fixed reference points every
+  // penalty saturated at once and this scored 12 — the floor — so clearing three
+  // hundred promotions moved nothing and the number looked broken.
+  const real = {
+    unreadInbox: 800, spamAndTrash: 600, oldPromotions: 3000,
+    largeFiles: 12, oldMail: 4000, mailboxTotal: 42000, inboxTotal: 1800,
+  };
+  const breakdown = computeInboxHealthBreakdown(real);
+
+  assert(breakdown.score > 12 && breakdown.score < 100,
+    'A cluttered but ordinary mailbox scores inside the range, not pinned to the floor',
+    `got ${breakdown.score}`);
+  assert(
+    breakdown.unreadPenalty < 35 && breakdown.spamPenalty < 25
+    && breakdown.promoPenalty < 20 && breakdown.bloatPenalty < 10,
+    'No penalty is fully saturated, so every metric still has room to improve',
+    JSON.stringify(breakdown)
+  );
+
+  // The property that actually matters: progress is always visible. Walk a metric
+  // down and require the score to rise at every step, never stall.
+  let previous = -1;
+  let everyStepMoved = true;
+  for (const promos of [3000, 2500, 2000, 1500, 1000, 500, 0]) {
+    const next = computeInboxHealthScore({ ...real, oldPromotions: promos });
+    if (next <= previous) everyStepMoved = false;
+    previous = next;
+  }
+  assert(everyStepMoved,
+    'Clearing promotions in steps raises the score at every step');
+
+  assert(
+    computeInboxHealthScore({ ...real, activeFiltersCount: 1 }) > computeInboxHealthScore(real),
+    'Creating a single filter rule visibly moves the score'
+  );
+  assert(
+    computeInboxHealthScore({ ...real, spamAndTrash: 0 }) > computeInboxHealthScore(real),
+    'Emptying spam and trash visibly moves the score'
+  );
+
+  // Scale invariance: clutter is a share, so the same proportions must score the
+  // same whether the mailbox holds two thousand messages or two hundred thousand.
+  const small = {
+    unreadInbox: 90, spamAndTrash: 30, oldPromotions: 150,
+    largeFiles: 6, oldMail: 200, mailboxTotal: 2000, inboxTotal: 180,
+  };
+  const large = {
+    unreadInbox: 9000, spamAndTrash: 3000, oldPromotions: 15000,
+    largeFiles: 600, oldMail: 20000, mailboxTotal: 200000, inboxTotal: 18000,
+  };
+  assert(
+    Math.abs(computeInboxHealthScore(small) - computeInboxHealthScore(large)) <= 1,
+    'Proportionally identical mailboxes score the same at 100x the size',
+    `${computeInboxHealthScore(small)} vs ${computeInboxHealthScore(large)}`
+  );
+
+  // The same absolute backlog is worse in a small mailbox than a large one.
+  assert(
+    computeInboxHealthScore({ ...real, mailboxTotal: 4000, inboxTotal: 1500 })
+      < computeInboxHealthScore({ ...real, mailboxTotal: 400000, inboxTotal: 1500 }),
+    'The same clutter counts for more against a small mailbox than a large one'
+  );
+
+  // A clean mailbox is still a perfect score, whatever its size.
+  for (const total of [500, 42000, 500000]) {
+    const clean = computeInboxHealthScore({
+      unreadInbox: 0, spamAndTrash: 0, oldPromotions: 0, largeFiles: 0, oldMail: 0,
+      mailboxTotal: total, inboxTotal: Math.round(total / 20),
+    });
+    assert(clean === 100, `An empty mailbox of ${total} scores 100`, `got ${clean}`);
+  }
+
+  // A tiny mailbox must not be judged a disaster over a handful of messages.
+  const tiny = computeInboxHealthScore({
+    unreadInbox: 3, spamAndTrash: 2, oldPromotions: 1, largeFiles: 0, oldMail: 0,
+    mailboxTotal: 40, inboxTotal: 12,
+  });
+  assert(tiny >= 80, 'A nearly-empty mailbox with a few stray messages stays healthy', `got ${tiny}`);
+
+  // Monotonic in every input, at realistic magnitudes.
+  const fields: (keyof typeof real)[] = ['unreadInbox', 'spamAndTrash', 'oldPromotions', 'largeFiles', 'oldMail'];
+  let monotonic = true;
+  for (const f of fields) {
+    for (const n of [0, 50, 500, 5000]) {
+      const a = computeInboxHealthScore({ ...real, [f]: n });
+      const b = computeInboxHealthScore({ ...real, [f]: n * 2 + 10 });
+      if (b > a) monotonic = false;
+    }
+  }
+  assert(monotonic, 'More clutter never raises the score, for any single metric');
+
+  // Before the profile call resolves there is no denominator; the model must still
+  // return a sane score rather than dividing by zero.
+  const noSize = computeInboxHealthBreakdown({
+    unreadInbox: 800, spamAndTrash: 600, oldPromotions: 3000, largeFiles: 12, oldMail: 4000,
+  });
+  assert(noSize.score >= 12 && noSize.score <= 100,
+    'A score is still produced before the mailbox size is known', `got ${noSize.score}`);
+
+  // The breakdown is shown as an itemised list, so the parts must still sum.
+  const parts = breakdown.unreadPenalty + breakdown.spamPenalty + breakdown.promoPenalty + breakdown.bloatPenalty;
+  assert(Math.abs(parts - breakdown.totalDeductions) < 0.15,
+    'Itemised penalties still sum to the reported total under the new curve',
+    `${parts.toFixed(2)} vs ${breakdown.totalDeductions}`);
+  assert(
+    Math.abs((breakdown.largeFilesPenalty + breakdown.oldMailPenalty) - breakdown.bloatPenalty) < 0.15,
+    'The two bloat halves still sum to the bloat penalty'
+  );
+}
+
+// ---------------------------------------------------------------------------
 section('Sender parsing');
 // ---------------------------------------------------------------------------
 {
@@ -588,6 +702,7 @@ section('Recommendations & export rows');
   const stats = {
     unread: 830, oldPromo: 1200, large: 14, spamAndTrash: 640,
     importantUnread: 22, updatesAndSocial: 900, withAttachments: 300, oldMail: 4100,
+    mailboxTotal: 38000, inboxTotal: 2100,
   };
   const sizes = { oldPromo: 300 * MB, large: 900 * MB, spamAndTrash: 120 * MB, oldMail: 2000 * MB };
   const recs = buildRecommendations(stats, sizes, [{ email: 'a@x.example', name: 'X', count: 300 }]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { countEmails } from '../lib/gmail';
+import { countEmails, fetchMailboxSize } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
 import {
@@ -18,14 +18,18 @@ import {
  * full refetch instead of updating. Caching the inputs means the very first render
  * can already do the arithmetic.
  */
-const METRICS_CACHE_KEY = 'ais_cached_health_metrics_v1';
+const METRICS_CACHE_KEY = 'ais_cached_health_metrics_v2';
 
 function readCachedMetrics(): HealthScoreMetrics | null {
   try {
     const raw = sessionStorage.getItem(METRICS_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed as HealthScoreMetrics : null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    // Scoring is relative to mailbox size, so a cached entry without it would render
+    // the fixed-reference fallback for a beat and then jump. Treat it as absent.
+    if (!parsed.mailboxTotal) return null;
+    return parsed as HealthScoreMetrics;
   } catch {
     return null;
   }
@@ -108,7 +112,9 @@ export function HealthScoreWidget({
 
     async function calculateScore() {
       try {
-        const [unread, junk, promo, large, oldMail] = await Promise.all([
+        const [size, unread, junk, promo, large, oldMail] = await Promise.all([
+          // One quota unit each, and they resolve well before the counts do.
+          fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
           countEmails(HEALTH_SCORE_QUERIES.unread).catch(() => 0),
           countEmails(HEALTH_SCORE_QUERIES.spamAndTrash).catch(() => 0),
           countEmails(HEALTH_SCORE_QUERIES.oldPromotions).catch(() => 0),
@@ -129,7 +135,9 @@ export function HealthScoreWidget({
           largeFiles: parseCount(large),
           oldMail: parseCount(oldMail),
           unsubscribedCount,
-          activeFiltersCount
+          activeFiltersCount,
+          mailboxTotal: size.mailboxTotal,
+          inboxTotal: size.inboxTotal,
         });
       } catch (e) {
         console.error("Failed to calculate health score", e);
