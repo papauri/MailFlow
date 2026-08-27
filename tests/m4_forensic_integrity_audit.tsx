@@ -1,5 +1,6 @@
 // Must stay first: installs browser globals before any app module is evaluated.
 import './helpers/browserEnv';
+import { gridLists, isMobileFirstGrid } from './helpers/responsive';
 
 import React from 'react';
 import { renderToString } from 'react-dom/server';
@@ -97,13 +98,14 @@ async function runForensicIntegrityAudit() {
   // suite exists to avoid — so it checks the loop is real and bounded, by name.
   check(
     gmailCode.includes('total += res.messages.length') &&
-    gmailCode.includes('page < COUNT_MAX_PAGES') &&
+    /for \(let page = 0; page < \w+; page\+\+\)/.test(gmailCode) &&
     gmailCode.includes('resultSizeEstimate'),
     'gmail.ts countEmails implements a bounded pagination loop with an estimate fallback'
   );
   check(
-    /export const COUNT_MAX_PAGES = \d+/.test(gmailCode),
-    'The pagination bound is a named exported constant, not a magic number'
+    /export const COUNT_MAX_PAGES = \d+/.test(gmailCode) &&
+    /countEmails\(query: string, maxPages: number = COUNT_MAX_PAGES\)/.test(gmailCode),
+    'The pagination bound is a named exported constant callers may tighten, not a magic number'
   );
 
   // Check 1.2: No facade functions or empty stubs in components
@@ -174,10 +176,19 @@ async function runForensicIntegrityAudit() {
   // Check 2.6: InboxHealth layout responsiveness
   // Inbox Health was rebuilt around routed cards; it has no quick-filter strip to
   // scroll, and its card ladder is spelled with grid-cols rather than flex-then-grid.
+  // Property, not a specific ladder. Pinning `lg:grid-cols-4` meant that adding or
+  // removing a card — which changes the ideal column count — registered as a
+  // responsive-layout violation. What has to hold is that every grid states a
+  // mobile-first base and widens at some breakpoint.
+  const healthGrids = gridLists(inboxCode);
   check(
-    /grid-cols-1 sm:grid-cols-2 lg:grid-cols-4/.test(inboxCode) &&
-    /grid-cols-1 md:grid-cols-2/.test(inboxCode),
-    'InboxHealth cards widen from one column through tablet to desktop'
+    healthGrids.length > 0 && healthGrids.every(isMobileFirstGrid),
+    'Every InboxHealth grid states a mobile-first column count',
+    healthGrids.filter(l => !isMobileFirstGrid(l)).join(' | ')
+  );
+  check(
+    healthGrids.some(l => /(sm|md|lg|xl):grid-cols-\d/.test(l)),
+    'InboxHealth cards widen from one column at larger breakpoints'
   );
 
   // -------------------------------------------------------------
