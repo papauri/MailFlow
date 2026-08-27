@@ -1,11 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { Shield, Key, Trash2, X, Save } from 'lucide-react';
+import { Shield, Key, Trash2, X, Save, Activity, Loader2, Copy, Check } from 'lucide-react';
+import { measureMailbox, formatCalibrationReport } from '../lib/scoreCalibration';
 
 export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  /**
+   * Measured calibration for the health score.
+   *
+   * The score's thresholds decide how much clutter earns a full penalty, and they
+   * were set by judgement rather than from any mailbox. This runs the real counts
+   * so they can be checked against something.
+   */
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibration, setCalibration] = useState<string | null>(null);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const runCalibration = async () => {
+    setCalibrating(true);
+    setCalibrationError(null);
+    try {
+      const report = await measureMailbox();
+      setCalibration(formatCalibrationReport(report));
+    } catch (e: any) {
+      setCalibrationError(e?.message || 'Could not measure the mailbox.');
+    } finally {
+      setCalibrating(false);
+    }
+  };
+
+  const copyCalibration = async () => {
+    if (!calibration) return;
+    try {
+      await navigator.clipboard.writeText(calibration);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { }
+  };
+
   const [settings, setSettings] = useState({
     enablePermanentDelete: false,
     useGlobalAiKey: false,
@@ -65,7 +100,7 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-slate-700" />
@@ -98,6 +133,43 @@ export function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                     <span className="text-xs text-slate-500">Allows users to bypass 30-day trash and permanently delete emails.</span>
                   </div>
                 </label>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-blue-500" />
+                  Health Score Calibration
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Measures this mailbox and shows what share of it each kind of clutter
+                  occupies, next to the threshold the score currently uses. Where the two
+                  disagree, the threshold is the thing that is wrong.
+                </p>
+                <button
+                  onClick={runCalibration}
+                  disabled={calibrating}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {calibrating
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Measuring your mailbox…</span></>
+                    : <><Activity className="w-4 h-4" /><span>Measure this mailbox</span></>}
+                </button>
+                {calibrationError && (
+                  <p className="text-xs text-rose-600">{calibrationError}</p>
+                )}
+                {calibration && (
+                  <div className="relative">
+                    <pre className="text-[10px] leading-relaxed bg-slate-900 text-slate-100 rounded-xl p-3 overflow-x-auto whitespace-pre">
+{calibration}
+                    </pre>
+                    <button
+                      onClick={copyCalibration}
+                      className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-semibold transition-colors cursor-pointer"
+                    >
+                      {copied ? <><Check className="w-3 h-3" />Copied</> : <><Copy className="w-3 h-3" />Copy</>}
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3">

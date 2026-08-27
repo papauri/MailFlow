@@ -444,7 +444,7 @@ export interface HealthScoreBreakdown {
  * A share is comparable across mailboxes: half your inbox unread means the same
  * thing whether the inbox holds four hundred messages or forty thousand.
  */
-const FULL_PENALTY_SHARE = {
+export const FULL_PENALTY_SHARE = {
   /** Of the inbox. Half of it unread is a backlog you are not on top of. */
   unread: 0.50,
   /** Of the mailbox. */
@@ -463,7 +463,7 @@ const FULL_PENALTY_SHARE = {
  * fetch it at all. These are the original fixed points, kept so behaviour degrades
  * to the previous model rather than to nonsense.
  */
-const LEGACY_REFERENCE = {
+export const LEGACY_REFERENCE = {
   unread: 600,
   spamAndTrash: 400,
   oldPromotions: 500,
