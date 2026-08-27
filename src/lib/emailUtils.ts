@@ -398,13 +398,12 @@ export interface HealthScoreMetrics {
   unsubscribedCount?: number;
   activeFiltersCount?: number;
   /**
-   * Real message count for the whole mailbox, from `users.getProfile`.
+   * The measured populations each metric is judged against.
    *
-   * Optional so a caller that has not fetched it yet still gets a score; the model
-   * falls back to fixed reference points when it is missing. See LEGACY_REFERENCE.
+   * A metric with no population cannot be scored and contributes nothing, rather
+   * than falling back to an invented reference. See computeInboxHealthBreakdown.
    */
   mailboxTotal?: number;
-  /** Real message count for the inbox, from `labels.get('INBOX')`. */
   inboxTotal?: number;
 }
 
@@ -427,78 +426,61 @@ export interface HealthScoreBreakdown {
 }
 
 /**
- * How much of the mailbox a metric has to occupy before its penalty is (almost)
- * fully earned.
+ * Scoring, with nothing invented.
  *
- * These are shares, not counts, which is the whole point. The previous model set
- * the full-penalty point at a fixed number of messages — 600 unread, 400 in spam
- * and trash, 500 stale promotions — and any mailbox in real use passes all of them
- * at once. Measured against a genuinely cluttered account the result was:
+ * Three generations of this model failed the same way before this one, each time
+ * because it encoded somebody's opinion of what a mailbox looks like.
  *
- *   unread 35/35, spam 25/25, promos 20/20, bloat 10/10  ->  score 12, the floor
+ *   Fixed counts — full unread penalty at 600 messages, full spam penalty at 400.
+ *   Any account in real use passed every one of them at once, so all the penalties
+ *   saturated together, the score pinned to its floor, and deleting three hundred
+ *   messages changed nothing.
  *
- * Every penalty pinned simultaneously, so clearing three hundred promotions moved
- * the score by nothing at all and the number looked broken. Worse, it was least
- * informative for exactly the people with the most to gain from it.
+ *   Fixed shares — 15% of the mailbox in spam is maximum badness, 30% stale
+ *   promotions is maximum badness. Scaled properly, but nothing measured said 15%.
  *
- * A share is comparable across mailboxes: half your inbox unread means the same
- * thing whether the inbox holds four hundred messages or forty thousand.
+ *   Population-weighted shares — each metric divided by its own population, each
+ *   dimension weighted by how big that population was. This one is worth recording
+ *   because it looked principled and was arithmetically self-defeating: dividing by
+ *   the population and then weighting by it cancels out. A category with a small
+ *   population earned a weight so small that no amount of rot in it could register
+ *   (50 stale promotions out of 60 scored a perfect 100), while a large one was
+ *   diluted to nothing (600 junk messages cost 0.4 points).
+ *
+ * What is left is the thing that needed no invention in the first place: count the
+ * messages you could clear, and divide by the messages you have. Every clutter
+ * message counts the same, because there is no measurement that says a junk message
+ * is worth 1.6 stale promotions — that ratio was always someone's guess.
+ *
+ *   storage health = clutter messages / all messages
+ *   attention health = unread in inbox / messages in inbox
+ *
+ * Both are read from the mailbox, both are shares in [0,1] by construction, and a
+ * score of 40 now states something checkable: 60% of this mailbox is clutter, or
+ * the inbox is badly behind, or some mix of the two.
  */
-export const FULL_PENALTY_SHARE = {
-  /** Of the inbox. Half of it unread is a backlog you are not on top of. */
-  unread: 0.50,
-  /** Of the mailbox. */
-  spamAndTrash: 0.15,
-  oldPromotions: 0.30,
-  /** Attachments over 5MB are rare, so a small share is already heavy. */
-  largeFiles: 0.03,
-  /** Old mail is normal in an archive, so this is deliberately lenient. */
-  oldMail: 0.60,
-} as const;
 
 /**
- * Reference counts used when the real mailbox size is not known yet.
+ * How the 100 points divide between the two things a score can be about.
  *
- * The first paint happens before `users.getProfile` resolves, and a caller may not
- * fetch it at all. These are the original fixed points, kept so behaviour degrades
- * to the previous model rather than to nonsense.
+ * This is the one judgement left in the model, and it is a product decision rather
+ * than a measurement: attention (is your inbox under control?) against storage (is
+ * your mailbox full of things you could clear?). It is one number, in one place, so
+ * it can be argued with — which is more than could be said for the ten constants it
+ * replaced.
  */
-export const LEGACY_REFERENCE = {
-  unread: 600,
-  spamAndTrash: 400,
-  oldPromotions: 500,
-} as const;
+export const ATTENTION_SHARE_OF_SCORE = 0.30;
 
 /**
- * Penalty curve: approaches its maximum without ever reaching it.
+ * A count as a share of its population, bounded and safe on a missing denominator.
  *
- * `1 - e^(-k*x)` where x is progress toward the full-penalty share. At x = 1 the
- * penalty is 95% of its maximum, at x = 2 it is 99.75%, and it is strictly
- * increasing everywhere — so there is no dead zone at the top where clearing mail
- * changes nothing. That was the practical failure of the old `min(MAX, ...)` cap:
- * once you were past the cap, progress was invisible until you fell back under it.
- *
- * Still heavily damped at the low end, which was the point of the original
- * logarithm: the first hundred junk messages should cost more than the thousandth.
+ * An unmeasured population returns 0 rather than falling back to a substitute. That
+ * is deliberate: an unknown denominator means the metric cannot be judged, and
+ * scoring it against a stand-in is how invented numbers got in here to begin with.
  */
-const CURVE_K = 3;
-
-function saturatingPenalty(count: number, reference: number, maxPenalty: number): number {
-  if (count <= 0 || reference <= 0) return 0;
-  const x = count / reference;
-  return maxPenalty * (1 - Math.exp(-CURVE_K * x));
-}
-
-/**
- * The count at which a metric earns ~95% of its penalty.
- *
- * Uses the real mailbox size when it is known, and the legacy fixed point when it
- * is not. Floored so a nearly-empty mailbox does not treat three stray messages as
- * a crisis.
- */
-function referenceFor(total: number | undefined, share: number, fallback: number): number {
-  if (!total || total <= 0) return fallback;
-  return Math.max(50, total * share);
+function shareOf(count: number, population: number): number {
+  if (!population || population <= 0) return 0;
+  return Math.min(1, Math.max(0, count / population));
 }
 
 /**
@@ -518,40 +500,35 @@ export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): Health
     inboxTotal = 0,
   } = metrics;
 
-  // Unread is judged against the inbox, not the whole mailbox: an archive of
-  // 100,000 read messages says nothing about whether the inbox is under control.
-  const unreadReference = referenceFor(
-    inboxTotal || mailboxTotal, FULL_PENALTY_SHARE.unread, LEGACY_REFERENCE.unread
-  );
-  const unreadPenalty = saturatingPenalty(unreadInbox, unreadReference, 35);
+  // --- Attention: how much of the inbox is still waiting on you ---
+  const attentionBudget = 100 * ATTENTION_SHARE_OF_SCORE;
+  const unreadPenalty = attentionBudget * shareOf(unreadInbox, inboxTotal);
 
-  const spamPenalty = saturatingPenalty(
+  // --- Storage: how much of the mailbox is clearable ---
+  const storageBudget = 100 - attentionBudget;
+  const clutter = {
     spamAndTrash,
-    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.spamAndTrash, LEGACY_REFERENCE.spamAndTrash),
-    25
-  );
-
-  const promoPenalty = saturatingPenalty(
     oldPromotions,
-    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.oldPromotions, LEGACY_REFERENCE.oldPromotions),
-    20
-  );
-
-  // Bloat is one 10-point budget split between its two causes, so the breakdown can
-  // show — and the user can clear — each half independently. Each half is bounded by
-  // its own share of the budget, so the two always sum back to bloatPenalty exactly
-  // without needing a proportional rescale.
-  const largeFilesPenalty = saturatingPenalty(
     largeFiles,
-    // 20 messages is the legacy full-penalty point for large files.
-    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.largeFiles, 20),
-    6
-  );
-  const oldMailPenalty = saturatingPenalty(
     oldMail,
-    referenceFor(mailboxTotal, FULL_PENALTY_SHARE.oldMail, 500),
-    4
-  );
+  };
+  const clutterTotal = clutter.spamAndTrash + clutter.oldPromotions + clutter.largeFiles + clutter.oldMail;
+
+  // The four queries overlap — a two-year-old 8MB promotion is counted by three of
+  // them — so the sum can exceed the mailbox. Capping the share is what keeps the
+  // deduction honest; the alternative, subtracting overlaps, would need four more
+  // counting passes to learn something the cap already handles.
+  const storagePenalty = storageBudget * shareOf(clutterTotal, mailboxTotal);
+
+  // Attributed back in proportion to each category's contribution, so the itemised
+  // breakdown the user reads always sums to the deduction actually applied.
+  const attribute = (count: number) =>
+    clutterTotal > 0 ? storagePenalty * (count / clutterTotal) : 0;
+
+  const spamPenalty = attribute(clutter.spamAndTrash);
+  const promoPenalty = attribute(clutter.oldPromotions);
+  const largeFilesPenalty = attribute(clutter.largeFiles);
+  const oldMailPenalty = attribute(clutter.oldMail);
   const bloatPenalty = largeFilesPenalty + oldMailPenalty;
 
   const totalDeductions = unreadPenalty + spamPenalty + promoPenalty + bloatPenalty;
@@ -562,7 +539,10 @@ export function computeInboxHealthBreakdown(metrics: HealthScoreMetrics): Health
   const managementBonus = Math.min(15, unsubBonus + filterBonus);
 
   const rawScore = 100 - totalDeductions + managementBonus;
-  const score = Math.min(100, Math.max(12, Math.round(rawScore)));
+  // No artificial floor. The bottom of the range now means every message in the
+  // mailbox is clutter and the inbox is entirely unread — a real state, not the
+  // arithmetic accident the old fixed penalties reached on any busy account.
+  const score = Math.min(100, Math.max(0, Math.round(rawScore)));
 
   return {
     score,

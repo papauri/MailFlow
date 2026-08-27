@@ -818,9 +818,26 @@ export async function fetchLabelTotals(
 }
 
 /**
- * The two denominators the health score needs, in two cheap requests.
+ * Everything the health score measures itself against.
+ *
+ * Each clutter metric belongs to a population, and it is that population — not a
+ * number someone picked — that says how bad the metric is. "Three thousand stale
+ * promotions" means nothing on its own; "three thousand of your four thousand
+ * promotional messages are stale" is a complete statement, and its worst case is
+ * definitionally all of them.
+ *
+ * Both fields are real counts Gmail maintains itself — `users.getProfile` and the
+ * `INBOX` label — so they cost one quota unit each and are exact: no paging, no
+ * 10,000-message bound, no estimate.
  */
-export async function fetchMailboxSize(): Promise<{ mailboxTotal: number; inboxTotal: number }> {
+export interface MailboxComposition {
+  /** Every message in the account. */
+  mailboxTotal: number;
+  /** Messages in the inbox — the population unread pressure is measured against. */
+  inboxTotal: number;
+}
+
+export async function fetchMailboxComposition(): Promise<MailboxComposition> {
   const [profile, inbox] = await Promise.all([
     fetchMailboxProfile(),
     fetchLabelTotals('INBOX'),
@@ -829,6 +846,12 @@ export async function fetchMailboxSize(): Promise<{ mailboxTotal: number; inboxT
     mailboxTotal: profile?.messagesTotal ?? 0,
     inboxTotal: inbox?.messagesTotal ?? 0,
   };
+}
+
+/** Back-compat shim for callers that only need the two headline totals. */
+export async function fetchMailboxSize(): Promise<{ mailboxTotal: number; inboxTotal: number }> {
+  const c = await fetchMailboxComposition();
+  return { mailboxTotal: c.mailboxTotal, inboxTotal: c.inboxTotal };
 }
 
 

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
-  countEmails, markAllAsReadByQuery, emptyAllTrash, trashAllByQuery, fetchMailboxSize
+  countEmails, markAllAsReadByQuery, emptyAllTrash, trashAllByQuery, fetchMailboxComposition
 } from '../lib/gmail';
 import {
   computeInboxHealthScore,
@@ -82,7 +82,7 @@ export function HealthScoreModal({
     setLoading(true);
     try {
       const [size, unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
-        fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
+        fetchMailboxComposition().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
@@ -102,8 +102,7 @@ export function HealthScoreModal({
         oldMail: old,
         unsubscribedCount,
         activeFiltersCount,
-        mailboxTotal: size.mailboxTotal,
-        inboxTotal: size.inboxTotal
+        ...size
       };
       setMetrics(fetchedMetrics);
       // Reset simulator targets to live metrics
@@ -123,7 +122,7 @@ export function HealthScoreModal({
   const fetchMetricsSilent = async () => {
     try {
       const [size, unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
-        fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
+        fetchMailboxComposition().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
@@ -144,8 +143,7 @@ export function HealthScoreModal({
         oldMail: old,
         unsubscribedCount,
         activeFiltersCount,
-        mailboxTotal: size.mailboxTotal,
-        inboxTotal: size.inboxTotal
+        ...size
       }));
     } catch (e) {
       console.error(e);

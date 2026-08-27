@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { countEmails, fetchMailboxSize } from '../lib/gmail';
+import { countEmails, fetchMailboxComposition } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
 import {
@@ -18,7 +18,7 @@ import {
  * full refetch instead of updating. Caching the inputs means the very first render
  * can already do the arithmetic.
  */
-const METRICS_CACHE_KEY = 'ais_cached_health_metrics_v2';
+const METRICS_CACHE_KEY = 'ais_cached_health_metrics_v3';
 
 function readCachedMetrics(): HealthScoreMetrics | null {
   try {
@@ -114,7 +114,7 @@ export function HealthScoreWidget({
       try {
         const [size, unread, junk, promo, large, oldMail] = await Promise.all([
           // One quota unit each, and they resolve well before the counts do.
-          fetchMailboxSize().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
+          fetchMailboxComposition().catch(() => ({ mailboxTotal: 0, inboxTotal: 0 })),
           countEmails(HEALTH_SCORE_QUERIES.unread).catch(() => 0),
           countEmails(HEALTH_SCORE_QUERIES.spamAndTrash).catch(() => 0),
           countEmails(HEALTH_SCORE_QUERIES.oldPromotions).catch(() => 0),
@@ -136,8 +136,7 @@ export function HealthScoreWidget({
           oldMail: parseCount(oldMail),
           unsubscribedCount,
           activeFiltersCount,
-          mailboxTotal: size.mailboxTotal,
-          inboxTotal: size.inboxTotal,
+          ...size,
         });
       } catch (e) {
         console.error("Failed to calculate health score", e);

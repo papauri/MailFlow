@@ -18,6 +18,7 @@ import {
   computeInboxHealthScore,
   HEALTH_SCORE_QUERIES,
   HEALTH_SCORE_SWEEP_QUERIES,
+  ATTENTION_SHARE_OF_SCORE,
   applyMetricEvent,
   SCORE_METRIC_FIELDS,
   SCORE_BONUS_FIELDS,
@@ -281,19 +282,18 @@ section('Health score model');
 
   const wrecked = computeInboxHealthBreakdown({
     unreadInbox: 999_999, spamAndTrash: 999_999, oldPromotions: 999_999,
-    largeFiles: 999_999, oldMail: 999_999,
+    largeFiles: 999_999, oldMail: 999_999, mailboxTotal: 999_999, inboxTotal: 999_999,
   });
-  assert(wrecked.score >= 12 && wrecked.score <= 100,
-    'Score stays inside its stated 12–100 range at extreme inputs', `got ${wrecked.score}`);
-  assert(wrecked.unreadPenalty <= 35 && wrecked.spamPenalty <= 25
-    && wrecked.promoPenalty <= 20 && wrecked.bloatPenalty <= 10,
-    'Every penalty respects the cap the UI advertises for it');
+  assert(wrecked.score >= 0 && wrecked.score <= 100,
+    'Score stays inside 0-100 at extreme inputs', `got ${wrecked.score}`);
+  assert(wrecked.unreadPenalty <= 100 * ATTENTION_SHARE_OF_SCORE + 0.1,
+    'Unread cannot deduct more than the attention budget', `got ${wrecked.unreadPenalty}`);
 
   // The breakdown is shown to the user as an itemised deduction list. If the parts
   // do not sum to the whole, the list is not an explanation of the score.
   const mixed = computeInboxHealthBreakdown({
     unreadInbox: 240, spamAndTrash: 90, oldPromotions: 410, largeFiles: 7, oldMail: 1200,
-    unsubscribedCount: 2, activeFiltersCount: 1,
+    unsubscribedCount: 2, activeFiltersCount: 1, mailboxTotal: 9000, inboxTotal: 700,
   });
   const partsSum = mixed.unreadPenalty + mixed.spamPenalty + mixed.promoPenalty + mixed.bloatPenalty;
   assert(Math.abs(partsSum - mixed.totalDeductions) < 0.15,
@@ -308,14 +308,19 @@ section('Health score model');
   // Monotonic: clearing clutter must never lower the score, or "+N pts" is a lie.
   let monotonic = true;
   for (let unread = 0; unread < 3000; unread += 137) {
-    const a = computeInboxHealthScore({ unreadInbox: unread, spamAndTrash: 50, oldPromotions: 20, largeFiles: 2, oldMail: 100 });
-    const b = computeInboxHealthScore({ unreadInbox: unread + 137, spamAndTrash: 50, oldPromotions: 20, largeFiles: 2, oldMail: 100 });
+    const a = computeInboxHealthScore({ unreadInbox: unread, spamAndTrash: 50, oldPromotions: 20, largeFiles: 2, oldMail: 100, mailboxTotal: 8000, inboxTotal: 3000 });
+    const b = computeInboxHealthScore({ unreadInbox: unread + 137, spamAndTrash: 50, oldPromotions: 20, largeFiles: 2, oldMail: 100, mailboxTotal: 8000, inboxTotal: 3000 });
     if (b > a) monotonic = false;
   }
   assert(monotonic, 'Score never rises when unread volume rises, at any point on the curve');
 
-  // The "+N pts" figures in Inbox Health are exactly this difference.
-  const base = { unreadInbox: 500, spamAndTrash: 300, oldPromotions: 200, largeFiles: 6, oldMail: 900 };
+  // The "+N pts" figures in Inbox Health are exactly this difference. The mailbox
+  // size is required: without a denominator nothing can be scored, so the gain
+  // would correctly be zero and the assertion would be testing the wrong thing.
+  const base = {
+    unreadInbox: 500, spamAndTrash: 300, oldPromotions: 200, largeFiles: 6, oldMail: 900,
+    mailboxTotal: 12000, inboxTotal: 900,
+  };
   const gain = computeInboxHealthScore({ ...base, spamAndTrash: 0 }) - computeInboxHealthScore(base);
   assert(gain > 0 && Number.isFinite(gain), 'Clearing a non-empty metric yields a positive, finite point gain');
 }
@@ -324,9 +329,9 @@ section('Health score model');
 section('Size-relative scoring');
 // ---------------------------------------------------------------------------
 {
-  // A realistically cluttered account. Under the old fixed reference points every
-  // penalty saturated at once and this scored 12 — the floor — so clearing three
-  // hundred promotions moved nothing and the number looked broken.
+  // A cluttered but ordinary account. Under fixed reference points every penalty
+  // saturated at once and this scored 12 — the floor — so clearing three hundred
+  // promotions moved nothing and the number looked broken.
   const real = {
     unreadInbox: 800, spamAndTrash: 600, oldPromotions: 3000,
     largeFiles: 12, oldMail: 4000, mailboxTotal: 42000, inboxTotal: 1800,
@@ -336,35 +341,28 @@ section('Size-relative scoring');
   assert(breakdown.score > 12 && breakdown.score < 100,
     'A cluttered but ordinary mailbox scores inside the range, not pinned to the floor',
     `got ${breakdown.score}`);
-  assert(
-    breakdown.unreadPenalty < 35 && breakdown.spamPenalty < 25
-    && breakdown.promoPenalty < 20 && breakdown.bloatPenalty < 10,
-    'No penalty is fully saturated, so every metric still has room to improve',
-    JSON.stringify(breakdown)
-  );
 
-  // The property that actually matters: progress is always visible. Walk a metric
-  // down and require the score to rise at every step, never stall.
-  let previous = -1;
-  let everyStepMoved = true;
-  for (const promos of [3000, 2500, 2000, 1500, 1000, 500, 0]) {
-    const next = computeInboxHealthScore({ ...real, oldPromotions: promos });
-    if (next <= previous) everyStepMoved = false;
-    previous = next;
-  }
-  assert(everyStepMoved,
-    'Clearing promotions in steps raises the score at every step');
-
+  // Progress on either axis must always show. Walk each down and require the score
+  // to rise, never stall — the practical failure of every capped model before this.
+  const rises = (field: string, steps: number[]) => {
+    let previous = -1;
+    for (const v of steps) {
+      const next = computeInboxHealthScore({ ...real, [field]: v });
+      if (next <= previous) return false;
+      previous = next;
+    }
+    return true;
+  };
+  assert(rises('oldPromotions', [3000, 2000, 1000, 0]),
+    'Clearing promotions raises the score at every step');
+  assert(rises('unreadInbox', [800, 600, 400, 200, 0]),
+    'Reading the backlog raises the score at every step');
   assert(
     computeInboxHealthScore({ ...real, activeFiltersCount: 1 }) > computeInboxHealthScore(real),
     'Creating a single filter rule visibly moves the score'
   );
-  assert(
-    computeInboxHealthScore({ ...real, spamAndTrash: 0 }) > computeInboxHealthScore(real),
-    'Emptying spam and trash visibly moves the score'
-  );
 
-  // Scale invariance: clutter is a share, so the same proportions must score the
+  // Scale invariance: clutter is a share, so identical proportions must score the
   // same whether the mailbox holds two thousand messages or two hundred thousand.
   const small = {
     unreadInbox: 90, spamAndTrash: 30, oldPromotions: 150,
@@ -382,12 +380,12 @@ section('Size-relative scoring');
 
   // The same absolute backlog is worse in a small mailbox than a large one.
   assert(
-    computeInboxHealthScore({ ...real, mailboxTotal: 4000, inboxTotal: 1500 })
-      < computeInboxHealthScore({ ...real, mailboxTotal: 400000, inboxTotal: 1500 }),
+    computeInboxHealthScore({ ...real, mailboxTotal: 6000 })
+      < computeInboxHealthScore({ ...real, mailboxTotal: 400000 }),
     'The same clutter counts for more against a small mailbox than a large one'
   );
 
-  // A clean mailbox is still a perfect score, whatever its size.
+  // Both ends of the range are reachable and mean something real.
   for (const total of [500, 42000, 500000]) {
     const clean = computeInboxHealthScore({
       unreadInbox: 0, spamAndTrash: 0, oldPromotions: 0, largeFiles: 0, oldMail: 0,
@@ -395,43 +393,78 @@ section('Size-relative scoring');
     });
     assert(clean === 100, `An empty mailbox of ${total} scores 100`, `got ${clean}`);
   }
+  assert(
+    computeInboxHealthScore({
+      unreadInbox: 100, spamAndTrash: 100, oldPromotions: 0, largeFiles: 0, oldMail: 0,
+      mailboxTotal: 100, inboxTotal: 100,
+    }) === 0,
+    'A mailbox that is entirely unread junk scores 0'
+  );
 
   // A tiny mailbox must not be judged a disaster over a handful of messages.
   const tiny = computeInboxHealthScore({
     unreadInbox: 3, spamAndTrash: 2, oldPromotions: 1, largeFiles: 0, oldMail: 0,
-    mailboxTotal: 40, inboxTotal: 12,
+    mailboxTotal: 400, inboxTotal: 60,
   });
-  assert(tiny >= 80, 'A nearly-empty mailbox with a few stray messages stays healthy', `got ${tiny}`);
+  assert(tiny >= 85, 'A nearly-empty mailbox with a few stray messages stays healthy', `got ${tiny}`);
 
-  // Monotonic in every input, at realistic magnitudes.
-  const fields: (keyof typeof real)[] = ['unreadInbox', 'spamAndTrash', 'oldPromotions', 'largeFiles', 'oldMail'];
+  // Monotonic in every input.
   let monotonic = true;
-  for (const f of fields) {
+  for (const f of ['unreadInbox', 'spamAndTrash', 'oldPromotions', 'largeFiles', 'oldMail']) {
     for (const n of [0, 50, 500, 5000]) {
-      const a = computeInboxHealthScore({ ...real, [f]: n });
-      const b = computeInboxHealthScore({ ...real, [f]: n * 2 + 10 });
-      if (b > a) monotonic = false;
+      if (computeInboxHealthScore({ ...real, [f]: n * 2 + 10 }) > computeInboxHealthScore({ ...real, [f]: n })) {
+        monotonic = false;
+      }
     }
   }
   assert(monotonic, 'More clutter never raises the score, for any single metric');
 
-  // Before the profile call resolves there is no denominator; the model must still
-  // return a sane score rather than dividing by zero.
+  // No denominator yet (first paint, or the profile call failed). The model must
+  // stay in range rather than dividing by zero or inventing a substitute.
   const noSize = computeInboxHealthBreakdown({
     unreadInbox: 800, spamAndTrash: 600, oldPromotions: 3000, largeFiles: 12, oldMail: 4000,
   });
-  assert(noSize.score >= 12 && noSize.score <= 100,
+  assert(noSize.score >= 0 && noSize.score <= 100,
     'A score is still produced before the mailbox size is known', `got ${noSize.score}`);
+  assert(noSize.totalDeductions === 0,
+    'An unmeasured mailbox deducts nothing rather than guessing a reference',
+    `got ${noSize.totalDeductions}`);
 
-  // The breakdown is shown as an itemised list, so the parts must still sum.
+  // The breakdown is shown as an itemised list, so the parts must sum to the whole.
   const parts = breakdown.unreadPenalty + breakdown.spamPenalty + breakdown.promoPenalty + breakdown.bloatPenalty;
   assert(Math.abs(parts - breakdown.totalDeductions) < 0.15,
-    'Itemised penalties still sum to the reported total under the new curve',
-    `${parts.toFixed(2)} vs ${breakdown.totalDeductions}`);
+    'Itemised penalties sum to the reported total', `${parts.toFixed(2)} vs ${breakdown.totalDeductions}`);
   assert(
     Math.abs((breakdown.largeFilesPenalty + breakdown.oldMailPenalty) - breakdown.bloatPenalty) < 0.15,
-    'The two bloat halves still sum to the bloat penalty'
+    'The two bloat halves sum to the bloat penalty'
   );
+
+  // Overlap guard: the four clutter queries can match the same message, so their
+  // sum may exceed the mailbox. The deduction must stay inside its budget.
+  const overlapping = computeInboxHealthBreakdown({
+    unreadInbox: 0, spamAndTrash: 9000, oldPromotions: 9000,
+    largeFiles: 9000, oldMail: 9000, mailboxTotal: 10000, inboxTotal: 100,
+  });
+  const storageBudget = 100 * (1 - ATTENTION_SHARE_OF_SCORE);
+  assert(overlapping.totalDeductions <= storageBudget + 0.15,
+    'Overlapping clutter categories cannot deduct more than the storage budget',
+    `${overlapping.totalDeductions} vs ${storageBudget}`);
+  assert(overlapping.score >= 0, 'Overlap can never drive the score below zero');
+
+  // The model must contain no per-category tuning constants: a category is judged
+  // only by how many messages it holds, so two categories holding the same number
+  // of messages must cost the same.
+  const swapA = computeInboxHealthScore({
+    unreadInbox: 0, spamAndTrash: 500, oldPromotions: 0, largeFiles: 0, oldMail: 0,
+    mailboxTotal: 20000, inboxTotal: 500,
+  });
+  const swapB = computeInboxHealthScore({
+    unreadInbox: 0, spamAndTrash: 0, oldPromotions: 0, largeFiles: 0, oldMail: 500,
+    mailboxTotal: 20000, inboxTotal: 500,
+  });
+  assert(swapA === swapB,
+    'No category is secretly weighted above another — equal counts cost equally',
+    `${swapA} vs ${swapB}`);
 }
 
 // ---------------------------------------------------------------------------

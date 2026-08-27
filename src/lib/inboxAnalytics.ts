@@ -1,4 +1,4 @@
-import { countEmails, searchEmails, scanFolderMetadata, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch, fetchMailboxSize } from './gmail';
+import { countEmails, searchEmails, scanFolderMetadata, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch, fetchMailboxComposition } from './gmail';
 import {
   extractSenderDetails, GENERIC_FREEMAIL_DOMAINS, HEALTH_SCORE_QUERIES, INBOX_STAT_QUERIES
 } from './emailUtils';
@@ -144,9 +144,8 @@ export interface InboxStats {
   updatesAndSocial: number;
   withAttachments: number;
   oldMail: number;
-  /** Real mailbox size, so clutter can be judged as a share of it. */
+  /** Measured populations the score divides each metric by. */
   mailboxTotal: number;
-  /** Real inbox size, the denominator for unread pressure. */
   inboxTotal: number;
 }
 
@@ -189,7 +188,7 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
   // Two extra requests costing one quota unit each, against the ~40 units the
   // counts below spend. Fetched in the same round so they cost no extra latency.
   const [size, unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
-    fetchMailboxSize(),
+    fetchMailboxComposition(),
     countEmails(Q.unread, STAT_PAGE_BOUND),
     countEmails(Q.oldPromo, STAT_PAGE_BOUND),
     countEmails(Q.large, STAT_PAGE_BOUND),

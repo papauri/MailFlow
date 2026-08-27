@@ -1,45 +1,33 @@
-import { countEmails, fetchMailboxSize } from './gmail';
+import { countEmails, fetchMailboxComposition } from './gmail';
 import {
   HEALTH_SCORE_QUERIES,
-  FULL_PENALTY_SHARE,
+  ATTENTION_SHARE_OF_SCORE,
   computeInboxHealthBreakdown,
   getUserManagementCounts,
   HealthScoreMetrics,
 } from './emailUtils';
 
 /**
- * Measures this mailbox so the score's thresholds can be set from evidence.
+ * Shows the score's working.
  *
- * The five `FULL_PENALTY_SHARE` values decide how much clutter earns a full
- * penalty. They were chosen by judgement, not measurement — a reasonable starting
- * point, but nothing in the codebase justified them, and a scoring model tuned
- * against nobody's real mailbox is exactly the kind of invented number this app is
- * not supposed to show people.
- *
- * This reports what the mailbox actually contains, what share of it each kind of
- * clutter occupies, and what the current thresholds make of that. Comparing the
- * "actual" column against the "threshold" column is what tells you whether a
- * threshold is set anywhere near reality.
- *
- * Costs one counting pass per metric plus two units for the size, which is the same
- * work the Inbox Score page already does on open.
+ * Nothing in the model is a chosen threshold any more, so there is nothing here to
+ * check a guess against. What this does instead is expose the measurements the
+ * score is built from — each metric, the population it was divided by, the share
+ * that produced, and the weight that population earned — so the number can be
+ * audited rather than trusted.
  */
 
 export interface MetricMeasurement {
-  id: keyof typeof FULL_PENALTY_SHARE;
   label: string;
   /** Real number of messages matching this metric's canonical query. */
   count: number;
-  /** The denominator this metric is judged against, and which one it is. */
-  denominator: number;
-  denominatorName: 'mailbox' | 'inbox';
-  /** count / denominator. The figure the threshold is compared against. */
-  actualShare: number;
-  /** The configured full-penalty share for this metric. */
-  thresholdShare: number;
-  /** Points currently deducted, and the most this metric can deduct. */
+  /** The measured population it is judged against, and what that population is. */
+  population: number;
+  populationLabel: string;
+  /** count / population. Bounded [0,1] by construction. */
+  share: number;
+  /** Points this metric is currently costing. */
   penalty: number;
-  maxPenalty: number;
 }
 
 export interface CalibrationReport {
@@ -52,17 +40,9 @@ export interface CalibrationReport {
   managementBonus: number;
 }
 
-const MAX_PENALTY = {
-  unread: 35,
-  spamAndTrash: 25,
-  oldPromotions: 20,
-  largeFiles: 6,
-  oldMail: 4,
-} as const;
-
 export async function measureMailbox(): Promise<CalibrationReport> {
-  const [size, unread, spamAndTrash, oldPromotions, largeFiles, oldMail] = await Promise.all([
-    fetchMailboxSize(),
+  const [composition, unread, spamAndTrash, oldPromotions, largeFiles, oldMail] = await Promise.all([
+    fetchMailboxComposition(),
     countEmails(HEALTH_SCORE_QUERIES.unread),
     countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
     countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
@@ -71,7 +51,7 @@ export async function measureMailbox(): Promise<CalibrationReport> {
   ]);
 
   const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
-  const metricsInput: HealthScoreMetrics = {
+  const input: HealthScoreMetrics = {
     unreadInbox: unread,
     spamAndTrash,
     oldPromotions,
@@ -79,107 +59,80 @@ export async function measureMailbox(): Promise<CalibrationReport> {
     oldMail,
     unsubscribedCount,
     activeFiltersCount,
-    mailboxTotal: size.mailboxTotal,
-    inboxTotal: size.inboxTotal,
+    ...composition,
   };
-  const breakdown = computeInboxHealthBreakdown(metricsInput);
+  const b = computeInboxHealthBreakdown(input);
 
-  // Unread is judged against the inbox; everything else against the whole mailbox.
-  const inboxDenominator = size.inboxTotal || size.mailboxTotal;
-
-  const share = (count: number, denominator: number) =>
-    denominator > 0 ? count / denominator : 0;
+  const share = (count: number, population: number) =>
+    population > 0 ? Math.min(1, count / population) : 0;
 
   const metrics: MetricMeasurement[] = [
     {
-      id: 'unread', label: 'Unread in inbox',
-      count: unread, denominator: inboxDenominator, denominatorName: 'inbox',
-      actualShare: share(unread, inboxDenominator),
-      thresholdShare: FULL_PENALTY_SHARE.unread,
-      penalty: breakdown.unreadPenalty, maxPenalty: MAX_PENALTY.unread,
+      label: 'Unread in inbox', count: unread,
+      population: composition.inboxTotal, populationLabel: 'inbox',
+      share: share(unread, composition.inboxTotal), penalty: b.unreadPenalty,
     },
     {
-      id: 'spamAndTrash', label: 'Spam & trash',
-      count: spamAndTrash, denominator: size.mailboxTotal, denominatorName: 'mailbox',
-      actualShare: share(spamAndTrash, size.mailboxTotal),
-      thresholdShare: FULL_PENALTY_SHARE.spamAndTrash,
-      penalty: breakdown.spamPenalty, maxPenalty: MAX_PENALTY.spamAndTrash,
+      label: 'Spam & trash', count: spamAndTrash,
+      population: composition.mailboxTotal, populationLabel: 'whole mailbox',
+      share: share(spamAndTrash, composition.mailboxTotal), penalty: b.spamPenalty,
     },
     {
-      id: 'oldPromotions', label: 'Stale promotions (>6m)',
-      count: oldPromotions, denominator: size.mailboxTotal, denominatorName: 'mailbox',
-      actualShare: share(oldPromotions, size.mailboxTotal),
-      thresholdShare: FULL_PENALTY_SHARE.oldPromotions,
-      penalty: breakdown.promoPenalty, maxPenalty: MAX_PENALTY.oldPromotions,
+      label: 'Stale promotions', count: oldPromotions,
+      population: composition.mailboxTotal, populationLabel: 'whole mailbox',
+      share: share(oldPromotions, composition.mailboxTotal), penalty: b.promoPenalty,
     },
     {
-      id: 'largeFiles', label: 'Large files (>5MB)',
-      count: largeFiles, denominator: size.mailboxTotal, denominatorName: 'mailbox',
-      actualShare: share(largeFiles, size.mailboxTotal),
-      thresholdShare: FULL_PENALTY_SHARE.largeFiles,
-      penalty: breakdown.largeFilesPenalty, maxPenalty: MAX_PENALTY.largeFiles,
+      label: 'Large files (>5MB)', count: largeFiles,
+      population: composition.mailboxTotal, populationLabel: 'whole mailbox',
+      share: share(largeFiles, composition.mailboxTotal), penalty: b.largeFilesPenalty,
     },
     {
-      id: 'oldMail', label: 'Old mail (>1y)',
-      count: oldMail, denominator: size.mailboxTotal, denominatorName: 'mailbox',
-      actualShare: share(oldMail, size.mailboxTotal),
-      thresholdShare: FULL_PENALTY_SHARE.oldMail,
-      penalty: breakdown.oldMailPenalty, maxPenalty: MAX_PENALTY.oldMail,
+      label: 'Old mail (>1y)', count: oldMail,
+      population: composition.mailboxTotal, populationLabel: 'whole mailbox',
+      share: share(oldMail, composition.mailboxTotal), penalty: b.oldMailPenalty,
     },
   ];
 
   return {
     measuredAt: new Date().toISOString(),
-    mailboxTotal: size.mailboxTotal,
-    inboxTotal: size.inboxTotal,
+    ...composition,
     metrics,
-    score: breakdown.score,
-    totalDeductions: breakdown.totalDeductions,
-    managementBonus: breakdown.managementBonus,
+    score: b.score,
+    totalDeductions: b.totalDeductions,
+    managementBonus: b.managementBonus,
   };
 }
 
-const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
+const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const num = (n: number) => n.toLocaleString();
 
-/**
- * Plain-text report, formatted to be pasted somewhere and read.
- *
- * Deliberately shows the threshold beside the measured share for each metric, and
- * flags the two states that mean a threshold is set wrong: a metric already past
- * its full-penalty point has no room left to reward cleanup, and one far below it
- * is being ignored no matter how much of it there is.
- */
+/** Plain-text report, formatted to be pasted somewhere and read. */
 export function formatCalibrationReport(r: CalibrationReport): string {
-  const lines: string[] = [];
-  lines.push('INBOX HEALTH — MEASURED CALIBRATION');
-  lines.push(`Measured ${r.measuredAt}`);
-  lines.push('');
-  lines.push(`Mailbox total   ${num(r.mailboxTotal)} messages`);
-  lines.push(`Inbox total     ${num(r.inboxTotal)} messages`);
-  lines.push('');
-  lines.push('METRIC                    COUNT        ACTUAL   THRESHOLD   PENALTY   VERDICT');
-
+  const L: string[] = [];
+  L.push('INBOX HEALTH — MEASURED');
+  L.push(`Measured ${r.measuredAt}`);
+  L.push('');
+  L.push('POPULATIONS READ FROM THIS MAILBOX');
+  L.push(`  Whole mailbox   ${num(r.mailboxTotal)}`);
+  L.push(`  Inbox           ${num(r.inboxTotal)}`);
+  L.push('');
+  L.push('METRIC              COUNT   OF POPULATION            SHARE   COSTS');
   for (const m of r.metrics) {
-    const ratio = m.thresholdShare > 0 ? m.actualShare / m.thresholdShare : 0;
-    const verdict =
-      ratio >= 1 ? 'AT/OVER CAP — no room to improve'
-        : ratio >= 0.5 ? 'in range'
-          : ratio >= 0.1 ? 'low — threshold may be too lenient'
-            : 'barely registers — threshold likely too high';
-    lines.push(
-      `${m.label.padEnd(24)} ${num(m.count).padStart(8)} ${pct(m.actualShare).padStart(12)} ` +
-      `${pct(m.thresholdShare).padStart(11)} ${`${m.penalty}/${m.maxPenalty}`.padStart(9)}   ${verdict}`
+    const of = m.population > 0 ? `${num(m.population)} ${m.populationLabel}` : 'not measured';
+    L.push(
+      `${m.label.padEnd(19)} ${num(m.count).padStart(6)}   ${of.padEnd(24)} ` +
+      `${pct(m.share).padStart(6)}   ${m.penalty.toFixed(1).padStart(5)}`
     );
   }
-
-  lines.push('');
-  lines.push(`Total deductions  -${r.totalDeductions}`);
-  lines.push(`Management bonus  +${r.managementBonus}`);
-  lines.push(`SCORE             ${r.score} / 100`);
-  lines.push('');
-  lines.push('ACTUAL is what this mailbox contains. THRESHOLD is where the penalty is');
-  lines.push('~fully earned. If ACTUAL sits far below THRESHOLD the metric is being');
-  lines.push('under-weighted; if it is at or over, the metric has stopped responding.');
-  return lines.join('\n');
+  L.push('');
+  L.push(`Total deductions  -${r.totalDeductions}`);
+  L.push(`Management bonus  +${r.managementBonus}`);
+  L.push(`SCORE             ${r.score} / 100`);
+  L.push('');
+  L.push(`Attention (unread) is ${Math.round(ATTENTION_SHARE_OF_SCORE * 100)}% of the score. The other`);
+  L.push(`${Math.round((1 - ATTENTION_SHARE_OF_SCORE) * 100)}% is the share of the mailbox that is clearable,`);
+  L.push('with every clutter message counting the same. No thresholds, no per-category');
+  L.push('weights — SHARE is simply the count divided by its population.');
+  return L.join('\n');
 }
