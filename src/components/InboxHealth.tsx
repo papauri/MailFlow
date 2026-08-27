@@ -4,25 +4,15 @@ import { buildRecommendations } from '../lib/recommendations';
 import { formatBytes } from '../lib/csvExport';
 import { PageHeader } from './PageHeader';
 import {
-  fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult
+  fetchInboxStats, fetchSenderClusters, inboxStatsKey, senderClustersKey, InboxStatsResult, InboxStats
 } from '../lib/inboxAnalytics';
 import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { WalkthroughTip } from "./WalkthroughTip";
 import { SketchLoadingState } from "./SketchLoader";
-import { CategoryDistributionModal } from './CategoryDistributionModal';
-import { UnsubscribeManager } from "./UnsubscribeManager";
-import { LabelManagerModal } from "./LabelManagerModal";
-import { HealthScoreModal } from './HealthScoreModal';
 import { StorageBreakdownBar } from './StorageBreakdownBar';
-import { extractSenderDetails, extractRootDomain, GENERIC_FREEMAIL_DOMAINS, computeInboxHealthScore } from '../lib/emailUtils';
+import { computeInboxHealthScore, getUserManagementCounts } from '../lib/emailUtils';
 
 export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, onRefresh, isAiWorking }: { userEmail?: string, onApplyQuery: (q: string, filter?: string, sortOption?: "date" | "size" | "sender", metadata?: any) => void, aiSettings?: any, userLabels?: any[], onRefresh?: () => void, isAiWorking?: boolean }) {
-  const [isChartModalOpen, setIsChartModalOpen] = useState(false);
-  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
-  const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
-  const [isHealthScoreModalOpen, setIsHealthScoreModalOpen] = useState(false);
-
   // Data lives in the shared cache, so this component can unmount freely without
   // costing a full re-analysis on the way back in.
   const statsResource = useCachedResource(inboxStatsKey(userEmail), () => fetchInboxStats());
@@ -56,10 +46,6 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   };
 
 
-  const [showOverview, setShowOverview] = useState(true);
-  const [showQuickFilters, setShowQuickFilters] = useState(true);
-  const [showAnalytics, setShowAnalytics] = useState(true);
-
   // Patch the cached counts the instant an action lands so the UI never lags. The
   // shared cache also marks itself stale on these events and revalidates quietly in
   // the background, so these optimistic numbers get reconciled with Gmail shortly
@@ -67,18 +53,28 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
   useEffect(() => {
     const handleMetricsUpdated = (e: any) => {
       const { type, count, isPartial } = e.detail || {};
+
+      // Which stat each event touches, in one place. Events naming anything else
+      // (a new rule, a category with no matching counter) fall through untouched —
+      // the cache is invalidated regardless, so the honest response to an event we
+      // cannot map is to let the background revalidation supply the real number
+      // rather than subtract it from whichever tile happens to be nearby.
+      const FIELD: Record<string, keyof InboxStats> = {
+        unread: 'unread',
+        spam: 'spamAndTrash',
+        promo: 'oldPromo',
+        large: 'large',
+        oldMail: 'oldMail',
+        updatesAndSocial: 'updatesAndSocial',
+      };
+      const field = FIELD[type];
+      if (!field) return;
+
       mutateCachedResource<InboxStatsResult>(inboxStatsKey(userEmail), (prev) => {
         if (!prev) return prev;
         const stats = { ...prev.stats };
-        if (type === 'unread') {
-          stats.unread = isPartial ? Math.max(0, stats.unread - count) : 0;
-        } else if (type === 'spam') {
-          stats.spamAndTrash = isPartial ? Math.max(0, stats.spamAndTrash - count) : 0;
-        } else if (type === 'promo') {
-          stats.oldPromo = isPartial ? Math.max(0, stats.oldPromo - count) : 0;
-        } else if (type === 'large') {
-          stats.large = isPartial ? Math.max(0, stats.large - count) : 0;
-        }
+        const applied = Number(count) || 0;
+        stats[field] = isPartial ? Math.max(0, stats[field] - applied) : 0;
         return { ...prev, stats };
       });
     };
@@ -87,13 +83,49 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
     return () => window.removeEventListener('inbox_metrics_updated', handleMetricsUpdated);
   }, [userEmail]);
 
+  /**
+   * The score itself, not a proxy for it.
+   *
+   * This card is titled "Inbox Score" and was showing the raw unread count, so an
+   * inbox with 812 unread displayed "812" next to the word Score — a number that
+   * looks like a score, reads like a score, and is off by an order of magnitude from
+   * the one behind the card. Computed here from the same model and the same counts
+   * the Inbox Score page uses, so the two always agree.
+   */
+  const healthScore = useMemo(() => {
+    if (!stats) return null;
+    const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
+    return computeInboxHealthScore({
+      unreadInbox: stats.unread,
+      spamAndTrash: stats.spamAndTrash,
+      oldPromotions: stats.oldPromo,
+      largeFiles: stats.large,
+      oldMail: stats.oldMail,
+      unsubscribedCount,
+      activeFiltersCount,
+    });
+  }, [stats]);
+
   // Personalised, ranked next steps derived from this inbox's real numbers.
   const recommendations = useMemo(
     () => buildRecommendations(stats, sizes, topSenders),
     [stats, sizes, topSenders]
   );
-  const totalReclaimable = useMemo(
-    () => recommendations.reduce((sum, r) => sum + r.bytesReclaimed, 0),
+  /**
+   * A reclaimable figure that is actually true.
+   *
+   * This was the sum of every recommendation's bytes, and those sets overlap by
+   * construction: a 9 MB attachment from two years ago is counted by "large
+   * attachments" and again by "mail older than a year", and a stale promo older than
+   * a year is counted twice as well. Summing them produced a headline number larger
+   * than the storage that exists to reclaim, and no clean-up could ever match it.
+   *
+   * The exact size of the union is not knowable without more queries than this badge
+   * is worth, but the largest single category is a floor that always holds — so the
+   * claim is stated as a floor.
+   */
+  const leastReclaimable = useMemo(
+    () => recommendations.reduce((max, r) => Math.max(max, r.bytesReclaimed), 0),
     [recommendations]
   );
 
@@ -130,9 +162,9 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
               <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                 {recommendations.length > 0 ? 'Start here' : "You're all caught up"}
               </h3>
-              {totalReclaimable > 0 && (
+              {leastReclaimable > 0 && (
                 <span className="text-[11px] font-semibold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200">
-                  {formatBytes(totalReclaimable)} reclaimable
+                  at least {formatBytes(leastReclaimable)} reclaimable
                 </span>
               )}
             </div>
@@ -236,8 +268,8 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
               />
               <HealthCard
                 title="Inbox Score"
-                count={stats?.unread}
-                desc="See how healthy your inbox is based on unread counts and clutter."
+                count={healthScore === null ? '—' : `${healthScore}/100`}
+                desc="How healthy your inbox is, from unread pressure, clutter and storage."
                 actionText="Check Score"
                 onAction={() => { window.location.hash = '#health-score'; }}
               />
@@ -324,42 +356,11 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
         </div>
       </div>
 
-      <UnsubscribeManager isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} onApplyQuery={onApplyQuery} aiSettings={aiSettings} />
-
-      <LabelManagerModal
-        isOpen={isLabelManagerOpen}
-        onClose={() => setIsLabelManagerOpen(false)}
-        userLabels={userLabels || []}
-        onLabelsUpdated={() => {
-          statsResource.refresh();
-          clustersResource.refresh();
-          if (onRefresh) onRefresh();
-        }}
-        onApplyQuery={onApplyQuery}
-      />
-
-      <HealthScoreModal
-        isOpen={isHealthScoreModalOpen}
-        onClose={() => setIsHealthScoreModalOpen(false)}
-        onApplyQuery={onApplyQuery}
-        onOpenUnsubscribe={() => {
-          setIsHealthScoreModalOpen(false);
-          setIsUnsubscribeModalOpen(true);
-        }}
-      />
     </div>
   );
 }
 
-function formatSize(bytes: number) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-function HealthCard({ id, title, count, desc, actionText, onAction, sizeEstimate }: any) {
+function HealthCard({ id, title, count, desc, actionText, onAction }: any) {
   const displayCount = typeof count === 'string' ? count : (count || 0).toLocaleString();
   return (
     <button 
@@ -377,11 +378,6 @@ function HealthCard({ id, title, count, desc, actionText, onAction, sizeEstimate
       <div className="flex flex-col items-start pt-2 mt-auto shrink-0 w-full">
         <div className="flex items-baseline gap-2">
            <span className="text-xl font-bold text-slate-800 tracking-tight">{displayCount}</span>
-           {sizeEstimate > 0 && (
-              <span className="text-[10px] font-semibold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 text-left whitespace-nowrap">
-                ~{formatSize(sizeEstimate)}
-              </span>
-           )}
         </div>
         <div className="flex items-center text-[11px] font-semibold text-slate-500 group-hover:text-slate-900 transition-colors mt-2">
           {actionText}
@@ -389,38 +385,5 @@ function HealthCard({ id, title, count, desc, actionText, onAction, sizeEstimate
         </div>
       </div>
     </button>
-  );
-}
-
-function PipelineLayer({ step, title, icon, description, count, actionText, onAction }: any) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-start md:items-center shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 group-hover:bg-slate-1000 transition-colors"></div>
-      
-      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 shrink-0">
-        {icon}
-      </div>
-      
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[10px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{step}</span>
-          <h4 className="font-bold text-slate-900 text-base">{title}</h4>
-        </div>
-        <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">{description}</p>
-      </div>
-      
-      <div className="flex flex-col items-start md:items-end shrink-0 w-full md:w-auto mt-4 md:mt-0 gap-3">
-         <div className="text-sm font-medium text-slate-500 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-           ~{(count || 0).toLocaleString()} Processed
-         </div>
-         <button 
-            onClick={onAction}
-            className="text-sm font-medium text-slate-800 hover:text-slate-950 flex items-center gap-1 group-hover:underline"
-          >
-            {actionText}
-            <ArrowRight className="w-4 h-4" />
-         </button>
-      </div>
-    </div>
   );
 }

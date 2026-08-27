@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, SlidersHorizontal, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
-import { buildRoutingSuggestions } from '../lib/foldingModel';
+import { buildRoutingSuggestions, countDistinctSenders } from '../lib/foldingModel';
 import { PageHeader } from './PageHeader';
 import { useCachedResource } from '../lib/useCachedResource';
 import { fetchRoutingSample, routingSampleKey, RoutingSample } from '../lib/inboxAnalytics';
@@ -57,10 +57,7 @@ export function FolderOptimizer({
     [sampleEmails, userLabels]
   );
 
-  const senderCount = useMemo(
-    () => new Set(sampleEmails.map((e: any) => (e.sender || '').toLowerCase())).size,
-    [sampleEmails]
-  );
+  const senderCount = useMemo(() => countDistinctSenders(sampleEmails), [sampleEmails]);
 
   const refreshButton = (
     <button

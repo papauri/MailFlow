@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Layers, FolderPlus, Tag, Check, Loader2, X, AlertCircle, BarChart2, Trash2, Archive, SlidersHorizontal } from 'lucide-react';

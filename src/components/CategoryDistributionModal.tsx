@@ -127,6 +127,21 @@ export interface CategoryDiagnostic {
   practicalAdvice?: string;
 }
 
+/**
+ * Which Inbox Health counter an action in this category should optimistically patch.
+ *
+ * Only some categories map onto a counter Inbox Health tracks. Returning null for
+ * the rest is deliberate: the cache is invalidated and revalidated either way, so
+ * the honest outcome of clearing Forums is a brief revalidation, not a wrong number
+ * subtracted from an unrelated tile.
+ */
+function optimisticMetricFor(categoryId: string): string | null {
+  if (categoryId === 'promotions') return 'promo';
+  if (categoryId === 'spam') return 'spam';
+  if (categoryId === 'updates' || categoryId === 'social') return 'updatesAndSocial';
+  return null;
+}
+
 /** First, blocking fetch: one detail request per thread, so keep it small. */
 /** Upper bound on a single category scan, so cost stays predictable. */
 const MAX_SCAN = 3000;
@@ -323,7 +338,14 @@ export function CategoryDistributionModal({
    * available regardless of AI quota — recomputed straight from the fetched sample.
    */
   const cleanupAnalysis = useMemo(
-    () => (categoryEmails.length > 0 ? analyseCleanup(categoryEmails) : null),
+    () => (categoryEmails.length > 0
+      ? analyseCleanup(categoryEmails, new Date(), {
+          // The scan only saw this category, so the actions must only touch it.
+          // Unscoped, a card measured against Promotions would have trashed the
+          // sender's Primary and Sent mail too.
+          scopeQuery: (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query,
+        })
+      : null),
     [categoryEmails, selectedCategory]
   );
 
@@ -664,8 +686,11 @@ export function CategoryDistributionModal({
                     const gone = new Set(cluster.ids);
                     mutateCachedResource<any[]>(categoryScanKey(selectedCategory, userEmail),
                       prev => (prev || []).filter((e: any) => !gone.has(e.id)));
+                    // Named by the category actually cleared. This was hardcoded to
+                    // 'promo', so clearing Social or Updates decremented the stale
+                    // promotions counter and every surface reading it went wrong.
                     window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
-                      detail: { type: 'promo', count, isPartial: true }
+                      detail: { type: optimisticMetricFor(selectedCategory), count, isPartial: true }
                     }));
                   }}
                 />
@@ -688,9 +713,11 @@ export function CategoryDistributionModal({
                   }}
                   onCompleted={(rec, processed) => {
                     setTotalCleanedInSession(prev => prev + processed);
-                    mutateCachedResource<any[]>(categoryScanKey(selectedCategory, userEmail), prev => (prev || []).filter((e: any) => !rec.ids.includes(e.id)));
+                    const gone = new Set(rec.ids);
+                    mutateCachedResource<any[]>(categoryScanKey(selectedCategory, userEmail),
+                      prev => (prev || []).filter((e: any) => !gone.has(e.id)));
                     window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
-                      detail: { type: 'promo', count: processed, isPartial: true }
+                      detail: { type: optimisticMetricFor(selectedCategory), count: processed, isPartial: true }
                     }));
                   }}
                 />

@@ -1,21 +1,12 @@
+// Must stay the first import: it installs the browser globals as a side effect,
+// and firebase.ts caches its access token from sessionStorage at module scope.
+import { stubGmail, messagePage } from './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import Dashboard from '../src/components/Dashboard';
-import { EmailData, countEmails } from '../src/lib/gmail';
+import { EmailData, countEmails, processInChunks, COUNT_MAX_PAGES } from '../src/lib/gmail';
 import * as fs from 'fs';
-
-// Mock localStorage and window for SSR testing
-if (typeof globalThis.localStorage === 'undefined') {
-  const store = new Map<string, string>();
-  globalThis.localStorage = {
-    getItem: (k: string) => store.get(k) || null,
-    setItem: (k: string, v: string) => { store.set(k, v); },
-    removeItem: (k: string) => { store.delete(k); },
-    clear: () => store.clear(),
-    key: (i: number) => Array.from(store.keys())[i] || null,
-    length: store.size,
-  } as any;
-}
 
 let passed = 0;
 let failed = 0;
@@ -33,6 +24,8 @@ function assert(condition: boolean, testName: string, details?: string) {
 }
 
 console.log('=== Milestone 2 (R2: Pagination, Counts, and Sorting) Adversarial Challenge Harness ===\n');
+
+async function main() {
 
 const dashboardCode = fs.readFileSync('src/components/Dashboard.tsx', 'utf-8');
 const gmailCode = fs.readFileSync('src/lib/gmail.ts', 'utf-8');
@@ -75,13 +68,48 @@ console.log('[Suite 1] Static Code Audit: Sorting Logic & Null-Safety');
 // -------------------------------------------------------------
 console.log('\n[Suite 2] Static Code Audit: Pagination & Total Count');
 {
-  // Check countEmails implementation
-  assert(
-    gmailCode.includes('export async function countEmails(query: string): Promise<number | string>') &&
-    gmailCode.includes('pages < 10') &&
-    gmailCode.includes('"5,000+"'),
-    'countEmails traverses up to 10 pages (5,000 items) and returns exact count or "5,000+"'
-  );
+  // countEmails, exercised rather than grepped.
+  //
+  // This previously asserted that gmail.ts contained the literal strings
+  // `pages < 10` and `"5,000+"`. Both describe a contract the code has since
+  // moved on from — the cap is COUNT_MAX_PAGES and the return type is a number —
+  // and neither substring proved the pagination loop worked. These drive the real
+  // function against a scripted transport instead.
+  await (async () => {
+    // A result set that fits in one page is counted exactly, in one request.
+    const single = stubGmail(() => ({ body: messagePage(37) }));
+    const exact = await countEmails('in:inbox');
+    single.restore();
+    assert(exact === 37, 'countEmails returns an exact count for a single-page result set', `got ${exact}`);
+    assert(single.requests.length === 1, 'A single-page count costs exactly one request', `got ${single.requests.length}`);
+
+    // Multi-page: it must follow nextPageToken and total every page.
+    const pages = stubGmail((req) => {
+      if (!req.pageToken) return { body: messagePage(500, 'p1') };
+      if (req.pageToken === 'p1') return { body: messagePage(500, 'p2') };
+      return { body: messagePage(120) };
+    });
+    const paged = await countEmails('in:anywhere');
+    pages.restore();
+    assert(paged === 1120, 'countEmails sums every page it walks', `got ${paged}`);
+    assert(pages.requests.length === 3, 'countEmails stops as soon as a page has no nextPageToken', `got ${pages.requests.length}`);
+
+    // Past the bound it falls back to Gmail's own estimate, and must never report
+    // fewer than the messages it actually saw.
+    const huge = stubGmail(() => ({ body: messagePage(500, 'more', 250_000) }));
+    const bounded = await countEmails('in:anywhere');
+    huge.restore();
+    assert(huge.requests.length === COUNT_MAX_PAGES,
+      `countEmails stops walking at its ${COUNT_MAX_PAGES}-page bound`, `got ${huge.requests.length}`);
+    assert(bounded >= COUNT_MAX_PAGES * 500,
+      'A bounded count never reports fewer messages than it counted', `got ${bounded}`);
+
+    // A transport failure is absorbed, not propagated into the UI as a crash.
+    const broken = stubGmail(() => ({ status: 500, body: { error: { message: 'boom' } } }));
+    const failedCount = await countEmails('in:inbox');
+    broken.restore();
+    assert(failedCount === 0, 'countEmails degrades to 0 rather than throwing', `got ${failedCount}`);
+  })();
 
   // Check encodeURIComponent on pageToken in countEmails
   assert(
@@ -96,13 +124,36 @@ console.log('\n[Suite 2] Static Code Audit: Pagination & Total Count');
     'Dashboard employs searchIdRef to discard out-of-order responses from stale searches'
   );
 
-  // Check Load More implementation
+  // Load More: the page cursor is encoded, and metadata is fetched in batches.
+  //
+  // The chunk size is a tuning constant, not a contract — asserting the literal 15
+  // made a routine change look like a regression. What matters is that the cursor
+  // is URI-encoded and that batching actually batches, so both are checked directly.
   assert(
     dashboardCode.includes('const handleLoadMore = async () => {') &&
-    dashboardCode.includes('pageToken=${encodeURIComponent(currentToken)}') &&
-    dashboardCode.includes('processInChunks(results.messages, 15,'),
-    'handleLoadMore fetches next batch with pageToken and batches metadata in chunks of 15'
+    dashboardCode.includes('pageToken=${encodeURIComponent(currentToken)}'),
+    'handleLoadMore pages with a URI-encoded pageToken'
   );
+
+  await (async () => {
+    const seen: number[] = [];
+    let concurrent = 0;
+    let peak = 0;
+    const items = Array.from({ length: 47 }, (_, i) => i);
+    const out = await processInChunks(items, 15, async (n: number) => {
+      concurrent++;
+      peak = Math.max(peak, concurrent);
+      await Promise.resolve();
+      seen.push(n);
+      concurrent--;
+      return n * 2;
+    });
+    assert(out.length === 47 && out[46] === 92,
+      'processInChunks preserves order and length across an uneven final chunk',
+      `len ${out.length}, last ${out[46]}`);
+    assert(peak <= 15,
+      'processInChunks never runs more than the chunk size at once', `peak ${peak}`);
+  })();
 
   // Check deduplication when appending emails
   assert(
@@ -216,3 +267,9 @@ if (failed > 0) {
   console.log('ALL ADVERSARIAL CHALLENGE TESTS PASSED!');
   process.exit(0);
 }
+}
+
+main().catch(err => {
+  console.error('Fatal error in adversarial harness:', err);
+  process.exit(1);
+});

@@ -16,6 +16,12 @@ const testSuites: TestSuite[] = [
     description: 'Per-endpoint pricing, 250 u/s ceiling under concurrent load, 403/429 throttle handling'
   },
   {
+    name: 'Inbox Health Analytics & Algorithm Verification',
+    file: 'tests/inbox_health_analytics_verification.ts',
+    milestone: 'Analytics',
+    description: 'Gmail query integrity, health scoring, sender parsing, cleanup/routing/audit models, export rows'
+  },
+  {
     name: 'M1 Mobile Responsive Design Stress Test',
     file: 'tests/m1_stress_test.tsx',
     milestone: 'M1 (R1)',
@@ -149,7 +155,7 @@ async function main() {
   console.log('======================================================================');
   console.log('               MAILFLOW UNIFIED TEST RUNNER (ALL SUITES)              ');
   console.log('======================================================================\n');
-  console.log(`Discovered ${testSuites.length} test suites across Milestones M1, M2, M3, and M4.\n`);
+  console.log(`Discovered ${testSuites.length} test suites across Analytics and Milestones M1, M2, M3, and M4.\n`);
 
   const results: SuiteResult[] = [];
   const globalStart = Date.now();

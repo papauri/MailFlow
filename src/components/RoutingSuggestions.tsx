@@ -143,8 +143,10 @@ export function RoutingSuggestions({
       if (isFolderMode) {
         // Backlog only. Deliberately creates no filter: the user asked to organise
         // what exists, not to change what happens to mail they haven't received.
-        if (s.ids.length > 0) {
-          await batchModifyEmails(s.ids, [labelId], ['INBOX']);
+        // `actionIds` and not `ids`: batchModify is a messages endpoint, and `ids`
+        // holds thread ids from the sample.
+        if (s.actionIds.length > 0) {
+          await batchModifyEmails(s.actionIds, [labelId], ['INBOX']);
         }
       } else {
         // Future only, which is what a rule means. The backlog is left alone so this

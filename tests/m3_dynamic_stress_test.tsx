@@ -1,3 +1,6 @@
+// Must stay first: installs browser globals before any app module is evaluated.
+import './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { CategoryDistributionModal } from '../src/components/CategoryDistributionModal';
@@ -53,12 +56,16 @@ async function runDynamicLifecycleStressTests() {
       onApplyCategory={() => {}}
     />
   );
+  // The view was rebuilt around a category scanner, so its chrome is no longer a
+  // dialog header plus "Refresh Counts"/"Done" footer buttons. Pinning those exact
+  // strings asserted the old layout, not that the view renders. What has to hold is
+  // that an open render produces the panels a user needs to act on.
   assert(
-    openRender.includes('Inbox Category Distribution') &&
-    openRender.includes('Breakdown of mailbox volume across Gmail categories') &&
-    openRender.includes('Refresh Counts') &&
-    openRender.includes('Done'),
-    'Initial render of open modal outputs header, description, and footer action buttons'
+    openRender.includes('Category Breakdown') &&
+    openRender.includes('Volume Distribution') &&
+    openRender.includes('Category Scanner'),
+    'Initial render of the open view outputs its title and both analysis panels',
+    openRender.slice(0, 200)
   );
 
   const closedRender = renderToString(

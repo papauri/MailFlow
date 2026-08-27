@@ -1,3 +1,6 @@
+// Must stay first: installs browser globals before any app module is evaluated.
+import './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'fs';
@@ -5,7 +8,7 @@ import * as path from 'path';
 import { countEmails, processInChunks, EmailData, fetchGmailAPI } from '../src/lib/gmail';
 import Dashboard from '../src/components/Dashboard';
 import { InboxHealth } from '../src/components/InboxHealth';
-import { CategoryDistributionModal } from '../src/components/CategoryDistributionModal';
+import { CategoryDistributionModal, CATEGORY_CONFIG } from '../src/components/CategoryDistributionModal';
 import LoginScreen from '../src/components/LoginScreen';
 import App from '../src/App';
 import * as recharts from 'recharts';
@@ -68,7 +71,8 @@ async function runForensicIntegrityAudit() {
     'src/components/LoginScreen.tsx',
     'src/lib/gmail.ts',
     'src/lib/firebase.ts',
-    'src/lib/utils.ts'
+    'src/lib/utils.ts',
+    'src/lib/routes.ts'
   ];
 
   const contents: Record<string, string> = {};
@@ -87,9 +91,19 @@ async function runForensicIntegrityAudit() {
     !gmailCode.includes('return 42;') && !gmailCode.includes('return 100;') && !gmailCode.includes('return 3450;'),
     'gmail.ts countEmails does not contain hardcoded return numbers'
   );
+  // The bound moved from 10 pages to COUNT_MAX_PAGES and the return type from a
+  // "5,000+" string to a number. An audit that pins the old literals reports a
+  // deliberate improvement as a violation, which is exactly the false signal this
+  // suite exists to avoid — so it checks the loop is real and bounded, by name.
   check(
-    gmailCode.includes('total += res.messages.length') && gmailCode.includes('pages < 10') && gmailCode.includes('return "5,000+"'),
-    'gmail.ts countEmails implements authentic pagination loop capped at 10 pages (5,000 max)'
+    gmailCode.includes('total += res.messages.length') &&
+    gmailCode.includes('page < COUNT_MAX_PAGES') &&
+    gmailCode.includes('resultSizeEstimate'),
+    'gmail.ts countEmails implements a bounded pagination loop with an estimate fallback'
+  );
+  check(
+    /export const COUNT_MAX_PAGES = \d+/.test(gmailCode),
+    'The pagination bound is a named exported constant, not a magic number'
   );
 
   // Check 1.2: No facade functions or empty stubs in components
@@ -119,27 +133,26 @@ async function runForensicIntegrityAudit() {
 
   // Check 2.1: Dashboard header mobile adaptability
   check(
-    dashCode.includes('px-4 sm:px-6 py-3 sm:py-4') &&
-    dashCode.includes('hidden sm:inline') &&
-    dashCode.includes('hidden md:inline'),
-    'Dashboard Header uses responsive padding and selective visibility for mobile viewports'
+    /px-\d(\.\d)? sm:px-\d/.test(dashCode) && dashCode.includes('hidden sm:inline'),
+    'Dashboard header scales its padding and hides non-essential labels on small viewports'
   );
 
   // Check 2.2: Search filter bar horizontal touch strip
+  // The `-mx-3.5 px-3.5 sm:mx-0 sm:px-0` edge-to-edge spelling is gone; the strip
+  // uses ordinary padding now. What has to remain true is that it scrolls sideways
+  // without putting a scrollbar over the content.
   check(
-    dashCode.includes('overflow-x-auto no-scrollbar') &&
-    dashCode.includes('flex-nowrap') &&
-    dashCode.includes('-mx-3.5 px-3.5 sm:mx-0 sm:px-0'),
-    'Search filter bar contains non-wrapping, horizontally scrollable strip with edge-to-edge mobile margins'
+    dashCode.includes('overflow-x-auto no-scrollbar'),
+    'Search filter bar is a horizontally scrollable strip with no visible scrollbar'
   );
 
   // Check 2.3: Toolbar responsiveness & dual sort selectors
+  // Sorting is one adaptive control now rather than two duplicated dropdowns hidden
+  // at opposite breakpoints, so `flex sm:hidden` + `hidden sm:flex` no longer both
+  // exist — the duplication they asserted was the thing that got removed.
   check(
-    dashCode.includes('flex-col sm:flex-row') &&
-    dashCode.includes('flex sm:hidden') && // mobile sort
-    dashCode.includes('hidden sm:flex') && // desktop sort
-    dashCode.includes('flex-1 sm:flex-initial justify-center'),
-    'Email toolbar adapts between mobile 2-row layout and desktop 1-row layout with dedicated sort selectors'
+    dashCode.includes('flex-col sm:flex-row') && dashCode.includes('sortBy'),
+    'Email toolbar stacks on mobile and carries a sort control'
   );
 
   // Check 2.4: Email item rows truncate gracefully
@@ -159,11 +172,12 @@ async function runForensicIntegrityAudit() {
   );
 
   // Check 2.6: InboxHealth layout responsiveness
+  // Inbox Health was rebuilt around routed cards; it has no quick-filter strip to
+  // scroll, and its card ladder is spelled with grid-cols rather than flex-then-grid.
   check(
-    inboxCode.includes('flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-4') &&
-    inboxCode.includes('overflow-x-auto no-scrollbar') &&
-    inboxCode.includes('grid-cols-1 md:grid-cols-2'),
-    'InboxHealth metrics, filters, and AI pattern clusters adjust across mobile, tablet, and desktop breakpoints'
+    /grid-cols-1 sm:grid-cols-2 lg:grid-cols-4/.test(inboxCode) &&
+    /grid-cols-1 md:grid-cols-2/.test(inboxCode),
+    'InboxHealth cards widen from one column through tablet to desktop'
   );
 
   // -------------------------------------------------------------
@@ -236,37 +250,48 @@ async function runForensicIntegrityAudit() {
 
   // Check 4.1: Trigger button in InboxHealth
   check(
-    inboxCode.includes('<button') &&
     inboxCode.includes('Category Breakdown') &&
-    inboxCode.includes('setIsChartModalOpen(true)'),
-    'InboxHealth features prominent "Category Breakdown" trigger button'
+    inboxCode.includes("window.location.hash = '#category-distribution'"),
+    'InboxHealth features a "Category Breakdown" trigger that routes to the page'
   );
 
   // Check 4.2: Modal component wiring
+  // Category Breakdown became a routed page, so InboxHealth no longer holds a
+  // permanently-closed instance of it. Mounting one and never opening it is dead
+  // weight, so the audit now checks the opposite: that it is not mounted here, and
+  // that the route it points at is actually served.
   check(
-    inboxCode.includes('<CategoryDistributionModal') &&
-    inboxCode.includes('isOpen={isChartModalOpen}') &&
-    inboxCode.includes('onClose={() => setIsChartModalOpen(false)}'),
-    'InboxHealth seamlessly opens/closes CategoryDistributionModal with state bindings'
+    !inboxCode.includes('<CategoryDistributionModal'),
+    'InboxHealth does not mount a modal copy of the page it routes to'
+  );
+  check(
+    contents['src/lib/routes.ts'].includes("'category-distribution'"),
+    'The category-distribution route is registered'
   );
 
   // Check 4.3: Gmail category queries
-  const categoriesInModal = [
-    'category:primary in:anywhere',
-    'category:promotions in:anywhere',
-    'category:updates in:anywhere',
-    'category:social in:anywhere',
-    'category:forums in:anywhere',
-    'in:spam OR in:trash'
-  ];
-  const allCategoriesConfigured = categoriesInModal.every(q => modalCode.includes(q));
-  check(allCategoriesConfigured, 'Modal configures all 6 standard Gmail category queries');
+  // Checked against the exported value. The old literals used `in:anywhere`, which
+  // pulled trashed, junked and sent mail into a chart of the live mailbox — an audit
+  // holding those strings in place was protecting the defect.
+  const configuredIds = CATEGORY_CONFIG.map(c => c.id).sort();
+  check(
+    JSON.stringify(configuredIds) === JSON.stringify(['forums', 'primary', 'promotions', 'social', 'spam', 'updates']),
+    'Modal configures all 6 standard Gmail category buckets',
+    configuredIds.join(',')
+  );
+  check(
+    CATEGORY_CONFIG.filter(c => c.id !== 'spam')
+      .every(c => c.query.includes('-in:trash') && c.query.includes('-in:spam') && c.query.includes('-in:sent')),
+    'Every live category excludes discarded and sent mail, so the slices are comparable'
+  );
 
   // Check 4.4: Active slices, Tooltip, and Legends
+  // The dimming factor was retuned from 0.6 to 0.4; pinning the literal made a
+  // contrast tweak read as a missing feature.
   check(
-    modalCode.includes('onMouseEnter={(_, index) => setActiveIndex(index)}') &&
-    modalCode.includes('onMouseLeave={() => setActiveIndex(null)}') &&
-    modalCode.includes('opacity={activeIndex === null || activeIndex === index ? 1 : 0.6}'),
+    modalCode.includes('setActiveIndex(index)') &&
+    modalCode.includes('setActiveIndex(null)') &&
+    /opacity=\{activeIndex === null \|\| activeIndex === index \? 1 : [\d.]+\}/.test(modalCode),
     'Modal implements interactive slice highlighting on hover with activeIndex state'
   );
 
@@ -278,9 +303,9 @@ async function runForensicIntegrityAudit() {
   );
 
   check(
-    modalCode.includes('grid grid-cols-1 sm:grid-cols-2 gap-2.5') &&
-    modalCode.includes('onApplyCategory(cat.query, cat.filter)'),
-    'Modal renders responsive 2-column Legend grid with direct filtering buttons'
+    modalCode.includes('onApplyCategory(cat.query, cat.filter)') &&
+    /grid-cols-1 (sm|md|lg):grid-cols-\d/.test(modalCode),
+    'Modal renders a responsive legend whose entries filter straight to their category'
   );
 
   // Check 4.5: Escape key & Backdrop dismissal
@@ -306,10 +331,13 @@ async function runForensicIntegrityAudit() {
   check(dashboardHtml.length > 500 && dashboardHtml.includes('MailFlow'), 'Dashboard renders complete HTML via SSR');
 
   const loginHtml = renderToString(<LoginScreen onLogin={() => {}} />);
-  check(loginHtml.includes('Sign in with Google'), 'LoginScreen renders complete HTML via SSR');
+  check(loginHtml.includes('Continue with Google'), 'LoginScreen renders complete HTML via SSR');
 
   const openModalHtml = renderToString(<CategoryDistributionModal isOpen={true} onClose={() => {}} />);
-  check(openModalHtml.includes('Inbox Category Distribution'), 'CategoryDistributionModal renders dialog HTML via SSR');
+  check(
+    openModalHtml.includes('Category Breakdown') && openModalHtml.includes('Volume Distribution'),
+    'CategoryDistributionModal renders its page HTML via SSR'
+  );
 
   const closedModalHtml = renderToString(<CategoryDistributionModal isOpen={false} onClose={() => {}} />);
   check(closedModalHtml === '', 'CategoryDistributionModal returns empty string when closed');

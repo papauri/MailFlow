@@ -3,7 +3,7 @@ import { Filter, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { RoutingSuggestions } from './RoutingSuggestions';
 import { AutomationToolbar, AutomationGrid, AutomationCard, AutomationState } from './AutomationShell';
-import { buildRoutingSuggestions } from '../lib/foldingModel';
+import { buildRoutingSuggestions, countDistinctSenders } from '../lib/foldingModel';
 import { PageHeader } from './PageHeader';
 import { useCachedResource } from '../lib/useCachedResource';
 import { fetchRoutingSample, routingSampleKey, RoutingSample } from '../lib/inboxAnalytics';
@@ -69,10 +69,7 @@ export function RuleSuggester({
     [sampleEmails, userLabels]
   );
 
-  const senderCount = useMemo(
-    () => new Set(sampleEmails.map((e: any) => (e.sender || '').toLowerCase())).size,
-    [sampleEmails]
-  );
+  const senderCount = useMemo(() => countDistinctSenders(sampleEmails), [sampleEmails]);
 
   useEffect(() => {
     try {

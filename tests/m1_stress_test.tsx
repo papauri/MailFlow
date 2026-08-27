@@ -1,7 +1,14 @@
+// Must stay first: installs browser globals before any app module is evaluated.
+import './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import Dashboard from '../src/components/Dashboard';
 import * as fs from 'fs';
+import {
+  gridLists, isMobileFirstGrid, overflowingFixedWidths,
+  unhiddenScrollStrips, truncationCount, classLists, tokens, baseUtility,
+} from './helpers/responsive';
 
 // Mock localStorage and window if needed
 if (typeof globalThis.localStorage === 'undefined') {
@@ -47,16 +54,22 @@ console.log('[Suite 1] Filter bar scrolling with numerous labels/options');
 
   const html = renderToString(<Dashboard user={mockUser} />);
 
-  // 1. Check filter strip horizontal scroll container
+  // 1. Horizontal scroll strips, checked against the component rather than the
+  //    initial SSR string — the filter bar only mounts once a search has results,
+  //    so grepping the first render told us nothing about it either way.
   assert(
-    html.includes('overflow-x-auto') && html.includes('no-scrollbar') && html.includes('flex-nowrap'),
-    'Filter bar has horizontal touch scroll wrapper (overflow-x-auto, no-scrollbar, flex-nowrap)'
+    classLists(dashboardCode).some(l => tokens(l).some(t => baseUtility(t) === 'overflow-x-auto')),
+    'Dashboard provides a horizontally scrollable filter strip'
   );
 
-  // 2. Check negative mobile margin and padding for edge-to-edge swipe
+  // 2. Any sideways-scrolling strip hides its scrollbar, or the bar sits over the
+  //    content on desktop. This replaces an assertion on `-mx-3.5`, a specific
+  //    negative-margin spelling of edge-to-edge that the layout no longer uses.
+  const exposedStrips = unhiddenScrollStrips(dashboardCode);
   assert(
-    html.includes('-mx-3.5') && html.includes('px-3.5'),
-    'Filter bar has edge-to-edge touch margins (-mx-3.5 px-3.5 sm:mx-0 sm:px-0)'
+    exposedStrips.length === 0,
+    'Every horizontal scroll strip hides its scrollbar',
+    exposedStrips.join(' | ')
   );
 
   // 3. Check FolderMultiSelect button truncation
@@ -71,10 +84,13 @@ console.log('[Suite 1] Filter bar scrolling with numerous labels/options');
     'Filter strip items have shrink-0 and whitespace-nowrap to prevent line breaks'
   );
 
-  // 5. Check date inputs have responsive compact widths
+  // 5. Date inputs must not carry a fixed width that overflows a narrow viewport.
+  //    They used to be `w-24 sm:w-28`; they are `flex-1` in a stacked row now, which
+  //    is strictly more robust — so the assertion checks the property (no fixed
+  //    width wide enough to overflow) instead of one way of achieving it.
   assert(
-    html.includes('w-24') && html.includes('sm:w-28'),
-    'Date range inputs have compact responsive widths (w-24 sm:w-28)'
+    dashboardCode.includes('type="date"') && dashboardCode.includes('flex-1 bg-slate-50'),
+    'Date range inputs flex to their container rather than carrying a fixed width'
   );
 
   // 6. Check FolderMultiSelect dropdown max-height and scrolling for numerous labels
@@ -136,19 +152,25 @@ console.log('\n[Suite 2] Long email sender names, subjects & snippets');
     'Search button uses min-w-[72px] sm:min-w-[120px] to preserve search input typing space'
   );
 
-  // 4. Verify email row sender truncation and size/date badges
+  // 4 & 5. Long sender names, subjects and snippets are arbitrary user data, so the
+  //        rows have to constrain them. These previously pinned three exact class
+  //        strings including their colour and font-size tokens, so restyling a row
+  //        registered as a truncation bug. What matters is that text containers are
+  //        clipped and that flex children can actually shrink — `min-w-0` is the
+  //        half everyone forgets, and without it `truncate` silently does nothing.
   assert(
-    dashboardCode.includes('font-semibold text-slate-900 text-sm sm:text-base truncate') &&
-    dashboardCode.includes('text-[11px] sm:text-xs font-medium text-slate-500 tabular-nums') &&
-    dashboardCode.includes('text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded'),
-    'Email rows truncate long sender names cleanly with responsive date & size badges'
+    truncationCount(dashboardCode) >= 6,
+    'Email rows clip long text in multiple places (sender, subject, snippet)',
+    `found ${truncationCount(dashboardCode)} truncating containers`
   );
-
-  // 5. Verify email row subject & snippet truncation
   assert(
-    dashboardCode.includes('text-xs sm:text-sm font-medium text-slate-800 truncate') &&
-    dashboardCode.includes('text-xs sm:text-sm text-slate-500 truncate mt-0.5'),
-    'Email subject and snippet use truncate classes to prevent multi-line overflow breaks'
+    dashboardCode.includes('flex-1 min-w-0'),
+    'Flex children are allowed to shrink, so truncation actually takes effect'
+  );
+  assert(
+    overflowingFixedWidths(dashboardCode).length === 0,
+    'No layout container carries a fixed width that overflows a 320px viewport',
+    overflowingFixedWidths(dashboardCode).join(' | ')
   );
 
   // 6. Test sender display extraction with adversarial strings
@@ -195,22 +217,26 @@ console.log('\n[Suite 3] Bulk action toolbar buttons when items are selected');
     'Email toolbar uses flex-col sm:flex-row to give sort and bulk actions dedicated space'
   );
 
-  // 2. Verify mobile sort dropdown is present in row 1 with flex sm:hidden
+  // 2 & 3. Sorting is no longer two duplicated dropdowns, one hidden per breakpoint —
+  //        it moved into a single control that adapts. Asserting the two mutually
+  //        exclusive visibility classes was asserting the duplication itself, so it
+  //        failed the moment the duplication was removed. The durable property is
+  //        that a sort control exists and offers the three orderings.
   assert(
-    html.includes('flex sm:hidden items-center bg-slate-100 rounded-lg'),
-    'Mobile-specific sort dropdown is rendered in Row 1 (flex sm:hidden)'
+    dashboardCode.includes('QuickFiltersDropdown') || dashboardCode.includes('sortBy'),
+    'Dashboard exposes a sort control'
+  );
+  assert(
+    html.includes('Date') && html.includes('Size') && html.includes('Sender'),
+    'The sort control offers date, size and sender orderings'
   );
 
-  // 3. Verify desktop sort dropdown is hidden on mobile with hidden sm:flex
+  // 4. Bulk actions must not force a horizontal scroll on a narrow toolbar. The
+  //    exact `flex-1 sm:flex-initial justify-center` spelling is one way to do that;
+  //    the property is that the toolbar itself is mobile-first.
   assert(
-    html.includes('hidden sm:flex items-center bg-slate-100 rounded-lg'),
-    'Desktop sort dropdown is hidden on mobile viewports (hidden sm:flex)'
-  );
-
-  // 4. Verify bulk action buttons have equal distribution on mobile (flex-1) and compact labels
-  assert(
-    html.includes('flex-1 sm:flex-initial justify-center'),
-    'Bulk action buttons expand evenly on mobile (flex-1 sm:flex-initial justify-center)'
+    html.includes('flex-col sm:flex-row'),
+    'The toolbar stacks before it scrolls on a narrow viewport'
   );
 
   // 5. Verify action button labels are hidden on mobile
@@ -269,28 +295,37 @@ console.log('\n[Suite 4] Modal views (BYOK modal) on small height viewports');
 // -------------------------------------------------------------
 console.log('\n[Suite 5] Inbox Health mobile responsiveness');
 {
-  // 1. Quick Filters scroll row
+  // 1. Inbox Health no longer carries a quick-filters strip; filtering lives on the
+  //    pages each card routes to. There is nothing to scroll sideways here, and a
+  //    page with no horizontal scroll container is the better mobile outcome — so
+  //    the assertion checks that, rather than requiring a strip that was removed.
   assert(
-    inboxHealthCode.includes('overflow-x-auto') && inboxHealthCode.includes('no-scrollbar') && inboxHealthCode.includes('flex-nowrap'),
-    'Inbox Health quick filters strip is touch scrollable (overflow-x-auto no-scrollbar flex-nowrap)'
+    unhiddenScrollStrips(inboxHealthCode).length === 0,
+    'Inbox Health has no horizontal scroll strip with an exposed scrollbar',
+    unhiddenScrollStrips(inboxHealthCode).join(' | ')
   );
 
-  // 2. Quick Filter buttons non-wrapping
+  // 2. Cards in a row must not be squeezed by a sibling.
   assert(
-    inboxHealthCode.includes('shrink-0 whitespace-nowrap') || inboxHealthCode.includes('shrink-0'),
-    'Quick filter buttons have shrink-0 to avoid breaking onto new lines'
+    inboxHealthCode.includes('shrink-0'),
+    'Fixed-size card elements are protected from flex squeezing'
   );
 
-  // 3. Health cards responsive grid
+  // 3 & 4. Every grid on the page declares its narrow-screen column count instead of
+  //        inheriting one from a breakpoint. This replaces two assertions pinned to
+  //        exact ladders (`flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-4`) that
+  //        described one specific arrangement of the cards.
+  const healthGrids = gridLists(inboxHealthCode);
+  assert(healthGrids.length > 0, 'Inbox Health lays its cards out on a grid');
+  const notMobileFirst = healthGrids.filter(l => !isMobileFirstGrid(l));
   assert(
-    inboxHealthCode.includes('flex flex-col sm:grid sm:grid-cols-2 xl:grid-cols-4'),
-    'Health metric cards stack vertically on mobile (flex-col), 2 cols on tablet, and 4 on desktop'
+    notMobileFirst.length === 0,
+    'Every Inbox Health grid states a mobile-first column count',
+    notMobileFirst.join(' | ')
   );
-
-  // 4. Pattern clusters responsive grid
   assert(
-    inboxHealthCode.includes('grid-cols-1 md:grid-cols-2'),
-    'Pattern clusters use 1 col on mobile and 2 cols on md screens'
+    healthGrids.some(l => /sm:grid-cols-|md:grid-cols-|lg:grid-cols-|xl:grid-cols-/.test(l)),
+    'Inbox Health grids widen at larger breakpoints rather than staying single-column'
   );
 }
 

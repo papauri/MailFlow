@@ -41,9 +41,13 @@ export interface SenderCohort {
   conversationRatio: number;
   daysSinceLast: number;
   tenureDays: number;
-  /** Messages per week over the observed window. */
-  cadence: number;
+  /** Messages per week over the observed window. Null when the window is too short
+   *  to divide by — a burst of 5 messages in one day is not "35 per week". */
+  cadence: number | null;
+  /** Thread ids, for resolving the cohort back to the scanned sample in the UI. */
   ids: string[];
+  /** Message ids — what the Gmail batch endpoints actually operate on. */
+  actionIds: string[];
 }
 
 export type CleanupKind =
@@ -67,7 +71,10 @@ export interface CleanupRecommendation {
   /** Gmail query that selects exactly this set, so the user can inspect before acting. */
   query: string;
   senderKey: string;
+  /** Thread ids, for resolving back to the scanned sample. */
   ids: string[];
+  /** Message ids, for any caller acting on ids rather than the query. */
+  actionIds: string[];
   score: number;
 }
 
@@ -118,6 +125,7 @@ export function buildSenderCohorts(emails: any[], now: Date = new Date()): Sende
     let first = Infinity;
     let last = -Infinity;
     const ids: string[] = [];
+    const actionIds: string[] = [];
 
     for (const { email } of entries) {
       const labels: string[] = email.labelIds || [];
@@ -131,9 +139,15 @@ export function buildSenderCohorts(emails: any[], now: Date = new Date()): Sende
       if (t < first) first = t;
       if (t > last) last = t;
       if (email.id) ids.push(email.id);
+      if (email.messageIds?.length) actionIds.push(...email.messageIds);
+      else if (email.id) actionIds.push(email.id);
     }
 
-    const tenureDays = Math.max(1, Math.round((last - first) / DAY_MS));
+    // Raw observed window, before the floor below. A cohort seen entirely within one
+    // day has no window to measure a rate over, and pretending otherwise produced
+    // claims like "arrives 35 times per week" from five messages on one afternoon.
+    const observedDays = Math.round((last - first) / DAY_MS);
+    const tenureDays = Math.max(1, observedDays);
     const daysSinceLast = Math.max(0, Math.round((now.getTime() - last) / DAY_MS));
     const details = entries[0].details;
 
@@ -151,8 +165,10 @@ export function buildSenderCohorts(emails: any[], now: Date = new Date()): Sende
       conversationRatio: volume > 0 ? threaded / volume : 0,
       daysSinceLast,
       tenureDays,
-      cadence: (volume / tenureDays) * 7,
+      // Needs at least a week of history before a weekly rate means anything.
+      cadence: observedDays >= 7 ? (volume / tenureDays) * 7 : null,
       ids,
+      actionIds: Array.from(new Set(actionIds)),
     });
   });
 
@@ -204,7 +220,63 @@ function sampleConfidence(volume: number): number {
   return Math.min(1, Math.log10(1 + volume) / Math.log10(101));
 }
 
-export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendation[] {
+export interface CleanupScope {
+  /**
+   * The query the analysed sample was drawn from, e.g. the Promotions category.
+   *
+   * Every recommendation's own query is scoped to this. Without it the model
+   * measures one set and acts on another: the numbers on a card come from a scan of
+   * a single category, but `from:(sender)` alone selects that sender's mail across
+   * the entire mailbox — Primary, Sent, starred, everything. A card reading
+   * "142 messages, 60 MB" could trash several thousand.
+   */
+  scopeQuery?: string;
+}
+
+/**
+ * Gmail query for one sender inside the analysed scope.
+ *
+ * `-in:trash` is not optional here. `trashAllByQuery` drains by re-running its query
+ * until it comes back empty, and a trashed message still matches a bare
+ * `from:(sender)` — so an unscoped query never empties, spins for its full round
+ * limit, and returns a "trashed" total that is the same messages counted 200 times.
+ */
+function scopedQuery(senderKey: string, scope: CleanupScope, extra: string = ''): string {
+  return [scope.scopeQuery, `from:(${senderKey})`, extra, '-in:trash']
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Cadence as an evidence line, or the honest absence of one. */
+function cadenceLine(c: SenderCohort): string {
+  if (c.cadence === null) return `All ${c.volume.toLocaleString()} arrived within a week — too short a window to state a rate`;
+  if (c.cadence >= 1) return `Arrives ~${c.cadence.toFixed(1)}× per week over ${describeAge(c.tenureDays)}`;
+  return `Arrives occasionally — ${c.volume.toLocaleString()} over ${describeAge(c.tenureDays)}`;
+}
+
+/**
+ * What the protection test actually guarantees, stated as evidence.
+ *
+ * `isProtected` is a threshold, not a zero check: it tolerates up to 2% flagged and
+ * up to 20% threaded before excluding a sender. The cards used to assert "No
+ * starred, important or replied-to messages" regardless, which is a claim the model
+ * had not established and, for a large cohort, was often simply false. This reports
+ * the measured figure instead.
+ */
+function engagementLine(c: SenderCohort): string {
+  const flagged = Math.round(c.protectedRatio * c.volume);
+  const threaded = Math.round(c.conversationRatio * c.volume);
+  if (flagged === 0 && threaded === 0) return 'Nothing starred, flagged important, or replied to';
+  const parts: string[] = [];
+  if (flagged > 0) parts.push(`${flagged.toLocaleString()} starred or important`);
+  if (threaded > 0) parts.push(`${threaded.toLocaleString()} in a reply thread`);
+  return `Low engagement: only ${parts.join(' and ')} of ${c.volume.toLocaleString()}`;
+}
+
+export function recommendCleanups(
+  cohorts: SenderCohort[],
+  scope: CleanupScope = {}
+): CleanupRecommendation[] {
   const recs: CleanupRecommendation[] = [];
 
   for (const c of cohorts) {
@@ -224,20 +296,21 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
         id: `unsub:${c.key}`,
         kind: 'unsubscribe_purge',
         title: `Unsubscribe from ${c.displayName}`,
-        rationale: `You have opened ${pct(c.readRate)} of the ${c.volume.toLocaleString()} messages ${c.displayName} has sent you, and ${pct(c.bulkRatio)} of them carry an unsubscribe link — this is marketing mail you don't read.`,
+        rationale: `${pct(c.bulkRatio)} of the ${c.volume.toLocaleString()} messages from ${c.displayName} carry an unsubscribe link, and ${c.unread.toLocaleString()} of them (${pct(1 - c.readRate)}) were never opened — bulk mail you largely ignore.`,
         evidence: [
           `${c.volume.toLocaleString()} messages, ${formatBytes(c.bytes)}`,
           `${c.unread.toLocaleString()} never opened (${pct(1 - c.readRate)})`,
-          c.cadence >= 1 ? `Arrives ~${c.cadence.toFixed(1)}× per week` : `Arrives occasionally`,
-          `No starred, important or replied-to messages`,
+          cadenceLine(c),
+          engagementLine(c),
         ],
         volume: c.volume,
         bytes: c.bytes,
         confidence,
         action: 'trash',
-        query: `from:(${c.key})`,
+        query: scopedQuery(c.key, scope),
         senderKey: c.key,
         ids: c.ids,
+        actionIds: c.actionIds,
         score: scoreOf(c.bytes, c.volume, confidence),
       });
       continue;
@@ -250,20 +323,21 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
         id: `dormant:${c.key}`,
         kind: 'dormant_purge',
         title: `Clear dormant mail from ${c.displayName}`,
-        rationale: `Nothing has arrived from ${c.displayName} in ${describeAge(c.daysSinceLast)}, and you opened only ${pct(c.readRate)} of what they did send. The ${c.volume.toLocaleString()} messages left behind are taking ${formatBytes(c.bytes)}.`,
+        rationale: `Nothing has arrived from ${c.displayName} in ${describeAge(c.daysSinceLast)}, and ${pct(c.readRate)} of what they did send was opened. The ${c.volume.toLocaleString()} messages left behind are taking ${formatBytes(c.bytes)}.`,
         evidence: [
           `Last message ${describeAge(c.daysSinceLast)} ago`,
           `${c.volume.toLocaleString()} messages, ${formatBytes(c.bytes)}`,
           `${pct(c.readRate)} open rate`,
-          `Nothing starred or flagged important`,
+          engagementLine(c),
         ],
         volume: c.volume,
         bytes: c.bytes,
         confidence,
         action: 'trash',
-        query: `from:(${c.key})`,
+        query: scopedQuery(c.key, scope),
         senderKey: c.key,
         ids: c.ids,
+        actionIds: c.actionIds,
         score: scoreOf(c.bytes, c.volume, confidence),
       });
       continue;
@@ -277,20 +351,24 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
       recs.push({
         id: `storage:${c.key}`,
         kind: 'storage_purge',
-        title: `Reclaim ${formatBytes(c.bytes)} from ${c.displayName}`,
-        rationale: `${c.displayName} accounts for ${formatBytes(c.bytes)} across ${c.volume.toLocaleString()} messages — an average of ${formatBytes(c.avgBytes)} each. Clearing these frees more space per message than anything else in this category.`,
+        title: `Reclaim space from ${c.displayName}`,
+        rationale: `${c.displayName} accounts for ${formatBytes(c.bytes)} across ${c.volume.toLocaleString()} messages — an average of ${formatBytes(c.avgBytes)} each. This clears the ones over 1 MB, which is where nearly all of that weight sits.`,
         evidence: [
           `${formatBytes(c.bytes)} total, ${formatBytes(c.avgBytes)} average`,
-          `${c.volume.toLocaleString()} messages`,
+          `${c.volume.toLocaleString()} messages in this category`,
           `${pct(c.readRate)} open rate`,
+          c.daysSinceLast >= 90
+            ? `Last message ${describeAge(c.daysSinceLast)} ago`
+            : `Selects messages over 1 MB only`,
         ],
         volume: c.volume,
         bytes: c.bytes,
         confidence,
         action: 'trash',
-        query: `from:(${c.key}) larger:1M`,
+        query: scopedQuery(c.key, scope, 'larger:1M'),
         senderKey: c.key,
         ids: c.ids,
+        actionIds: c.actionIds,
         score: scoreOf(c.bytes, c.volume, confidence),
       });
       continue;
@@ -303,19 +381,22 @@ export function recommendCleanups(cohorts: SenderCohort[]): CleanupRecommendatio
         id: `archive:${c.key}`,
         kind: 'auto_archive',
         title: `Keep ${c.displayName} out of your inbox`,
-        rationale: `${c.displayName} sends about ${c.cadence.toFixed(1)} messages a week and you have never replied to any of them. Archiving these keeps the record without the inbox noise.`,
+        rationale: `${c.volume.toLocaleString()} messages from ${c.displayName}${
+          c.cadence !== null ? `, about ${c.cadence.toFixed(1)} a week,` : ','
+        } and almost none of them are part of a conversation you took part in. Archiving keeps the record without the inbox noise.`,
         evidence: [
-          `${c.volume.toLocaleString()} messages, none part of a conversation`,
-          `~${c.cadence.toFixed(1)} per week`,
+          `${c.volume.toLocaleString()} messages, ${Math.round(c.conversationRatio * c.volume)} in a reply thread`,
+          cadenceLine(c),
           `${pct(c.readRate)} open rate`,
         ],
         volume: c.volume,
         bytes: c.bytes,
         confidence,
         action: 'archive',
-        query: `from:(${c.key})`,
+        query: scopedQuery(c.key, scope),
         senderKey: c.key,
         ids: c.ids,
+        actionIds: c.actionIds,
         score: scoreOf(c.bytes * 0.3, c.volume, confidence),
       });
     }
@@ -351,9 +432,13 @@ export function computePareto(cohorts: SenderCohort[]): ParetoInsight | null {
   };
 }
 
-export function analyseCleanup(emails: any[], now: Date = new Date()): CleanupAnalysis {
+export function analyseCleanup(
+  emails: any[],
+  now: Date = new Date(),
+  scope: CleanupScope = {}
+): CleanupAnalysis {
   const cohorts = buildSenderCohorts(emails, now);
-  const recommendations = recommendCleanups(cohorts);
+  const recommendations = recommendCleanups(cohorts, scope);
   const pareto = computePareto(cohorts);
 
   const totalBytes = cohorts.reduce((sum, c) => sum + c.bytes, 0);

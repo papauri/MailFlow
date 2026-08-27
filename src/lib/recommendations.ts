@@ -109,7 +109,10 @@ export function buildRecommendations(
   if ((stats.oldMail || 0) > 0) {
     recs.push({
       id: 'oldMail',
-      title: 'Archive mail older than a year',
+      // Titled for what the linked action does. The Inbox Score page's "Clean All"
+      // for this metric moves the mail to Trash; calling the recommendation
+      // "Archive" set the user up to click a button that does something else.
+      title: 'Clear mail older than a year',
       detail: `${stats.oldMail.toLocaleString()} messages haven't been touched in over a year.`,
       pointsGain: gainFromClearing(base, 'oldMail'),
       bytesReclaimed: sizes.oldMail || 0,
@@ -136,11 +139,15 @@ export function buildRecommendations(
 
   const { activeFiltersCount } = getUserManagementCounts();
   if (activeFiltersCount === 0) {
+    // Derived from the scoring model like every other row, rather than asserted.
+    // A hardcoded figure here is a claim about the model that nothing keeps true if
+    // the filter bonus is ever retuned.
+    const withOneRule = computeInboxHealthScore({ ...base, activeFiltersCount: 1 });
     recs.push({
       id: 'rules',
       title: 'Set up your first automation',
       detail: 'You have no filter rules yet. Rules keep the inbox clean on their own, and each one earns back health points.',
-      pointsGain: 2,
+      pointsGain: Math.max(0, withOneRule - computeInboxHealthScore(base)),
       bytesReclaimed: 0,
       actionLabel: 'Suggest rules',
       hash: '#rule-suggester',

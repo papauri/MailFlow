@@ -1,5 +1,7 @@
 import { countEmails, searchEmails, scanFolderMetadata, estimateQuerySize, fetchGmailAPI, processInChunks, listMessageIds, fetchMessagesMetadataBatch } from './gmail';
-import { extractSenderDetails, GENERIC_FREEMAIL_DOMAINS } from './emailUtils';
+import {
+  extractSenderDetails, GENERIC_FREEMAIL_DOMAINS, HEALTH_SCORE_QUERIES, INBOX_STAT_QUERIES
+} from './emailUtils';
 
 /**
  * Shared Inbox Health data fetchers.
@@ -19,6 +21,8 @@ export interface SenderCluster {
 export interface DomainCluster {
   domain: string;
   count: number;
+  /** Distinct addresses seen at this domain in the sample. The UI shows this. */
+  senders: number;
 }
 
 export interface SenderClusters {
@@ -70,10 +74,26 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
   const normalizedUser = (userEmail || '').toLowerCase().trim();
   const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
 
-  const recentEmails = await scanFolderMetadata("in:anywhere -in:trash -in:spam -in:sent -is:draft", 100);
+  /**
+   * One sample, and every figure on the page derived from it.
+   *
+   * Counts used to come from a second pass of per-sender `countEmails` calls whose
+   * query was scoped differently from the sample that ranked them — so a sender was
+   * ranked on their non-spam volume and then displayed with their spam included.
+   * Deriving both from this one scan removes the disagreement by construction, and
+   * costs N fewer round trips.
+   *
+   * `-in:chats` because Hangouts/Chat records are not mail and would otherwise
+   * appear as senders; the rest of Inbox Health already excludes them.
+   */
+  const recentEmails = await scanFolderMetadata(
+    "in:anywhere -in:trash -in:spam -in:sent -is:draft -in:chats", 100
+  );
 
   const senderCounts = new Map<string, SenderCluster>();
   const domainCounts = new Map<string, DomainCluster>();
+  /** Distinct addresses per domain, so the "N unique senders" line has a source. */
+  const domainSenders = new Map<string, Set<string>>();
 
   recentEmails.forEach((e: any) => {
     const details = extractSenderDetails(e.sender);
@@ -88,8 +108,10 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
     // Only track organization / company / service domains for Domain Clusters
     // (exclude generic public webmail providers and self)
     if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
-      if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0 });
+      if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0, senders: 0 });
       domainCounts.get(rootDomain)!.count++;
+      if (!domainSenders.has(rootDomain)) domainSenders.set(rootDomain, new Set());
+      domainSenders.get(rootDomain)!.add(email);
     }
   });
 
@@ -101,7 +123,10 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
   const topDomains = Array.from(domainCounts.values())
     .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 6);
+    .slice(0, 6)
+    // The UI renders "N unique senders" per domain, so the count has to be carried
+    // through rather than left at its zero initialiser.
+    .map(d => ({ ...d, senders: domainSenders.get(d.domain)?.size ?? 0 }));
 
   return {
     recentEmails,
@@ -126,17 +151,46 @@ export interface InboxStatsResult {
   sizes: Record<string, number>;
 }
 
+/**
+ * The exact query behind every number Inbox Health displays.
+ *
+ * The five scoring metrics come straight from HEALTH_SCORE_QUERIES rather than being
+ * respelled here. They used to be respelled, and two of them had drifted: unread was
+ * missing `-in:chats` and old mail was missing `-in:spam`. The consequence was not
+ * cosmetic — the "Start here" card ranks its recommendations by running the real
+ * scoring model over *these* counts, so it was ranking a different inbox than the one
+ * the Inbox Score modal showed the user.
+ */
+export const INBOX_HEALTH_QUERIES = {
+  unread: HEALTH_SCORE_QUERIES.unread,
+  oldPromo: HEALTH_SCORE_QUERIES.oldPromotions,
+  large: HEALTH_SCORE_QUERIES.largeFiles,
+  spamAndTrash: HEALTH_SCORE_QUERIES.spamAndTrash,
+  oldMail: HEALTH_SCORE_QUERIES.oldMail,
+  importantUnread: INBOX_STAT_QUERIES.importantUnread,
+  updatesAndSocial: INBOX_STAT_QUERIES.updatesAndSocial,
+  withAttachments: INBOX_STAT_QUERIES.withAttachments,
+} as const;
+
 export async function fetchInboxStats(): Promise<InboxStatsResult> {
-  // Use bound of 1-2 pages for initial fast inbox stats calculation (up to 1,000 exact + estimate)
+  const Q = INBOX_HEALTH_QUERIES;
+
+  // Two pages: 1,000 messages counted exactly, then Gmail's own estimate. Keeps the
+  // first paint fast on a large mailbox. The queries are the shared constants, not
+  // respellings — two of the respelled ones had already drifted from the scoring
+  // queries, which made the "Start here" ranking describe a different inbox than the
+  // Inbox Score page.
+  const STAT_PAGE_BOUND = 2;
+
   const [unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
-    countEmails("is:unread in:inbox", 2),
-    countEmails("category:promotions older_than:6m -in:trash", 2),
-    countEmails("larger:5M -in:trash", 2),
-    countEmails("in:spam OR in:trash", 2),
-    countEmails("is:unread is:important -category:promotions -in:trash", 2),
-    countEmails("category:updates OR category:social -in:trash", 2),
-    countEmails("has:attachment -in:trash", 2),
-    countEmails("older_than:1y -in:trash", 2)
+    countEmails(Q.unread, STAT_PAGE_BOUND),
+    countEmails(Q.oldPromo, STAT_PAGE_BOUND),
+    countEmails(Q.large, STAT_PAGE_BOUND),
+    countEmails(Q.spamAndTrash, STAT_PAGE_BOUND),
+    countEmails(Q.importantUnread, STAT_PAGE_BOUND),
+    countEmails(Q.updatesAndSocial, STAT_PAGE_BOUND),
+    countEmails(Q.withAttachments, STAT_PAGE_BOUND),
+    countEmails(Q.oldMail, STAT_PAGE_BOUND),
   ]);
 
   const stats: InboxStats = {
@@ -144,13 +198,28 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
     importantUnread, updatesAndSocial, withAttachments, oldMail
   };
 
-  // Quick heuristic size estimates to avoid 6 sequential network round trips on initial load
-  const oldPromoSize = oldPromo * 120 * 1024;
-  const largeSize = large * 7 * 1024 * 1024;
-  const spamAndTrashSize = spamAndTrash * 90 * 1024;
-  const attachmentsSize = withAttachments * 2 * 1024 * 1024;
-  const oldMailSize = oldMail * 100 * 1024;
-  const updatesAndSocialSize = updatesAndSocial * 80 * 1024;
+  /**
+   * Measured, not assumed.
+   *
+   * These were briefly replaced by fixed per-message constants — 7 MB for every
+   * large attachment, 120 KB for every stale promo — to save round trips on first
+   * paint. The saving is real but what it buys is a fabricated number: the figure
+   * renders in the same "~2.3 GB reclaimable" badge as a measured one with nothing
+   * to distinguish them, and it drives the ranking of the recommendations. A
+   * mailbox whose attachments average 6 MB and one whose average 40 MB would report
+   * the identical total.
+   *
+   * The six run concurrently, and each is now one list call plus two batched
+   * metadata calls, so the cost is a fraction of what it was when this was written.
+   */
+  const [oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize] = await Promise.all([
+    estimateQuerySize(Q.oldPromo, oldPromo),
+    estimateQuerySize(Q.large, large),
+    estimateQuerySize(Q.spamAndTrash, spamAndTrash),
+    estimateQuerySize(Q.withAttachments, withAttachments),
+    estimateQuerySize(Q.oldMail, oldMail),
+    estimateQuerySize(Q.updatesAndSocial, updatesAndSocial),
+  ]);
 
   return {
     stats,

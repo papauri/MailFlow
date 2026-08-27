@@ -522,10 +522,61 @@ export function getUserManagementCounts(): { unsubscribedCount: number; activeFi
  */
 export const HEALTH_SCORE_QUERIES = {
   unread: "is:unread in:inbox -in:chats",
-  spamAndTrash: "in:spam OR in:trash",
+  spamAndTrash: "(in:spam OR in:trash)",
   oldPromotions: "category:promotions older_than:6m -in:trash",
   largeFiles: "larger:5M -in:trash",
   oldMail: "older_than:1y -in:trash -in:spam",
+} as const;
+
+/**
+ * What a one-click bulk sweep is allowed to touch.
+ *
+ * The metric queries above define what is *counted*. They are deliberately broad,
+ * because the score is a measure of the whole mailbox. Using the same string to
+ * decide what gets *deleted* conflates two different questions, and for the two
+ * age- and size-based metrics the answer was alarming: "Clean All" on Old Mail
+ * trashed every message over a year old — starred mail, mail flagged important,
+ * mail the user had filed into their own folders, and their own sent mail — from a
+ * button whose only warning was its label.
+ *
+ * These five exclusions are the evidence a message matters to its owner. A sweep
+ * skips them and the UI says how many it skipped, so the count on the card and the
+ * number of messages that actually move are never the same claim.
+ *
+ * Marking read is not destructive and already-discarded mail is already discarded,
+ * so those two sweeps keep the unmodified query.
+ */
+export const SWEEP_PROTECTION =
+  '-is:starred -is:important -has:userlabels -in:sent -in:draft';
+
+export const HEALTH_SCORE_SWEEP_QUERIES = {
+  unread: HEALTH_SCORE_QUERIES.unread,
+  spamAndTrash: HEALTH_SCORE_QUERIES.spamAndTrash,
+  oldPromotions: `${HEALTH_SCORE_QUERIES.oldPromotions} ${SWEEP_PROTECTION}`,
+  largeFiles: `${HEALTH_SCORE_QUERIES.largeFiles} ${SWEEP_PROTECTION}`,
+  oldMail: `${HEALTH_SCORE_QUERIES.oldMail} ${SWEEP_PROTECTION}`,
+} as const;
+
+/** Sweeps that leave protected mail behind, so their card must say so. */
+export const PROTECTED_SWEEPS = ['oldPromotions', 'largeFiles', 'oldMail'] as const;
+
+/**
+ * The remaining Inbox Health counters, in the same single-source-of-truth form.
+ *
+ * These are not scoring inputs, but they are read by Inbox Health, the Storage
+ * Breakdown bar and the Export Center, and those three had each spelled them out
+ * separately. Two of the spellings disagreed with each other, so the same mailbox
+ * reported different numbers depending on which card you looked at.
+ *
+ * Note the parentheses around every OR. Gmail binds an implicit AND tighter than
+ * OR, so `category:updates OR category:social -in:trash` parses as
+ * `category:updates OR (category:social -in:trash)` — the exclusion silently applies
+ * to only half the query, and trashed Updates were being counted as live storage.
+ */
+export const INBOX_STAT_QUERIES = {
+  importantUnread: "is:unread is:important -category:promotions -in:trash",
+  updatesAndSocial: "(category:updates OR category:social) -in:trash",
+  withAttachments: "has:attachment -in:trash",
 } as const;
 
 // -------------------------------------------------------------

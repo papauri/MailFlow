@@ -1,7 +1,10 @@
+// Must stay first: installs browser globals before any app module is evaluated.
+import './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import * as fs from 'fs';
-import { CategoryDistributionModal, CategoryItem } from '../src/components/CategoryDistributionModal';
+import { CategoryDistributionModal, CategoryItem, CATEGORY_CONFIG } from '../src/components/CategoryDistributionModal';
 import { InboxHealth } from '../src/components/InboxHealth';
 import * as gmail from '../src/lib/gmail';
 
@@ -52,6 +55,8 @@ async function runMilestone3StressTests() {
 
   const modalCode = fs.readFileSync('src/components/CategoryDistributionModal.tsx', 'utf-8');
   const inboxHealthCode = fs.readFileSync('src/components/InboxHealth.tsx', 'utf-8');
+  const routesCode = fs.readFileSync('src/lib/routes.ts', 'utf-8');
+  const dashboardShellCode = fs.readFileSync('src/components/Dashboard.tsx', 'utf-8');
   const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
 
   // -------------------------------------------------------------
@@ -74,16 +79,28 @@ async function runMilestone3StressTests() {
     'CategoryDistributionModal imports ResponsiveContainer, PieChart, Pie, Cell, and Tooltip from recharts'
   );
 
+  // Category Breakdown is a routed page, not a modal InboxHealth mounts.
+  //
+  // This used to assert that InboxHealth imported CategoryDistributionModal and
+  // called setIsChartModalOpen(true). Both were true of an earlier design; the view
+  // is now reached by hash route, and InboxHealth holding a permanently-closed copy
+  // was dead weight. The contract worth asserting is that the trigger navigates to a
+  // route the router actually serves — which the old assertion never checked.
   assert(
-    inboxHealthCode.includes("import { CategoryDistributionModal } from './CategoryDistributionModal';") ||
-    inboxHealthCode.includes('CategoryDistributionModal'),
-    'InboxHealth imports and integrates CategoryDistributionModal'
+    inboxHealthCode.includes('Category Breakdown') &&
+    inboxHealthCode.includes("window.location.hash = '#category-distribution'"),
+    'InboxHealth "Category Breakdown" card navigates to the category-distribution route'
   );
 
   assert(
-    inboxHealthCode.includes('Category Breakdown') &&
-    inboxHealthCode.includes('setIsChartModalOpen(true)'),
-    'InboxHealth includes visible "Category Breakdown" trigger button'
+    routesCode.includes("'category-distribution'") &&
+    dashboardShellCode.includes("currentHash === 'category-distribution'"),
+    'The category-distribution route is registered and rendered by the shell'
+  );
+
+  assert(
+    !inboxHealthCode.includes('CategoryDistributionModal'),
+    'InboxHealth does not also mount the modal it routes to'
   );
 
   // -------------------------------------------------------------
@@ -100,14 +117,45 @@ async function runMilestone3StressTests() {
     { id: 'spam', name: 'Spam & Trash', query: 'in:spam OR in:trash', filter: 'anywhere' },
   ];
 
-  expectedCategories.forEach(cat => {
+  // Asserted against the imported value, not against source text.
+  //
+  // The old form pinned each entry to the literal `category:primary in:anywhere`.
+  // Those queries were replaced because `in:anywhere` pulled trashed, junked and
+  // sent mail into a distribution chart of the live mailbox — the assertion was
+  // holding the wrong behaviour in place. What has to be true is that every
+  // category is present, and that each one is scoped so the slices are comparable.
+  expectedCategories.forEach(expected => {
+    const cat = CATEGORY_CONFIG.find(c => c.id === expected.id);
+    assert(!!cat, `CATEGORY_CONFIG contains ${expected.name}`);
+    if (!cat) return;
+    assert(cat.name === expected.name, `${expected.name} keeps its display name`, cat.name);
+    assert(typeof cat.query === 'string' && cat.query.length > 0,
+      `${expected.name} has a query`, cat.query);
+  });
+
+  assert(CATEGORY_CONFIG.length === expectedCategories.length,
+    'CATEGORY_CONFIG defines exactly the six standard buckets',
+    `got ${CATEGORY_CONFIG.length}`);
+
+  // The five live categories must exclude discarded and outbound mail, or their
+  // slices are not shares of the same mailbox. Spam & Trash is the exception: it
+  // exists precisely to count what the others exclude.
+  CATEGORY_CONFIG.filter(c => c.id !== 'spam').forEach(cat => {
     assert(
-      modalCode.includes(`id: '${cat.id}'`) &&
-      modalCode.includes(`name: '${cat.name}'`) &&
-      modalCode.includes(`query: '${cat.query}'`),
-      `CATEGORY_CONFIG contains ${cat.name} with query "${cat.query}"`
+      cat.query.includes('-in:trash') && cat.query.includes('-in:spam') && cat.query.includes('-in:sent'),
+      `${cat.name} excludes trash, spam and sent mail so its slice is comparable`,
+      cat.query
     );
   });
+
+  const spam = CATEGORY_CONFIG.find(c => c.id === 'spam');
+  assert(!!spam && spam.query.includes('in:spam') && spam.query.includes('in:trash'),
+    'The Spam & Trash bucket counts exactly what the other five exclude', spam?.query);
+
+  // Every category is a distinct Gmail bucket, so no message is in two slices.
+  const queries = new Set(CATEGORY_CONFIG.map(c => c.query));
+  assert(queries.size === CATEGORY_CONFIG.length,
+    'No two categories share a query, so the pie has no double-counted slice');
 
   // -------------------------------------------------------------
   // Test Suite 3: Data Parsing & Normalization Logic
@@ -331,28 +379,30 @@ async function runMilestone3StressTests() {
   // -------------------------------------------------------------
   console.log('\n[Suite 9] State Transitions, Loading, Error & Refresh Controls');
 
+  // The state exists under clearer names now that the view also owns a scan:
+  // `loading`/`error` would not say which of the two async jobs they referred to.
   assert(
-    modalCode.includes('const [loading, setLoading] = useState(false);') &&
-    modalCode.includes('const [error, setError] = useState<string | null>(null);'),
-    'Component manages loading and error state independently'
+    modalCode.includes('const [loadingDistribution, setLoadingDistribution] = useState(false);') &&
+    modalCode.includes('const [distributionError, setDistributionError] = useState<string | null>(null);'),
+    'Distribution loading and error state are tracked independently of the scan'
   );
 
   assert(
-    modalCode.includes('Scanning Gmail category indexes') &&
-    modalCode.includes('animate-spin'),
-    'Modal displays loading spinner during asynchronous category calculation'
+    modalCode.includes('loadingDistribution ?') && modalCode.includes('animate-spin'),
+    'A spinner is shown while the category counts are in flight'
   );
 
   assert(
-    modalCode.includes('Failed to calculate category distribution') &&
-    modalCode.includes('Retry'),
-    'Modal displays error state with Retry button on API failure'
+    modalCode.includes('distributionError ?') && modalCode.includes('Retry'),
+    'A failed count renders its error with a Retry control rather than an empty chart'
   );
 
+  // Refresh is an icon control in the toolbar now rather than a labelled footer
+  // button, and it is disabled while either async job is running.
   assert(
-    modalCode.includes('Refresh Counts') &&
-    modalCode.includes('disabled={loading}'),
-    'Modal footer contains "Refresh Counts" button disabled during in-flight fetch'
+    modalCode.includes('RefreshCw') &&
+    (modalCode.includes('scanLoading || scan.refreshing') || modalCode.includes('disabled={scanLoading')),
+    'Refresh is disabled while a fetch is already in flight'
   );
 
   // -------------------------------------------------------------
@@ -360,16 +410,20 @@ async function runMilestone3StressTests() {
   // -------------------------------------------------------------
   console.log('\n[Suite 10] Recharts Chart Dimensions & Responsive Container');
 
+  // The container is bounded by aspect ratio rather than a fixed height class, which
+  // is what keeps the donut circular at every breakpoint. What the assertion is
+  // really guarding is that ResponsiveContainer is never given an unbounded parent —
+  // that is the zero-height crash — so it checks for a bound, not for one spelling.
   assert(
-    modalCode.includes('h-64 sm:h-72') &&
-    modalCode.includes('ResponsiveContainer width="100%" height="100%"'),
-    'PieChart is wrapped in a height-constrained ResponsiveContainer (h-64 sm:h-72) to prevent zero-height crashes'
+    modalCode.includes('aspect-square') && modalCode.includes('ResponsiveContainer width="100%" height="100%"'),
+    'PieChart sits in a dimension-bounded ResponsiveContainer, so it cannot render at zero height'
   );
 
+  // Percentage radii, so the donut scales with its box instead of overflowing the
+  // smaller mobile container that fixed pixel radii were sized against.
   assert(
-    modalCode.includes('innerRadius={65}') &&
-    modalCode.includes('outerRadius={100}'),
-    'Pie chart specifies innerRadius (65) and outerRadius (100) for donut style visualization'
+    modalCode.includes('innerRadius="65%"') && modalCode.includes('outerRadius="85%"'),
+    'Pie chart uses proportional inner/outer radii for a donut that scales with its container'
   );
 
   assert(

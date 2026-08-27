@@ -13,6 +13,7 @@ import {
   computeInboxHealthBreakdown,
   getUserManagementCounts,
   HEALTH_SCORE_QUERIES,
+  HEALTH_SCORE_SWEEP_QUERIES,
   HealthScoreMetrics,
   HealthScoreBreakdown
 } from '../lib/emailUtils';
@@ -53,6 +54,15 @@ export function HealthScoreModal({
     activeFiltersCount: 0
   });
   
+  /**
+   * How many messages each destructive sweep would actually move.
+   *
+   * Distinct from `metrics`, which counts everything the score penalises. The sweep
+   * skips starred, important, filed and sent mail, so these are always <= the metric
+   * and the gap is what the card reports as protected.
+   */
+  const [sweepable, setSweepable] = useState<{ promo: number; large: number; oldMail: number } | null>(null);
+
   const [activeTab, setActiveTab] = useState<'breakdown' | 'simulator'>('breakdown');
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<{message: string, pts: number} | null>(null);
@@ -69,13 +79,17 @@ export function HealthScoreModal({
   const fetchMetrics = async () => {
     setLoading(true);
     try {
-      const [unread, spam, promo, large, old] = await Promise.all([
+      const [unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
         countEmails(HEALTH_SCORE_QUERIES.largeFiles),
-        countEmails(HEALTH_SCORE_QUERIES.oldMail)
+        countEmails(HEALTH_SCORE_QUERIES.oldMail),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.oldPromotions),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.largeFiles),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.oldMail)
       ]);
+      setSweepable({ promo: promoSweep, large: largeSweep, oldMail: oldSweep });
       const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
       const fetchedMetrics: HealthScoreMetrics = {
         unreadInbox: unread,
@@ -103,13 +117,17 @@ export function HealthScoreModal({
 
   const fetchMetricsSilent = async () => {
     try {
-      const [unread, spam, promo, large, old] = await Promise.all([
+      const [unread, spam, promo, large, old, promoSweep, largeSweep, oldSweep] = await Promise.all([
         countEmails(HEALTH_SCORE_QUERIES.unread),
         countEmails(HEALTH_SCORE_QUERIES.spamAndTrash),
         countEmails(HEALTH_SCORE_QUERIES.oldPromotions),
         countEmails(HEALTH_SCORE_QUERIES.largeFiles),
-        countEmails(HEALTH_SCORE_QUERIES.oldMail)
+        countEmails(HEALTH_SCORE_QUERIES.oldMail),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.oldPromotions),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.largeFiles),
+        countEmails(HEALTH_SCORE_SWEEP_QUERIES.oldMail)
       ]);
+      setSweepable({ promo: promoSweep, large: largeSweep, oldMail: oldSweep });
       const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
       setMetrics(prev => ({
         ...prev,
@@ -193,17 +211,27 @@ export function HealthScoreModal({
   const simulatedScore = simBreakdown.score;
   const scoreDiff = simulatedScore - liveScore;
 
+  /** What a sweep will really move, and what it will leave behind. */
+  const sweepPlan = (type: FixableMetric): { moves: number; kept: number } => {
+    if (type === 'unread') return { moves: metrics.unreadInbox, kept: 0 };
+    if (type === 'spam') return { moves: metrics.spamAndTrash, kept: 0 };
+    const total =
+      type === 'promo' ? metrics.oldPromotions :
+      type === 'large' ? metrics.largeFiles :
+      (metrics.oldMail || 0);
+    const moves =
+      type === 'promo' ? (sweepable?.promo ?? total) :
+      type === 'large' ? (sweepable?.large ?? total) :
+      (sweepable?.oldMail ?? total);
+    return { moves, kept: Math.max(0, total - moves) };
+  };
+
   const handleFix = async (type: FixableMetric, _currentPts?: number) => {
     setActiveAction(type);
 
-    // Denominator for the progress bar. These sweeps run to completion now, so a
-    // 5,000-message backlog reports real progress instead of silently doing 500.
-    const expectedTotal =
-      type === 'unread' ? metrics.unreadInbox :
-      type === 'spam' ? metrics.spamAndTrash :
-      type === 'promo' ? metrics.oldPromotions :
-      type === 'oldMail' ? (metrics.oldMail || 0) :
-      metrics.largeFiles;
+    // Denominator for the progress bar: what the sweep will really move, which for
+    // the three protected sweeps is the sweepable subset and not the metric.
+    const { moves: expectedTotal, kept: protectedRemainder } = sweepPlan(type);
 
     setFixProgress({ label: FIX_PROGRESS_LABELS[type], current: 0, total: expectedTotal });
     const report = (done: number) =>
@@ -212,22 +240,25 @@ export function HealthScoreModal({
     let processed = 0;
     try {
       let message = "";
+      const keptNote = protectedRemainder > 0
+        ? ` ${protectedRemainder.toLocaleString()} protected message${protectedRemainder === 1 ? '' : 's'} kept.`
+        : '';
 
       if (type === 'unread') {
-        processed = await markAllAsReadByQuery(HEALTH_SCORE_QUERIES.unread, report);
+        processed = await markAllAsReadByQuery(HEALTH_SCORE_SWEEP_QUERIES.unread, report);
         message = "Inbox zero achieved (unread)!";
       } else if (type === 'spam') {
-        processed = await emptyAllTrash(HEALTH_SCORE_QUERIES.spamAndTrash, report);
+        processed = await emptyAllTrash(HEALTH_SCORE_SWEEP_QUERIES.spamAndTrash, report);
         message = "Spam and trash emptied!";
       } else if (type === 'promo') {
-        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.oldPromotions, report);
-        message = `${processed.toLocaleString()} old promotions cleaned!`;
+        processed = await trashAllByQuery(HEALTH_SCORE_SWEEP_QUERIES.oldPromotions, report);
+        message = `${processed.toLocaleString()} old promotions cleaned.${keptNote}`;
       } else if (type === 'large') {
-        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.largeFiles, report);
-        message = `${processed.toLocaleString()} large attachments moved to trash!`;
+        processed = await trashAllByQuery(HEALTH_SCORE_SWEEP_QUERIES.largeFiles, report);
+        message = `${processed.toLocaleString()} large attachments moved to trash.${keptNote}`;
       } else if (type === 'oldMail') {
-        processed = await trashAllByQuery(HEALTH_SCORE_QUERIES.oldMail, report);
-        message = `${processed.toLocaleString()} messages older than a year cleaned!`;
+        processed = await trashAllByQuery(HEALTH_SCORE_SWEEP_QUERIES.oldMail, report);
+        message = `${processed.toLocaleString()} messages older than a year cleaned.${keptNote}`;
       }
 
       // Report what the sweep actually processed, falling back to the expected
@@ -236,16 +267,26 @@ export function HealthScoreModal({
 
       // Derive points gained from the real before/after score rather than assuming
       // the full category penalty, so the number shown is what was actually earned.
+      // A protected sweep does not zero its metric — the protected mail is still
+      // there and still counts, so claiming zero would overstate the score until the
+      // next silent reconcile took the points back again.
       const nextMetrics: HealthScoreMetrics = { ...metrics };
       if (type === 'unread') nextMetrics.unreadInbox = 0;
       else if (type === 'spam') nextMetrics.spamAndTrash = 0;
-      else if (type === 'promo') nextMetrics.oldPromotions = 0;
-      else if (type === 'large') nextMetrics.largeFiles = 0;
-      else if (type === 'oldMail') nextMetrics.oldMail = 0;
+      else if (type === 'promo') nextMetrics.oldPromotions = protectedRemainder;
+      else if (type === 'large') nextMetrics.largeFiles = protectedRemainder;
+      else if (type === 'oldMail') nextMetrics.oldMail = protectedRemainder;
 
       const ptsGained = computeInboxHealthScore(nextMetrics) - computeInboxHealthScore(metrics);
 
       setMetrics(nextMetrics);
+      setSweepable(prev => {
+        if (!prev) return prev;
+        if (type === 'promo') return { ...prev, promo: 0 };
+        if (type === 'large') return { ...prev, large: 0 };
+        if (type === 'oldMail') return { ...prev, oldMail: 0 };
+        return prev;
+      });
       setSimUnread(nextMetrics.unreadInbox);
       setSimSpam(nextMetrics.spamAndTrash);
       setSimPromo(nextMetrics.oldPromotions);
@@ -254,9 +295,11 @@ export function HealthScoreModal({
       setCelebration({ message, pts: ptsGained });
       setTimeout(() => setCelebration(null), 3500);
 
-      // Broadcast instant sync event for other views (InboxHealth, Dashboard, etc.)
+      // Broadcast instant sync event for other views (InboxHealth, Dashboard, etc.).
+      // `isPartial` is true whenever protected mail survived, so listeners subtract
+      // what moved rather than zeroing a category that is not empty.
       window.dispatchEvent(new CustomEvent('inbox_metrics_updated', {
-        detail: { type, count: countToSubtract, isPartial: false, metrics: nextMetrics }
+        detail: { type, count: countToSubtract, isPartial: protectedRemainder > 0, metrics: nextMetrics }
       }));
 
       // Background silent reconcile after 4 seconds once Gmail index catches up
@@ -318,6 +361,10 @@ export function HealthScoreModal({
     subtitle: string;
     actionLabel: string;
     inspectAction: 'markRead' | 'trash' | 'deleteForever';
+    /** What the action button will really move, and what it will leave behind. */
+    plan: { moves: number; kept: number };
+    /** The query the action runs, which for a protected sweep is not `query`. */
+    sweepQuery: string;
   }[] = [
     {
       id: 'unread',
@@ -331,6 +378,8 @@ export function HealthScoreModal({
       subtitle: 'Unread messages sitting in your inbox',
       actionLabel: 'Mark Read',
       inspectAction: 'markRead',
+      plan: sweepPlan('unread'),
+      sweepQuery: HEALTH_SCORE_SWEEP_QUERIES.unread,
     },
     {
       id: 'spam',
@@ -344,6 +393,8 @@ export function HealthScoreModal({
       subtitle: 'Messages already in spam or trash',
       actionLabel: 'Empty All',
       inspectAction: 'deleteForever',
+      plan: sweepPlan('spam'),
+      sweepQuery: HEALTH_SCORE_SWEEP_QUERIES.spamAndTrash,
     },
     {
       id: 'promo',
@@ -357,6 +408,8 @@ export function HealthScoreModal({
       subtitle: 'Marketing mail older than six months',
       actionLabel: 'Clean All',
       inspectAction: 'trash',
+      plan: sweepPlan('promo'),
+      sweepQuery: HEALTH_SCORE_SWEEP_QUERIES.oldPromotions,
     },
     {
       id: 'large',
@@ -370,6 +423,8 @@ export function HealthScoreModal({
       subtitle: 'Messages carrying attachments over 5MB',
       actionLabel: 'Clean All',
       inspectAction: 'trash',
+      plan: sweepPlan('large'),
+      sweepQuery: HEALTH_SCORE_SWEEP_QUERIES.largeFiles,
     },
     {
       id: 'oldMail',
@@ -383,6 +438,8 @@ export function HealthScoreModal({
       subtitle: 'Messages older than one year',
       actionLabel: 'Clean All',
       inspectAction: 'trash',
+      plan: sweepPlan('oldMail'),
+      sweepQuery: HEALTH_SCORE_SWEEP_QUERIES.oldMail,
     },
   ];
 
@@ -583,6 +640,15 @@ export function HealthScoreModal({
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{row.desc}</p>
+                          {row.plan.kept > 0 && (
+                            <p className="text-[11px] text-emerald-700 mt-1 leading-relaxed flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3 shrink-0" />
+                              <span>
+                                Clears {row.plan.moves.toLocaleString()} — keeps {row.plan.kept.toLocaleString()} starred,
+                                important, filed or sent
+                              </span>
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -592,15 +658,22 @@ export function HealthScoreModal({
                         </span>
                         <div className="flex items-stretch gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200 w-full sm:w-[184px] shrink-0">
                           <button
-                            onClick={() => openInspectPage(row.title, row.query, row.subtitle, row.inspectAction)}
-                            disabled={row.count === 0}
+                            onClick={() => openInspectPage(
+                              row.title,
+                              row.sweepQuery,
+                              row.plan.kept > 0
+                                ? `${row.subtitle} — excludes ${row.plan.kept.toLocaleString()} protected`
+                                : row.subtitle,
+                              row.inspectAction
+                            )}
+                            disabled={row.plan.moves === 0}
                             className="flex-1 text-xs font-medium px-2 py-1.5 rounded-md hover:bg-white text-slate-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                           >
                             Inspect
                           </button>
                           <button
                             onClick={() => handleFix(row.id, row.penalty)}
-                            disabled={row.count === 0 || activeAction !== null}
+                            disabled={row.plan.moves === 0 || activeAction !== null}
                             className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center justify-center gap-1"
                           >
                             {activeAction === row.id && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -932,7 +1005,7 @@ export function HealthScoreModal({
                       Simulate Clean (+{Math.round(liveBreakdown.bloatPenalty)} pts)
                     </button>
                     <button
-                      onClick={() => openInspectPage('Large Attachments', HEALTH_SCORE_QUERIES.largeFiles, 'Messages carrying attachments over 5MB', 'trash')}
+                      onClick={() => openInspectPage('Large Attachments', HEALTH_SCORE_SWEEP_QUERIES.largeFiles, 'Messages carrying attachments over 5MB, excluding starred, important, filed and sent', 'trash')}
                       disabled={metrics.largeFiles === 0}
                       className="text-xs font-medium px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
                     >

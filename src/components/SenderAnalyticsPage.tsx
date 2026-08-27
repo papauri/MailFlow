@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Target, Layers, Filter, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive, Trash2, Tag, Bell, Clock, ArrowRight, Sparkles, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { countEmails, estimateQuerySize } from '../lib/gmail';
+import { formatBytes } from '../lib/csvExport';
 import { cn } from '../lib/utils';
 
 export interface StorageSegment {
@@ -19,13 +20,39 @@ export interface StorageSegment {
   description: string;
 }
 
-function formatSize(bytes: number) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
+/**
+ * The five segments, spelled so that no message can land in two of them.
+ *
+ * This bar sums its segments into one "cleanable" total and renders each as a share
+ * of that sum, which is only meaningful if the segments partition a set. They did
+ * not: a two-year-old 8 MB promotional email matched Heavy Files, Stale Promos *and*
+ * Old Mail, so it was counted three times. On a mailbox with real history the total
+ * ran well above the storage actually in play, and every percentage in the bar was
+ * describing a set that does not exist.
+ *
+ * The order below is the precedence. Each query subtracts the ones above it, so the
+ * segments are disjoint, the total is the true size of their union, and a share is a
+ * real share. Precedence runs biggest-lever first: junk before weight, weight before
+ * age, age before category.
+ *
+ * The weight exclusion is written `smaller:5M` rather than `-larger:5M`: both express
+ * the complement, but `smaller:` is a documented Gmail operator in its own right,
+ * whereas negating a numeric operator is not something Gmail states it supports. The
+ * two differ only for a message of exactly 5 MB, which lands in neither — an
+ * undercount of at most one message, in the safe direction.
+ */
+export const SEGMENT_QUERIES = {
+  /** Already deleted or junked. Everything else excludes it. */
+  junk: '(in:spam OR in:trash)',
+  /** The heaviest live mail, wherever it sits. */
+  large: 'larger:5M -in:trash -in:spam',
+  /** Live mail over a year old that is not already counted as heavy. */
+  oldMail: 'older_than:1y -in:trash -in:spam smaller:5M',
+  /** Stale promos inside the last year — older ones are Old Mail above. */
+  promotions: 'category:promotions older_than:6m newer_than:1y -in:trash -in:spam smaller:5M',
+  /** Recent automated noise not already claimed by any segment above. */
+  updates: '(category:updates OR category:social) newer_than:1y -in:trash -in:spam smaller:5M',
+} as const;
 
 export function StorageBreakdownBar({
   onApplyQuery,
@@ -48,11 +75,11 @@ export function StorageBreakdownBar({
       setLoading(true);
       try {
         const [largeCount, promoCount, updatesCount, junkCount, oldMailCount] = await Promise.all([
-          countEmails("larger:5M -in:trash").catch(() => 0),
-          countEmails("category:promotions older_than:6m -in:trash").catch(() => 0),
-          countEmails("category:updates OR category:social -in:trash").catch(() => 0),
-          countEmails("in:spam OR in:trash").catch(() => 0),
-          countEmails("older_than:1y -in:trash").catch(() => 0),
+          countEmails(SEGMENT_QUERIES.large).catch(() => 0),
+          countEmails(SEGMENT_QUERIES.promotions).catch(() => 0),
+          countEmails(SEGMENT_QUERIES.updates).catch(() => 0),
+          countEmails(SEGMENT_QUERIES.junk).catch(() => 0),
+          countEmails(SEGMENT_QUERIES.oldMail).catch(() => 0),
         ]);
 
         const parseNum = (v: any) => typeof v === 'number' ? v : (parseInt(String(v).replace(/\D/g, '')) || 0);
@@ -63,20 +90,33 @@ export function StorageBreakdownBar({
         const oCount = parseNum(oldMailCount);
 
         const [largeSize, promoSize, updatesSize, junkSize, oldMailSize] = await Promise.all([
-          estimateQuerySize("larger:5M -in:trash", lCount).catch(() => 0),
-          estimateQuerySize("category:promotions older_than:6m -in:trash", pCount).catch(() => 0),
-          estimateQuerySize("category:updates OR category:social -in:trash", uCount).catch(() => 0),
-          estimateQuerySize("in:spam OR in:trash", jCount).catch(() => 0),
-          estimateQuerySize("older_than:1y -in:trash", oCount).catch(() => 0),
+          estimateQuerySize(SEGMENT_QUERIES.large, lCount).catch(() => 0),
+          estimateQuerySize(SEGMENT_QUERIES.promotions, pCount).catch(() => 0),
+          estimateQuerySize(SEGMENT_QUERIES.updates, uCount).catch(() => 0),
+          estimateQuerySize(SEGMENT_QUERIES.junk, jCount).catch(() => 0),
+          estimateQuerySize(SEGMENT_QUERIES.oldMail, oCount).catch(() => 0),
         ]);
 
         if (!isMounted) return;
 
+        /**
+         * `sizeBytes` is whatever the sampler measured, and nothing else.
+         *
+         * Each of these used to fall back to `count × <a number someone picked>` —
+         * 7 MB a message for heavy files, 120 KB for promos — whenever the estimate
+         * came back zero. A failed measurement then rendered as a confident figure
+         * in the same "~2.3 GB Cleanable" badge as a real one, with nothing to tell
+         * them apart. A segment we could not measure now reports zero and drops out
+         * of the bar, which is the truthful thing for it to do.
+         *
+         * Every `query` is the exact string that was counted, so clicking a segment
+         * opens the same set the number describes.
+         */
         const initialSegments: StorageSegment[] = [
           {
             id: 'large',
             name: 'Heavy Files (>5MB)',
-            query: 'larger:5M',
+            query: SEGMENT_QUERIES.large,
             folder: 'anywhere',
             sort: 'size',
             colorBg: 'bg-orange-50',
@@ -85,14 +125,14 @@ export function StorageBreakdownBar({
             colorBar: 'bg-orange-500',
             icon: <HardDrive className="w-3.5 h-3.5" />,
             count: lCount,
-            sizeBytes: largeSize || (lCount * 7 * 1024 * 1024),
+            sizeBytes: largeSize,
             description: 'Large attachments, PDFs, and media files',
           },
           {
             id: 'promotions',
-            name: 'Stale Promos (>6m)',
-            query: 'older_than:6m -in:trash',
-            folder: 'category:promotions',
+            name: 'Stale Promos (6–12m)',
+            query: SEGMENT_QUERIES.promotions,
+            folder: 'anywhere',
             sort: 'date',
             colorBg: 'bg-amber-50',
             colorBorder: 'border-amber-200',
@@ -100,13 +140,13 @@ export function StorageBreakdownBar({
             colorBar: 'bg-amber-500',
             icon: <Tag className="w-3.5 h-3.5" />,
             count: pCount,
-            sizeBytes: promoSize || (pCount * 120 * 1024),
-            description: 'Old sales newsletters & marketing campaigns',
+            sizeBytes: promoSize,
+            description: 'Marketing mail past six months. Older promos count as Old Mail.',
           },
           {
             id: 'updates',
             name: 'Updates & Alerts',
-            query: 'category:updates OR category:social -in:trash',
+            query: SEGMENT_QUERIES.updates,
             folder: 'anywhere',
             sort: 'size',
             colorBg: 'bg-blue-50',
@@ -115,8 +155,8 @@ export function StorageBreakdownBar({
             colorBar: 'bg-blue-500',
             icon: <Bell className="w-3.5 h-3.5" />,
             count: uCount,
-            sizeBytes: updatesSize || (uCount * 80 * 1024),
-            description: 'Automated system digests, receipts, and social pings',
+            sizeBytes: updatesSize,
+            description: 'Automated digests, receipts and social pings from the last year',
           },
           {
             id: 'junk',
@@ -130,13 +170,13 @@ export function StorageBreakdownBar({
             colorBar: 'bg-rose-500',
             icon: <Trash2 className="w-3.5 h-3.5" />,
             count: jCount,
-            sizeBytes: junkSize || (jCount * 90 * 1024),
+            sizeBytes: junkSize,
             description: 'Deleted messages and flagged junk mail',
           },
           {
             id: 'oldMail',
             name: 'Old Mail (>1yr)',
-            query: 'older_than:1y -in:trash',
+            query: SEGMENT_QUERIES.oldMail,
             folder: 'anywhere',
             sort: 'size',
             colorBg: 'bg-slate-100',
@@ -145,8 +185,8 @@ export function StorageBreakdownBar({
             colorBar: 'bg-slate-500',
             icon: <Clock className="w-3.5 h-3.5" />,
             count: oCount,
-            sizeBytes: oldMailSize || (oCount * 100 * 1024),
-            description: 'Historical archive messages older than 12 months',
+            sizeBytes: oldMailSize,
+            description: 'Historical mail older than 12 months, under 5MB',
           },
         ];
 
@@ -169,7 +209,6 @@ export function StorageBreakdownBar({
   }, []);
 
   const totalBytes = segments.reduce((sum, s) => sum + (s.sizeBytes || 0), 0);
-  const totalCount = segments.reduce((sum, s) => sum + (s.count || 0), 0);
 
   if (loading) {
     return (
@@ -196,11 +235,11 @@ export function StorageBreakdownBar({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-slate-900">Storage & Cleanup Breakdown</h3>
                 <span className="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  ~{formatSize(totalBytes)} Cleanable
+                  ~{formatBytes(totalBytes)} Cleanable
                 </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Click any category bar to immediately review and purge those messages.
+                Categories don't overlap, so the shares add up. Click any bar to review those messages.
               </p>
             </div>
           </div>
@@ -238,7 +277,7 @@ export function StorageBreakdownBar({
                     source: 'health'
                   })}
                   style={{ width: `${Math.max(percentage, 2)}%` }}
-                  title={`${segment.name}: ~${formatSize(segment.sizeBytes)} (${segment.count.toLocaleString()} emails)`}
+                  title={`${segment.name}: ~${formatBytes(segment.sizeBytes)} (${segment.count.toLocaleString()} emails)`}
                   className={cn(
                     "h-full first:rounded-l-full last:rounded-r-full transition-all relative group cursor-pointer focus:outline-none",
                     segment.colorBar,
@@ -294,7 +333,7 @@ export function StorageBreakdownBar({
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200/50 mt-auto">
                     <div>
                       <div className="text-xs sm:text-sm font-bold text-slate-900">
-                        ~{formatSize(segment.sizeBytes)}
+                        ~{formatBytes(segment.sizeBytes)}
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium">
                         {segment.count.toLocaleString()} emails

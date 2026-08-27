@@ -17,7 +17,7 @@ import {
 } from '../lib/csvExport';
 import {
   extractSenderDetails, computeInboxHealthBreakdown, getUserManagementCounts,
-  HEALTH_SCORE_QUERIES
+  HEALTH_SCORE_QUERIES, INBOX_STAT_QUERIES
 } from '../lib/emailUtils';
 
 interface Props {
@@ -39,8 +39,24 @@ interface Dataset {
   build: () => Promise<{ headers: string[]; rows: unknown[][] } | null>;
 }
 
-/** How many messages a query-backed export will pull at most. */
+/** How many threads a query-backed export will pull at most. */
 const MESSAGE_EXPORT_LIMIT = 1000;
+
+/**
+ * Rows a query-backed export will actually produce.
+ *
+ * The cards showed the mailbox-wide count for their query — "12,431 rows" — and then
+ * downloaded 500. The export is capped, so the honest figure is the cap, and the
+ * copy below says the number is capped when it is.
+ */
+/** Rows the Inbox Health Summary emits. Kept beside its builder so the two agree —
+ *  the card had said 20 while the builder produced 18. */
+const SUMMARY_ROW_COUNT = 18;
+
+function cappedRows(total?: number): number | undefined {
+  if (total === undefined) return undefined;
+  return Math.min(total, MESSAGE_EXPORT_LIMIT);
+}
 
 async function messageDataset(query: string) {
   const emails = await scanFolderMetadata(query, MESSAGE_EXPORT_LIMIT);
@@ -77,7 +93,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'Inbox Health Summary',
       description: 'Every headline metric with its storage estimate, plus the full health score breakdown.',
       icon: <Activity className="w-4 h-4" />,
-      knownRows: stats ? 20 : undefined,
+      knownRows: stats ? SUMMARY_ROW_COUNT : undefined,
       build: async () => {
         if (!stats) return null;
         const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
@@ -153,9 +169,9 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       id: 'unread',
       group: 'Messages',
       title: 'Unread Inbox',
-      description: 'Everything still unread in your inbox.',
+      description: `Everything still unread in your inbox, newest first (up to ${MESSAGE_EXPORT_LIMIT.toLocaleString()}).`,
       icon: <Inbox className="w-4 h-4" />,
-      knownRows: stats?.unread,
+      knownRows: cappedRows(stats?.unread),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.unread),
     },
     {
@@ -164,7 +180,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'Large Attachments',
       description: 'Messages carrying more than 5MB — sorted out for storage cleanup.',
       icon: <HardDrive className="w-4 h-4" />,
-      knownRows: stats?.large,
+      knownRows: cappedRows(stats?.large),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.largeFiles),
     },
     {
@@ -173,7 +189,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'Stale Promotions',
       description: 'Marketing mail older than six months.',
       icon: <AlertTriangle className="w-4 h-4" />,
-      knownRows: stats?.oldPromo,
+      knownRows: cappedRows(stats?.oldPromo),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.oldPromotions),
     },
     {
@@ -182,7 +198,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'Old Mail (>1 Year)',
       description: 'Anything you have not touched in over a year.',
       icon: <Clock className="w-4 h-4" />,
-      knownRows: stats?.oldMail,
+      knownRows: cappedRows(stats?.oldMail),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.oldMail),
     },
     {
@@ -191,7 +207,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'Spam & Trash',
       description: 'Everything queued for deletion — worth a look before you empty it.',
       icon: <Trash2 className="w-4 h-4" />,
-      knownRows: stats?.spamAndTrash,
+      knownRows: cappedRows(stats?.spamAndTrash),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.spamAndTrash),
     },
     {
@@ -200,8 +216,8 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       title: 'All Attachments',
       description: 'Every message with a file attached, whatever its size.',
       icon: <Package className="w-4 h-4" />,
-      knownRows: stats?.withAttachments,
-      build: () => messageDataset('has:attachment -in:trash'),
+      knownRows: cappedRows(stats?.withAttachments),
+      build: () => messageDataset(INBOX_STAT_QUERIES.withAttachments),
     },
     {
       id: 'labels',

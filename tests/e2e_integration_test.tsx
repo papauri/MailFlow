@@ -1,3 +1,6 @@
+// Must stay first: installs browser globals before any app module is evaluated.
+import './helpers/browserEnv';
+
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import Dashboard from '../src/components/Dashboard';
@@ -65,9 +68,13 @@ async function runE2EIntegrationTests() {
     );
 
     // 2. Search & Filter Bar mobile adaptability
+    // Asserted against the component source rather than the initial SSR string.
+    // The filter strip only mounts once a search has results, so the first render
+    // never contains it — the assertion was passing or failing on whether an
+    // unrelated element happened to share a class name.
     assert(
-      dashboardHtml.includes('overflow-x-auto') && dashboardHtml.includes('no-scrollbar') && dashboardHtml.includes('flex-nowrap'),
-      'Filter bar provides smooth horizontal swipe scrolling with no scrollbar'
+      dashboardCode.includes('overflow-x-auto') && dashboardCode.includes('no-scrollbar'),
+      'Filter bar provides horizontal swipe scrolling with no visible scrollbar'
     );
     assert(
       dashboardHtml.includes('min-w-[72px] sm:min-w-[120px]'),
@@ -84,9 +91,13 @@ async function runE2EIntegrationTests() {
     const modalHtml = renderToString(
       <CategoryDistributionModal isOpen={true} onClose={() => {}} onApplyCategory={() => {}} />
     );
+    // Category Breakdown is a routed full-height page now, so it is bounded by the
+    // page shell rather than a max-h dialog of its own. The property that still
+    // matters on a small screen is that its panels are a responsive grid rather
+    // than a fixed multi-column layout that would overflow.
     assert(
-      modalHtml.includes('max-h-[90vh]') && modalHtml.includes('overflow-hidden') && modalHtml.includes('p-3 sm:p-6'),
-      'Category Distribution Modal employs max-h-[90vh] with scrollable internal body for small screens'
+      modalHtml.includes('grid-cols-1') && modalHtml.includes('lg:grid-cols-3'),
+      'Category Breakdown stacks to a single column on small screens'
     );
   }
 
@@ -192,11 +203,12 @@ async function runE2EIntegrationTests() {
   console.log('\n[E2E Journey 3] Inbox Health Chart Modal & Recharts Category Drilldown');
   {
     // 1. Check trigger button and modal wiring in InboxHealth component
+    // Reached by route, not by a modal InboxHealth mounts. See m3_stress_test for
+    // the matching correction; the trigger is asserted to go somewhere real.
     assert(
       inboxHealthCode.includes('Category Breakdown') &&
-      inboxHealthCode.includes('setIsChartModalOpen(true)') &&
-      inboxHealthCode.includes('<CategoryDistributionModal'),
-      'InboxHealth renders trigger button and embeds CategoryDistributionModal'
+      inboxHealthCode.includes("window.location.hash = '#category-distribution'"),
+      'InboxHealth renders the trigger and routes it to the Category Breakdown page'
     );
 
     // 2. Open CategoryDistributionModal and verify category aggregations

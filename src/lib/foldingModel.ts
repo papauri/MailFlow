@@ -48,8 +48,19 @@ export interface RoutingSuggestion {
   confidence: number;
   rationale: string;
   evidence: string[];
+  /** Gmail query the rule matches on. */
   query: string;
+  /** Thread ids, used to resolve the suggestion back to the on-screen sample. */
   ids: string[];
+  /**
+   * Message ids for the same set.
+   *
+   * Filing the backlog goes through `messages.batchModify`, which takes message ids.
+   * The sample is built from `threads.list`, so `ids` holds thread ids — passing
+   * those straight to the batch endpoint is a 400 and the Folder Optimizer's "file
+   * these" action could never have worked. These are the ids to act on.
+   */
+  actionIds: string[];
   score: number;
   memoryKey: string;
   /** Sender keys a themed folder speaks for, so it can supersede their own cards. */
@@ -64,7 +75,10 @@ interface SenderStats {
   total: number;
   labelCounts: Map<string, number>;
   ids: string[];
+  /** Thread ids with no user label — the backlog a rule would tidy. */
   unlabelledIds: string[];
+  /** Message ids for those same threads, for the batch endpoints. */
+  unlabelledActionIds: string[];
 }
 
 /**
@@ -99,6 +113,7 @@ function collectSenderStats(emails: any[], labelIdToName: Map<string, string>): 
         labelCounts: new Map(),
         ids: [],
         unlabelledIds: [],
+        unlabelledActionIds: [],
       };
       stats.set(key, entry);
     }
@@ -109,6 +124,8 @@ function collectSenderStats(emails: any[], labelIdToName: Map<string, string>): 
     const userLabels = (email.labelIds || []).filter((id: string) => isUserLabel(id) && labelIdToName.has(id));
     if (userLabels.length === 0) {
       if (email.id) entry.unlabelledIds.push(email.id);
+      if (email.messageIds?.length) entry.unlabelledActionIds.push(...email.messageIds);
+      else if (email.id) entry.unlabelledActionIds.push(email.id);
     } else {
       for (const id of userLabels) {
         entry.labelCounts.set(id, (entry.labelCounts.get(id) || 0) + 1);
@@ -169,8 +186,14 @@ function buildColdStartSuggestions(
     const shown = names.slice(0, 3).join(', ');
     const rest = names.length > 3 ? ` and ${names.length - 3} more` : '';
     const ids = entry.senders.flatMap(s => s.unlabelledIds);
+    const actionIds = entry.senders.flatMap(s => s.unlabelledActionIds);
     // Domain-scoped so the rule keeps working for future senders at those companies.
-    const query = entry.senders.map(s => `from:${s.domain}`).join(' OR ');
+    // Deduped, because a theme routinely holds several senders at one domain, and
+    // parenthesised so the OR group stays a group wherever the query is appended to.
+    const domains = Array.from(new Set(entry.senders.map(s => s.domain).filter(Boolean)));
+    const query = domains.length === 1
+      ? `from:${domains[0]}`
+      : `from:(${domains.join(' OR ')})`;
 
     const evidenceWeight = Math.min(1, Math.log10(1 + entry.volume) / Math.log10(51));
     const confidence = Math.min(0.7, 0.35 + evidenceWeight * 0.3);
@@ -196,6 +219,7 @@ function buildColdStartSuggestions(
       ],
       query,
       ids,
+      actionIds,
       score: (0.5 * Math.log10(1 + entry.volume)) * priorFor(key),
       memoryKey: key,
       coveredSenders: entry.senders.map(s => s.key),
@@ -292,6 +316,7 @@ export function buildRoutingSuggestions(
             ],
             query: isDomainRule ? `from:${sender.domain}` : `from:${sender.key}`,
             ids: sender.unlabelledIds,
+            actionIds: sender.unlabelledActionIds,
             score: (purity * Math.log10(1 + sender.total)) * priorFor(key),
             memoryKey: key,
           });
@@ -335,6 +360,7 @@ export function buildRoutingSuggestions(
         ],
         query: isDomainRule ? `from:${sender.domain}` : `from:${sender.key}`,
         ids: sender.unlabelledIds,
+        actionIds: sender.unlabelledActionIds,
         score: (0.6 * Math.log10(1 + sender.total)) * priorFor(key),
         memoryKey: key,
       });
@@ -364,6 +390,24 @@ export function buildRoutingSuggestions(
   }
 
   return suggestions.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Distinct senders in a sample, counted the way the model counts them.
+ *
+ * Folder Optimizer and Automated Rules each did this inline as
+ * `new Set(emails.map(e => e.sender.toLowerCase())).size`, which counts raw From
+ * headers. One sender who changes their display name ("Stripe" then "Stripe
+ * Billing") counts twice, so "142 senders analysed" disagreed with the number of
+ * cohorts the model had actually built from the same sample.
+ */
+export function countDistinctSenders(emails: any[]): number {
+  const seen = new Set<string>();
+  for (const email of emails) {
+    const addr = extractSenderDetails(email?.sender || '').emailAddr;
+    if (addr && addr.includes('@')) seen.add(addr);
+  }
+  return seen.size;
 }
 
 export interface RoutingSummary {

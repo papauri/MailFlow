@@ -49,12 +49,20 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-/** Column layout shared by every message-level export. */
 export const MESSAGE_HEADERS = [
   'Date', 'From Name', 'From Email', 'Domain', 'Subject',
-  'Snippet', 'Size (bytes)', 'Size', 'Unread', 'Has Attachment', 'Labels', 'Thread ID',
+  'Snippet', 'Size (bytes)', 'Size', 'Unread', 'Labels', 'Thread ID',
 ];
 
+/**
+ * Column layout shared by every message-level export.
+ *
+ * "Has Attachment" is gone. It was derived from a `HAS_ATTACHMENT` label id, which
+ * Gmail does not issue — the column was blank on every row of every export,
+ * including the attachments export, where it read as "no attachments found". The
+ * metadata these rows are built from carries no attachment flag, so the column had
+ * nothing behind it and an empty column is worse than no column.
+ */
 export function messageToRow(email: any, senderDetails: { displayName: string; emailAddr: string; rootDomain: string }): unknown[] {
   const labels: string[] = email.labelIds || [];
   const size = email.sizeEstimate || 0;
@@ -69,8 +77,10 @@ export function messageToRow(email: any, senderDetails: { displayName: string; e
     size,
     formatBytes(size),
     labels.includes('UNREAD') ? 'Yes' : 'No',
-    email.hasAttachment ? 'Yes' : (labels.includes('HAS_ATTACHMENT') ? 'Yes' : ''),
     labels.join(' | '),
-    email.id || '',
+    // Thread-scanned rows set `id` to the thread; message-scanned rows set it to the
+    // message and carry `threadId` separately. This column is headed "Thread ID", so
+    // it has to prefer the latter or it silently mixes two kinds of identifier.
+    email.threadId || email.id || '',
   ];
 }

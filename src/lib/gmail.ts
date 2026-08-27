@@ -285,7 +285,9 @@ export async function archiveAllByQuery(
   let total = 0;
 
   for (let round = 0; round < maxRounds; round++) {
-    const scoped = query.includes('in:inbox') ? query : `${query} in:inbox`;
+    // Parenthesised: Gmail binds implicit AND tighter than OR, so appending a term
+    // to a query containing OR would otherwise attach it to the last clause only.
+    const scoped = query.includes('in:inbox') ? query : `(${query}) in:inbox`;
     const res = await fetchGmailAPI(`/messages?q=${encodeURIComponent(scoped)}&maxResults=${PAGE_SIZE}`);
     const messages = res?.messages;
     if (!messages || messages.length === 0) break;
@@ -371,7 +373,9 @@ export async function markAllAsReadByQuery(
   let totalMarked = 0;
 
   for (let round = 0; round < maxRounds; round++) {
-    const url = `/messages?q=${encodeURIComponent(query + ' is:unread')}&maxResults=${PAGE_SIZE}`;
+    // Parenthesised for the same reason as archiveAllByQuery: `a OR b is:unread`
+    // parses as `a OR (b is:unread)`, which would sweep everything matching `a`.
+    const url = `/messages?q=${encodeURIComponent(`(${query}) is:unread`)}&maxResults=${PAGE_SIZE}`;
     const listResult = await fetchGmailAPI(url);
     const messages = listResult?.messages;
     if (!messages || messages.length === 0) break;
@@ -399,7 +403,7 @@ export async function markAllAsReadByQuery(
  * size. Never reports less than the messages actually seen, so the number can be
  * imprecise but not wrong in the direction that matters.
  */
-const COUNT_MAX_PAGES = 20; // 10,000 messages counted exactly
+export const COUNT_MAX_PAGES = 20; // 10,000 messages counted exactly
 
 export async function countEmails(query: string, maxPages: number = COUNT_MAX_PAGES): Promise<number> {
   try {
@@ -426,34 +430,45 @@ export async function countEmails(query: string, maxPages: number = COUNT_MAX_PA
   }
 }
 
+/**
+ * Sample size for the storage estimate.
+ *
+ * Thirty messages puts the standard error of the mean at roughly a fifth of the
+ * population's own spread, which is comfortably tighter than the precision a
+ * "~1.4 GB" figure claims. Raising it further buys accuracy nobody can see, at 5
+ * quota units a message.
+ */
+const SIZE_SAMPLE_SIZE = 30;
+
+/**
+ * Estimated total bytes behind a query: mean message size × message count.
+ *
+ * The units have to match on both sides of that multiplication, and they did not.
+ * The sample was drawn from `/threads` and each thread's size was summed across
+ * *all* its messages, while `count` comes from `countEmails`, which counts
+ * *messages*. On a mailbox whose threads average three messages the estimate came
+ * out three times too large, and every storage figure in Inbox Health — the
+ * "reclaimable" badge, the breakdown bar, the recommendation ranking — inherited
+ * that inflation.
+ *
+ * Sampling messages directly makes both sides per-message. It is still an estimate
+ * drawn from the newest page of results, which is the honest limit of doing this
+ * without walking the whole mailbox; the figures are labelled with a ~ throughout.
+ */
 export async function estimateQuerySize(query: string, countStr: number | string): Promise<number> {
   const count = typeof countStr === 'string' ? parseInt(countStr.replace(/\D/g, '')) || 0 : countStr;
-  if (count === 0) return 0;
+  if (count <= 0) return 0;
 
   try {
-    // 1. Fetch a single small page of results
-    const res = await fetchGmailAPI(`/threads?q=${encodeURIComponent(query)}&maxResults=5`);
-    if (!res || !res.threads || res.threads.length === 0) return 0;
-    
-    // 2. Fetch details for this sample
-    const sampleDetails = await processInChunks(res.threads, 5, async (thread: any) => {
-      try {
-        const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata`);
-        if (!detail.messages || detail.messages.length === 0) return 0;
-        return detail.messages.reduce((sum: number, m: any) => sum + (m.sizeEstimate || 0), 0);
-      } catch (e) {
-        return 0;
-      }
-    });
-    
-    // 3. Average the sizes
-    const validSizes = sampleDetails.filter(s => s > 0);
-    if (validSizes.length === 0) return 0;
-    
-    const avgSize = validSizes.reduce((a, b) => a + b, 0) / validSizes.length;
-    
-    // 4. Multiply by total count
-    return avgSize * count;
+    const ids = await listMessageIds(query, Math.min(SIZE_SAMPLE_SIZE, count));
+    if (ids.length === 0) return 0;
+
+    const sample = await fetchMessagesMetadataBatch(ids);
+    const sizes = sample.map((m: any) => m.sizeEstimate || 0).filter((n: number) => n > 0);
+    if (sizes.length === 0) return 0;
+
+    const meanBytesPerMessage = sizes.reduce((a: number, b: number) => a + b, 0) / sizes.length;
+    return meanBytesPerMessage * count;
   } catch (err) {
     return 0;
   }
