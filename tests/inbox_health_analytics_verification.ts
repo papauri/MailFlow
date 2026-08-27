@@ -18,6 +18,9 @@ import {
   computeInboxHealthScore,
   HEALTH_SCORE_QUERIES,
   HEALTH_SCORE_SWEEP_QUERIES,
+  applyMetricEvent,
+  SCORE_METRIC_FIELDS,
+  SCORE_BONUS_FIELDS,
   SWEEP_PROTECTION,
   PROTECTED_SWEEPS,
   INBOX_STAT_QUERIES,
@@ -111,6 +114,83 @@ section('Gmail query integrity');
     'Query sanitiser strips a dangling boolean operator');
   assert(sanitizeGmailSearchQuery('label:My Folder') === 'label:"My Folder"',
     'Query sanitiser quotes a label containing a space');
+}
+
+// ---------------------------------------------------------------------------
+section('Optimistic metric events');
+// ---------------------------------------------------------------------------
+{
+  const base = {
+    unreadInbox: 500, spamAndTrash: 300, oldPromotions: 900, largeFiles: 10, oldMail: 2000,
+    unsubscribedCount: 0, activeFiltersCount: 0,
+  };
+
+  // A dispatcher that already knows the post-action state wins outright.
+  const direct = applyMetricEvent(base, { type: 'oldMail', metrics: { ...base, oldMail: 7 } });
+  assert(direct?.oldMail === 7, 'A payload carrying full metrics is applied verbatim', String(direct?.oldMail));
+
+  // Partial clears subtract; full clears zero.
+  const partial = applyMetricEvent(base, { type: 'promo', count: 400, isPartial: true });
+  assert(partial?.oldPromotions === 500, 'A partial clear subtracts the count', String(partial?.oldPromotions));
+  const full = applyMetricEvent(base, { type: 'promo', count: 400, isPartial: false });
+  assert(full?.oldPromotions === 0, 'A full clear zeroes the metric', String(full?.oldPromotions));
+  const over = applyMetricEvent(base, { type: 'spam', count: 99999, isPartial: true });
+  assert(over?.spamAndTrash === 0, 'Subtracting more than exists floors at zero', String(over?.spamAndTrash));
+
+  // Every event the app dispatches has to move something, or a surface silently
+  // ignores an action. These are the type strings actually broadcast today.
+  for (const type of ['unread', 'spam', 'promo', 'large', 'oldMail']) {
+    const out = applyMetricEvent(base, { type, count: 1, isPartial: true });
+    assert(out !== null, `Event "${type}" moves a scoring metric`);
+  }
+  for (const type of ['unsub', 'rule']) {
+    const out = applyMetricEvent(base, { type, count: 1, isPartial: true });
+    assert(out !== null, `Event "${type}" moves a hygiene bonus`);
+  }
+
+  // The widget must not shift the score on a counter that is not a scoring input.
+  assert(
+    applyMetricEvent(base, { type: 'updatesAndSocial', count: 50, isPartial: true }) === null,
+    'A non-scoring counter leaves the score alone'
+  );
+  assert(
+    applyMetricEvent(base, { type: 'something-new', count: 5, isPartial: true }) === null,
+    'An unrecognised event is ignored rather than applied to an arbitrary field'
+  );
+
+  // A no-op event must return null so React can bail out of the render.
+  assert(
+    applyMetricEvent({ ...base, oldPromotions: 0 }, { type: 'promo', count: 10, isPartial: true }) === null,
+    'An event that changes nothing returns null instead of a new object'
+  );
+
+  // Purity: the reducer runs inside a React updater, which StrictMode invokes twice.
+  const frozen = Object.freeze({ ...base });
+  const once = applyMetricEvent(frozen, { type: 'unread', count: 100, isPartial: true });
+  const twice = applyMetricEvent(frozen, { type: 'unread', count: 100, isPartial: true });
+  assert(
+    once?.unreadInbox === 400 && twice?.unreadInbox === 400 && frozen.unreadInbox === 500,
+    'The reducer is pure: same input, same output, input untouched',
+    `${once?.unreadInbox} / ${twice?.unreadInbox} / ${frozen.unreadInbox}`
+  );
+
+  // The bonus events add rather than replace, and default to one.
+  const unsub = applyMetricEvent(base, { type: 'unsub' });
+  assert(unsub?.unsubscribedCount === 1, 'An unsubscribe with no count increments by one', String(unsub?.unsubscribedCount));
+
+  // Field maps must not overlap, or one event would move two inputs.
+  const clutterKeys = Object.keys(SCORE_METRIC_FIELDS);
+  const bonusKeys = Object.keys(SCORE_BONUS_FIELDS);
+  assert(
+    clutterKeys.every(k => !bonusKeys.includes(k)),
+    'No event type is both a clutter metric and a bonus'
+  );
+
+  // Nothing to apply to yet: the first fetch has not landed.
+  assert(
+    applyMetricEvent(null, { type: 'unread', count: 5, isPartial: true }) === null,
+    'An event arriving before the first fetch is a no-op, not a crash'
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -489,6 +489,92 @@ export function computeInboxHealthScore(metrics: HealthScoreMetrics): number {
   return computeInboxHealthBreakdown(metrics).score;
 }
 
+// -------------------------------------------------------------
+// Optimistic metric events
+// -------------------------------------------------------------
+
+/**
+ * The `inbox_metrics_updated` payload every mutating action broadcasts.
+ *
+ * `metrics` is present when the dispatcher already knows the full post-action
+ * state (the Inbox Score page does); otherwise listeners apply `count` to the one
+ * field `type` names.
+ */
+export interface MetricEventDetail {
+  type?: string;
+  count?: number;
+  /** True when only part of the category was cleared, so subtract instead of zeroing. */
+  isPartial?: boolean;
+  metrics?: HealthScoreMetrics;
+}
+
+/**
+ * Which scoring input each event type moves.
+ *
+ * There is exactly one of these maps because there used to be two — the navbar
+ * widget's and Inbox Health's — and they had already drifted apart: the widget
+ * handled `unsub` and `rule` but not `oldMail`, Inbox Health handled `oldMail` and
+ * `updatesAndSocial` but not the two bonus events. An event either side did not
+ * know about was silently dropped, so the same action moved one surface's number
+ * and not the other's.
+ *
+ * `updatesAndSocial` is deliberately absent: it is a volume counter Inbox Health
+ * displays, not an input to the score, so it must not shift the widget.
+ */
+export const SCORE_METRIC_FIELDS: Record<string, keyof HealthScoreMetrics> = {
+  unread: 'unreadInbox',
+  spam: 'spamAndTrash',
+  promo: 'oldPromotions',
+  large: 'largeFiles',
+  oldMail: 'oldMail',
+};
+
+/** Events that add to the hygiene bonus rather than clearing clutter. */
+export const SCORE_BONUS_FIELDS: Record<string, keyof HealthScoreMetrics> = {
+  unsub: 'unsubscribedCount',
+  rule: 'activeFiltersCount',
+};
+
+/**
+ * Applies one metric event to a set of metrics.
+ *
+ * Pure: it returns new metrics or `null` when the event changes nothing, and does
+ * no I/O. That matters because this runs inside a React state updater, which React
+ * may invoke more than once — StrictMode does so deliberately. The previous version
+ * of this logic lived inline in the updater and called `setScore`, `setRecentGain`,
+ * `setTimeout` and `sessionStorage.setItem` from inside it, so a double invocation
+ * fired the gain animation twice and re-based the comparison ref against itself.
+ */
+export function applyMetricEvent(
+  prev: HealthScoreMetrics | null,
+  detail: MetricEventDetail
+): HealthScoreMetrics | null {
+  if (detail.metrics) return { ...detail.metrics };
+  if (!prev) return null;
+
+  const { type = '', count = 0, isPartial } = detail;
+  const applied = Number(count) || 0;
+
+  const clutterField = SCORE_METRIC_FIELDS[type];
+  if (clutterField) {
+    const current = Number(prev[clutterField]) || 0;
+    const nextValue = isPartial ? Math.max(0, current - applied) : 0;
+    if (nextValue === current) return null;
+    return { ...prev, [clutterField]: nextValue };
+  }
+
+  const bonusField = SCORE_BONUS_FIELDS[type];
+  if (bonusField) {
+    const current = Number(prev[bonusField]) || 0;
+    return { ...prev, [bonusField]: current + (applied || 1) };
+  }
+
+  // An event naming something the score does not model — a cleared Forums
+  // category, say. Returning null leaves the score alone rather than subtracting
+  // the count from whichever field happens to be nearby.
+  return null;
+}
+
 /**
  * Single source of truth for the user-management bonus inputs (unsubscribes & filter
  * rules created in-app). Reads the same localStorage keys the features actually write

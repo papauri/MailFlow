@@ -1,33 +1,111 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { countEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
-import { computeInboxHealthScore, getUserManagementCounts, HEALTH_SCORE_QUERIES, HealthScoreMetrics } from '../lib/emailUtils';
+import {
+  computeInboxHealthScore, getUserManagementCounts, applyMetricEvent,
+  HEALTH_SCORE_QUERIES, HealthScoreMetrics,
+} from '../lib/emailUtils';
 
-export function HealthScoreWidget({ 
-  onApplyQuery, 
+/**
+ * Cached metrics, not a cached score.
+ *
+ * The widget used to cache only the final number. That made the score appear
+ * instantly on mount but left `metrics` null until five `countEmails` calls
+ * resolved — and every optimistic update needs `metrics` to apply a delta to. In
+ * that window, which is seconds on a large mailbox because the quota governor is
+ * also serving Inbox Health's own eight counts, an action would fall through to a
+ * full refetch instead of updating. Caching the inputs means the very first render
+ * can already do the arithmetic.
+ */
+const METRICS_CACHE_KEY = 'ais_cached_health_metrics_v1';
+
+function readCachedMetrics(): HealthScoreMetrics | null {
+  try {
+    const raw = sessionStorage.getItem(METRICS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed as HealthScoreMetrics : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedMetrics(metrics: HealthScoreMetrics) {
+  try {
+    sessionStorage.setItem(METRICS_CACHE_KEY, JSON.stringify(metrics));
+  } catch { }
+}
+
+export function HealthScoreWidget({
+  onApplyQuery,
   onOpenUnsubscribe,
-  compact = false 
-}: { 
-  onApplyQuery?: (query: string, filter?: string, sortOption?: "date" | "size" | "sender") => void; 
+  compact = false
+}: {
+  onApplyQuery?: (query: string, filter?: string, sortOption?: "date" | "size" | "sender") => void;
   onOpenUnsubscribe?: () => void;
   compact?: boolean;
 }) {
-  const [score, setScore] = useState<number | null>(() => {
-    try {
-      const cached = sessionStorage.getItem('ais_cached_health_score');
-      return cached ? parseInt(cached, 10) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [metrics, setMetrics] = useState<HealthScoreMetrics | null>(null);
-  const [loading, setLoading] = useState(score === null);
+  const [metrics, setMetrics] = useState<HealthScoreMetrics | null>(readCachedMetrics);
+  const [loading, setLoading] = useState(metrics === null);
   const [recentGain, setRecentGain] = useState<number | null>(null);
   const [isPulsing, setIsPulsing] = useState(false);
-  const prevScoreRef = useRef<number | null>(score);
+
+  /**
+   * The score is derived, never stored.
+   *
+   * It was separate state that every code path had to remember to keep in step with
+   * `metrics`, and the sync happened inside the `setMetrics` updater. Deriving it
+   * means an optimistic metric change and the number on screen cannot disagree, and
+   * the updater has nothing left to do but return the next metrics.
+   */
+  const score = useMemo(
+    () => (metrics ? computeInboxHealthScore(metrics) : null),
+    [metrics]
+  );
+
+  // Persist whatever is currently on screen, so a remount starts from it.
+  useEffect(() => {
+    if (metrics) writeCachedMetrics(metrics);
+  }, [metrics]);
+
+  /**
+   * The "+N" badge, driven by the rendered score rather than computed inside the
+   * updater. Skips the first settled value so arriving at a score is not reported
+   * as having gained it.
+   */
+  const prevScoreRef = useRef<number | null>(null);
+  /**
+   * Set whenever the next score change comes from a fetch rather than a user
+   * action. A refetch can move the score for reasons the user did nothing about —
+   * mail arriving, the cached value being stale from a previous session — and
+   * celebrating that as a "+N" they just earned is a lie about their own progress.
+   */
+  const rebaseOnlyRef = useRef(false);
 
   useEffect(() => {
+    if (score === null) return;
+    const prev = prevScoreRef.current;
+    prevScoreRef.current = score;
+
+    if (rebaseOnlyRef.current) {
+      rebaseOnlyRef.current = false;
+      return;
+    }
+    if (prev === null || score <= prev) return;
+
+    setRecentGain(score - prev);
+    setIsPulsing(true);
+    const timer = setTimeout(() => {
+      setRecentGain(null);
+      setIsPulsing(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [score]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function calculateScore() {
       try {
         const [unread, junk, promo, large, oldMail] = await Promise.all([
@@ -37,13 +115,14 @@ export function HealthScoreWidget({
           countEmails(HEALTH_SCORE_QUERIES.largeFiles).catch(() => 0),
           countEmails(HEALTH_SCORE_QUERIES.oldMail).catch(() => 0)
         ]);
+        if (cancelled) return;
 
         const parseCount = (val: any) => typeof val === 'number' ? val : (parseInt(String(val).replace(/\D/g, '')) || 0);
-
-        // Get user management actions
         const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
 
-        const initialMetrics: HealthScoreMetrics = {
+        // Server truth landing is a re-baseline, not something the user just did.
+        rebaseOnlyRef.current = true;
+        setMetrics({
           unreadInbox: parseCount(unread),
           spamAndTrash: parseCount(junk),
           oldPromotions: parseCount(promo),
@@ -51,89 +130,59 @@ export function HealthScoreWidget({
           oldMail: parseCount(oldMail),
           unsubscribedCount,
           activeFiltersCount
-        };
-
-        const calculatedScore = computeInboxHealthScore(initialMetrics);
-        
-        setMetrics(initialMetrics);
-        setScore(calculatedScore);
-        // Re-baseline the gain tracker to the freshly fetched score. Without this it
-        // stays pinned to the stale sessionStorage value and the next action reports
-        // a bogus "+N" that includes drift since the last session.
-        prevScoreRef.current = calculatedScore;
-        try {
-          sessionStorage.setItem('ais_cached_health_score', String(calculatedScore));
-        } catch { }
+        });
       } catch (e) {
         console.error("Failed to calculate health score", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     calculateScore();
-    
-    // INSTANT OPTIMISTIC HEALTH SCORE UPDATE LISTENER
+
+    /**
+     * Optimistic update. The updater is pure — it returns the next metrics and
+     * nothing else — so React re-invoking it under StrictMode changes no outcome.
+     * Returning `prev` unchanged when the event moves nothing lets React bail out
+     * of the render entirely.
+     */
     const handleInboxMetricsUpdated = (e: any) => {
       const detail = e?.detail || {};
-      const { type, count = 0, isPartial, metrics: directMetrics } = detail;
-
       setMetrics(prev => {
-        let next: HealthScoreMetrics;
-        if (directMetrics) {
-          next = { ...directMetrics };
-        } else if (prev) {
-          next = { ...prev };
-          if (type === 'unread') {
-            next.unreadInbox = isPartial ? Math.max(0, prev.unreadInbox - count) : 0;
-          } else if (type === 'spam') {
-            next.spamAndTrash = isPartial ? Math.max(0, prev.spamAndTrash - count) : 0;
-          } else if (type === 'promo') {
-            next.oldPromotions = isPartial ? Math.max(0, prev.oldPromotions - count) : 0;
-          } else if (type === 'large') {
-            next.largeFiles = isPartial ? Math.max(0, prev.largeFiles - count) : 0;
-          } else if (type === 'unsub') {
-            next.unsubscribedCount = (prev.unsubscribedCount || 0) + (count || 1);
-          } else if (type === 'rule') {
-            next.activeFiltersCount = (prev.activeFiltersCount || 0) + (count || 1);
-          }
-        } else {
-          // If metrics haven't loaded yet, trigger background calc
-          calculateScore();
+        const next = applyMetricEvent(prev, detail);
+        if (!next) {
+          // Nothing to apply yet because the first fetch has not landed. The fetch
+          // already in flight will supply the real numbers.
           return prev;
         }
-
-        const newScore = computeInboxHealthScore(next);
-        const prevScore = prevScoreRef.current ?? newScore;
-        const diff = newScore - prevScore;
-
-        if (diff > 0) {
-          setRecentGain(diff);
-          setIsPulsing(true);
-          setTimeout(() => {
-            setRecentGain(null);
-            setIsPulsing(false);
-          }, 3000);
-        }
-
-        prevScoreRef.current = newScore;
-        setScore(newScore);
-        try {
-          sessionStorage.setItem('ais_cached_health_score', String(newScore));
-        } catch { }
-
         return next;
       });
     };
 
-    const handleGenericUpdate = () => calculateScore();
+    /**
+     * Unsubscribes and new filter rules only move counters this reads straight out
+     * of localStorage, so recompute the bonus in place. This used to trigger the
+     * full five-query refetch, which is a multi-second round trip to learn a number
+     * already sitting in localStorage — and the delay was visible in the navbar.
+     */
+    const handleBonusUpdate = () => {
+      const { unsubscribedCount, activeFiltersCount } = getUserManagementCounts();
+      setMetrics(prev => {
+        if (!prev) return prev;
+        if (prev.unsubscribedCount === unsubscribedCount && prev.activeFiltersCount === activeFiltersCount) {
+          return prev;
+        }
+        return { ...prev, unsubscribedCount, activeFiltersCount };
+      });
+    };
 
     window.addEventListener('inbox_metrics_updated', handleInboxMetricsUpdated);
-    window.addEventListener('health-score-update', handleGenericUpdate);
-    
+    window.addEventListener('health-score-update', handleBonusUpdate);
+
     return () => {
+      cancelled = true;
       window.removeEventListener('inbox_metrics_updated', handleInboxMetricsUpdated);
-      window.removeEventListener('health-score-update', handleGenericUpdate);
+      window.removeEventListener('health-score-update', handleBonusUpdate);
     };
   }, []);
 

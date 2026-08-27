@@ -84,6 +84,16 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const totalCountRef = useRef<number | string | null>(null);
   const [isCounting, setIsCounting] = useState(false);
   const [lastExecutedQuery, setLastExecutedQuery] = useState("");
+  /**
+   * The raw inputs behind `lastExecutedQuery` — the text the user typed and the
+   * folders they picked, before any scope terms are appended.
+   *
+   * Needed because `lastExecutedQuery` is the *assembled* query: the search text
+   * plus `-in:trash`, `-in:sent` and any date bounds. Comparing the raw input
+   * against it compares two different kinds of string, so it reported "new search"
+   * even when nothing had changed.
+   */
+  const lastSearchInputRef = useRef<{ text: string; filters: string } | null>(null);
   const searchIdRef = useRef(0);
   const todayStr = new Date().toISOString().split("T")[0];
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -368,7 +378,21 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     // Anchor to the top only for a genuinely new search. Background refreshes after
     // an action reuse the same query, and yanking the page to the top mid-task threw
     // the user away from the row they had just acted on.
-    const isNewSearch = Boolean(e) || textQuery !== lastExecutedQuery;
+    //
+    // The test compares the search *inputs*, not the assembled query. It used to be
+    // `textQuery !== lastExecutedQuery`, which compared the raw box text against the
+    // query after `-in:trash`, `-in:sent` and date bounds had been appended. Those
+    // are never equal, so every background refresh counted as a new search — which
+    // is why finishing a batch in Batch Cleanup threw the page back to the top.
+    const searchFilters = (customFilters ?? folderFilters).join(',');
+    const prevInput = lastSearchInputRef.current;
+    const inputsChanged = !prevInput
+      || prevInput.text !== textQuery
+      || prevInput.filters !== searchFilters;
+    lastSearchInputRef.current = { text: textQuery, filters: searchFilters };
+
+    // `e` is set only when the user submitted the form, which is always deliberate.
+    const isNewSearch = Boolean(e) || inputsChanged;
     if (isNewSearch) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }

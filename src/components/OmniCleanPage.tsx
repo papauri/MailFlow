@@ -98,6 +98,18 @@ export function OmniCleanPage({
   const [bulkActionProgress, setBulkActionProgress] = useState<{ total: number; done: number; title: string } | null>(null);
   const [completedBatchIds, setCompletedBatchIds] = useState<Set<string>>(new Set());
 
+  /**
+   * Keeping the user's place when a batch disappears.
+   *
+   * Acting on a batch removes it from `visibleBatches`, so the card under the
+   * cursor vanishes and everything below jumps up by its height. With nothing
+   * anchoring the viewport the user lost their position entirely and had to hunt
+   * for where they were. These refs let the list hand focus to whichever batch
+   * takes the completed one's place.
+   */
+  const batchRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
+
   // Abort controller ref to cancel scans when switching scopes
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -348,6 +360,40 @@ export function OmniCleanPage({
     }));
   };
 
+  /**
+   * The batch that will occupy the completed one's position once it is filtered out.
+   *
+   * Prefers the next one down, because the eye is already travelling that way;
+   * falls back to the previous one when the completed batch was last.
+   */
+  const successorBatchId = (completedIds: Set<string>): string | null => {
+    const remaining = visibleBatches.filter(b => !completedIds.has(b.id));
+    if (remaining.length === 0) return null;
+    const firstCompletedIndex = visibleBatches.findIndex(b => completedIds.has(b.id));
+    if (firstCompletedIndex === -1) return null;
+    const below = visibleBatches.slice(firstCompletedIndex + 1).find(b => !completedIds.has(b.id));
+    if (below) return below.id;
+    const above = [...visibleBatches.slice(0, firstCompletedIndex)].reverse().find(b => !completedIds.has(b.id));
+    return above ? above.id : null;
+  };
+
+  /**
+   * Scrolls the successor into view once React has removed the completed card.
+   *
+   * `block: 'nearest'` so a batch already on screen is left exactly where it is —
+   * the point is to stop the page moving unnecessarily, not to re-centre on every
+   * action.
+   */
+  useEffect(() => {
+    if (!focusBatchId) return;
+    const el = batchRefs.current.get(focusBatchId);
+    setFocusBatchId(null);
+    if (!el) return;
+    const reduceMotion = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+  }, [focusBatchId]);
+
   // Single Batch Execution
   const handleExecuteBatch = async (batch: OmniClusterBatch) => {
     const targetIds = Array.from(batch.selectedIds);
@@ -377,7 +423,9 @@ export function OmniCleanPage({
         // Keep Protected: user acknowledges staying in place
       }
 
-      setCompletedBatchIds(prev => new Set(prev).add(batch.id));
+      const nextCompleted = new Set(completedBatchIds).add(batch.id);
+      setCompletedBatchIds(nextCompleted);
+      setFocusBatchId(successorBatchId(nextCompleted));
       if (onRefreshInbox) onRefreshInbox();
     } catch (err: any) {
       console.error(`Failed to execute batch ${batch.id}:`, err);
@@ -407,6 +455,10 @@ export function OmniCleanPage({
 
     setBulkActionProgress({ total: candidateBatches.length, done: 0, title: `Bulk ${actionName}ing ${candidateBatches.length} Batches…` });
 
+    // Accumulated locally so the successor can be computed from a value we hold,
+    // rather than read back out of a state updater — updaters must stay pure.
+    const completedNow = new Set(completedBatchIds);
+
     for (let i = 0; i < candidateBatches.length; i++) {
       const b = candidateBatches[i];
       const targetIds = Array.from(b.selectedIds);
@@ -416,7 +468,8 @@ export function OmniCleanPage({
         } else {
           await batchArchiveEmails(targetIds);
         }
-        setCompletedBatchIds(prev => new Set(prev).add(b.id));
+        completedNow.add(b.id);
+        setCompletedBatchIds(new Set(completedNow));
       } catch (err) {
         console.error(`Bulk execution error on batch ${b.id}:`, err);
       }
@@ -424,6 +477,10 @@ export function OmniCleanPage({
     }
 
     setBulkActionProgress(null);
+    // A bulk run clears many cards at once, so there is no single "next" — land on
+    // the first batch still awaiting a decision.
+    const stillPending = visibleBatches.find(b => !completedNow.has(b.id));
+    setFocusBatchId(stillPending ? stillPending.id : null);
     if (onRefreshInbox) onRefreshInbox();
   };
 
@@ -810,6 +867,10 @@ export function OmniCleanPage({
               return (
                 <div
                   key={batch.id}
+                  ref={el => {
+                    if (el) batchRefs.current.set(batch.id, el);
+                    else batchRefs.current.delete(batch.id);
+                  }}
                   className="bg-white border border-slate-200 rounded-xl shadow-2xs hover:border-slate-300 transition-all overflow-hidden"
                 >
                   {/* Card Header & Main Overview */}
