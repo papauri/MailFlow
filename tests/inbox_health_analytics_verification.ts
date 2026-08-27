@@ -19,6 +19,8 @@ import {
   HEALTH_SCORE_QUERIES,
   HEALTH_SCORE_SWEEP_QUERIES,
   ATTENTION_SHARE_OF_SCORE,
+  healthBand,
+  HEALTH_BAND_LABEL,
   applyMetricEvent,
   SCORE_METRIC_FIELDS,
   SCORE_BONUS_FIELDS,
@@ -37,6 +39,7 @@ import { auditCategory, normalizeSubject, templateToQuery } from '../src/lib/cat
 import { buildRecommendations } from '../src/lib/recommendations';
 import { messageToRow, MESSAGE_HEADERS } from '../src/lib/csvExport';
 import { SEGMENT_QUERIES } from '../src/components/StorageBreakdownBar';
+import * as fs from 'fs';
 
 let passed = 0;
 let failed = 0;
@@ -191,6 +194,61 @@ section('Optimistic metric events');
   assert(
     applyMetricEvent(null, { type: 'unread', count: 5, isPartial: true }) === null,
     'An event arriving before the first fetch is a no-op, not a crash'
+  );
+}
+
+// ---------------------------------------------------------------------------
+section('Score presentation matches the model');
+// ---------------------------------------------------------------------------
+{
+  // The Inbox Score page describes how the score is built. When the model changed
+  // the page kept advertising the old fixed weights — "max -35 pts", "max -25 pts",
+  // "max -20 pts" — for categories that no longer have a fixed maximum at all.
+  // Nothing failed, because copy is not typechecked; the page simply explained a
+  // scoring model the app had stopped using.
+  const modalSource = fs.readFileSync('src/components/HealthScoreModal.tsx', 'utf-8');
+  // Comments stripped: the point is what reaches the user, and the note explaining
+  // why these phrases were removed necessarily quotes them.
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const modalCopy = stripComments(modalSource);
+  const staleCaps = ['max -35 pts', 'max -25 pts', 'max -20 pts', 'storage bloat'];
+  for (const phrase of staleCaps) {
+    assert(!modalCopy.includes(phrase),
+      `The score page no longer advertises "${phrase}"`);
+  }
+  assert(
+    modalSource.includes('ATTENTION_SHARE_OF_SCORE'),
+    'The score page derives its stated budgets from the model rather than restating them'
+  );
+
+  // Bands are defined once. Two copies is what let a score of 45 draw an amber ring
+  // beside a panel headed "Action Required".
+  const widgetSource = fs.readFileSync('src/components/HealthScoreWidget.tsx', 'utf-8');
+  for (const [name, src] of [['score page', stripComments(modalSource)], ['navbar widget', stripComments(widgetSource)]] as const) {
+    assert(src.includes('healthBand('),
+      `The ${name} reads its band from the shared definition`);
+    assert(!/s >= 85|displayScore < 40/.test(src),
+      `The ${name} does not carry its own band thresholds`);
+  }
+
+  // The bands themselves: ordered, total, and labelled.
+  assert(healthBand(100) === 'optimal' && healthBand(85) === 'optimal',
+    'The top band starts at 85');
+  assert(healthBand(84) === 'good' && healthBand(70) === 'good', 'Good spans 70-84');
+  assert(healthBand(69) === 'attention' && healthBand(50) === 'attention', 'Attention spans 50-69');
+  assert(healthBand(49) === 'critical' && healthBand(0) === 'critical', 'Critical is below 50');
+
+  let ordered = true;
+  const rank = { critical: 0, attention: 1, good: 2, optimal: 3 };
+  for (let i = 0; i < 100; i++) {
+    if (rank[healthBand(i)] > rank[healthBand(i + 1)]) ordered = false;
+  }
+  assert(ordered, 'Bands never go backwards as the score rises');
+  assert(
+    Object.keys(HEALTH_BAND_LABEL).length === 4
+      && Object.values(HEALTH_BAND_LABEL).every(v => v.length > 0),
+    'Every band has a label'
   );
 }
 

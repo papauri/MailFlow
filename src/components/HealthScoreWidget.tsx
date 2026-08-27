@@ -3,7 +3,7 @@ import { countEmails, fetchMailboxComposition } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { Activity } from 'lucide-react';
 import {
-  computeInboxHealthScore, getUserManagementCounts, applyMetricEvent,
+  computeInboxHealthScore, getUserManagementCounts, applyMetricEvent, healthBand,
   HEALTH_SCORE_QUERIES, HealthScoreMetrics,
 } from '../lib/emailUtils';
 
@@ -208,13 +208,16 @@ export function HealthScoreWidget({
   const displayScore = score ?? 0;
   const strokeDashoffset = circumference - (displayScore / 100) * circumference;
 
-  let colorClass = "text-emerald-500";
+  // Same bands as the Inbox Score page. These were 70/40 here and 85/70/50 there,
+  // so a score of 45 drew an amber ring beside a panel reading "Action Required".
+  const BAND_COLOR = {
+    optimal: 'text-emerald-500',
+    good: 'text-emerald-500',
+    attention: 'text-amber-500',
+    critical: 'text-rose-500',
+  } as const;
+  const colorClass = BAND_COLOR[healthBand(displayScore)];
   let borderHighlight = "border-slate-200";
-  if (displayScore < 40) {
-    colorClass = "text-rose-500";
-  } else if (displayScore < 70) {
-    colorClass = "text-amber-500";
-  }
 
   if (isPulsing) {
     borderHighlight = "border-emerald-400 ring-2 ring-emerald-400/20 bg-emerald-50/50";

@@ -657,6 +657,30 @@ export function applyMetricEvent(
 }
 
 /**
+ * What a score means, in words and in colour.
+ *
+ * There were two of these: the Inbox Score page banded at 85/70/50 and the navbar
+ * widget coloured at 70/40. A score of 45 therefore showed an amber ring beside a
+ * panel headed "Action Required" — the same number described two ways because the
+ * thresholds were written out twice.
+ */
+export type HealthBand = 'optimal' | 'good' | 'attention' | 'critical';
+
+export function healthBand(score: number): HealthBand {
+  if (score >= 85) return 'optimal';
+  if (score >= 70) return 'good';
+  if (score >= 50) return 'attention';
+  return 'critical';
+}
+
+export const HEALTH_BAND_LABEL: Record<HealthBand, string> = {
+  optimal: 'Optimal',
+  good: 'Good',
+  attention: 'Needs Attention',
+  critical: 'Action Required',
+};
+
+/**
  * Single source of truth for the user-management bonus inputs (unsubscribes & filter
  * rules created in-app). Reads the same localStorage keys the features actually write
  * to, so every Health Score surface (top bar widget, Inbox Health Score modal, etc.)

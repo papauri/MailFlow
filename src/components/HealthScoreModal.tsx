@@ -14,6 +14,9 @@ import {
   getUserManagementCounts,
   HEALTH_SCORE_QUERIES,
   HEALTH_SCORE_SWEEP_QUERIES,
+  ATTENTION_SHARE_OF_SCORE,
+  healthBand,
+  HEALTH_BAND_LABEL,
   HealthScoreMetrics,
   HealthScoreBreakdown
 } from '../lib/emailUtils';
@@ -197,6 +200,21 @@ export function HealthScoreModal({
 
   const liveScore = liveBreakdown.score;
 
+  /**
+   * The budgets, read from the model rather than restated.
+   *
+   * These were written into the row descriptions as "max -35 pts", "max -25 pts"
+   * and "max -20 pts" — the fixed per-category weights of an earlier model. Those
+   * weights no longer exist: unread has the attention budget to itself, and the
+   * four clutter categories share the remainder in proportion to how many messages
+   * each holds. Hardcoding them here is what let the page describe a scoring model
+   * the app had stopped using.
+   */
+  const attentionMax = Math.round(100 * ATTENTION_SHARE_OF_SCORE);
+  const storageMax = 100 - attentionMax;
+  const pctOf = (count: number, population?: number) =>
+    population && population > 0 ? `${Math.round((Math.min(count, population) / population) * 100)}%` : null;
+
   // Simulator Breakdown
   const simMetrics: HealthScoreMetrics = useMemo(() => {
     return {
@@ -324,11 +342,20 @@ export function HealthScoreModal({
     }
   };
 
+  // Bands come from the scoring module, so the navbar ring and this panel can never
+  // disagree about the same number.
+  const BAND_BADGE: Record<string, string> = {
+    optimal: 'bg-slate-100 text-slate-800 border-slate-200',
+    good: 'bg-slate-100 text-slate-800 border-slate-200',
+    attention: 'bg-amber-50 text-amber-800 border-amber-200',
+    critical: 'bg-rose-50 text-rose-800 border-rose-200',
+  };
   const getScoreStatus = (s: number) => {
-    if (s >= 85) return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Optimal', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
-    if (s >= 70) return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Good', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
-    if (s >= 50) return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Needs Attention', badge: 'bg-amber-50 text-amber-800 border-amber-200' };
-    return { text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Action Required', badge: 'bg-rose-50 text-rose-800 border-rose-200' };
+    const band = healthBand(s);
+    return {
+      text: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200',
+      label: HEALTH_BAND_LABEL[band], badge: BAND_BADGE[band],
+    };
   };
 
   const status = getScoreStatus(liveScore);
@@ -381,7 +408,7 @@ export function HealthScoreModal({
       icon: <MailOpen className="w-4 h-4" />,
       title: 'Unread Inbox Messages',
       badge: `${metrics.unreadInbox.toLocaleString()} unread`,
-      desc: 'Unopened emails in your inbox (max -35 pts)',
+      desc: `Unopened mail in your inbox${pctOf(metrics.unreadInbox, metrics.inboxTotal) ? ` — ${pctOf(metrics.unreadInbox, metrics.inboxTotal)} of it` : ''}. Costs up to ${attentionMax} pts.`,
       penalty: liveBreakdown.unreadPenalty,
       count: metrics.unreadInbox,
       query: HEALTH_SCORE_QUERIES.unread,
@@ -396,7 +423,7 @@ export function HealthScoreModal({
       icon: <Trash2 className="w-4 h-4" />,
       title: 'Spam & Trash Items',
       badge: `${metrics.spamAndTrash.toLocaleString()} items`,
-      desc: 'Junk messages still consuming storage (max -25 pts)',
+      desc: `Already-discarded mail still using your quota. Shares a ${storageMax}-pt clutter budget with the three below, by message count.`,
       penalty: liveBreakdown.spamPenalty,
       count: metrics.spamAndTrash,
       query: HEALTH_SCORE_QUERIES.spamAndTrash,
@@ -411,7 +438,7 @@ export function HealthScoreModal({
       icon: <AlertTriangle className="w-4 h-4" />,
       title: 'Stale Promotions (>6 Months)',
       badge: `${metrics.oldPromotions.toLocaleString()} emails`,
-      desc: 'Expired marketing emails and newsletters (max -20 pts)',
+      desc: `Marketing mail past six months. Shares the same ${storageMax}-pt clutter budget.`,
       penalty: liveBreakdown.promoPenalty,
       count: metrics.oldPromotions,
       query: HEALTH_SCORE_QUERIES.oldPromotions,
@@ -426,7 +453,7 @@ export function HealthScoreModal({
       icon: <HardDrive className="w-4 h-4" />,
       title: 'Large Attachments (>5MB)',
       badge: `${metrics.largeFiles.toLocaleString()} files`,
-      desc: 'Heavy files taking up storage quota (storage bloat)',
+      desc: `Attachments over 5MB. Shares the same ${storageMax}-pt clutter budget.`,
       penalty: liveBreakdown.largeFilesPenalty,
       count: metrics.largeFiles,
       query: HEALTH_SCORE_QUERIES.largeFiles,
@@ -441,7 +468,7 @@ export function HealthScoreModal({
       icon: <Clock className="w-4 h-4" />,
       title: 'Old Mail (>1 Year)',
       badge: `${(metrics.oldMail || 0).toLocaleString()} emails`,
-      desc: "Messages you haven't needed in over a year (storage bloat)",
+      desc: `Mail older than a year. Shares the same ${storageMax}-pt clutter budget.`,
       penalty: liveBreakdown.oldMailPenalty,
       count: metrics.oldMail || 0,
       query: HEALTH_SCORE_QUERIES.oldMail,
@@ -572,8 +599,16 @@ export function HealthScoreModal({
                     <span>{status.label}</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-3.5 leading-relaxed">
-                    Evaluated against inbox volume, junk accumulation, stale promotions, large attachments, and active automation rules.
+                    Measured against this mailbox, not a fixed target: {attentionMax}% of the
+                    score is how much of your inbox is unread, {storageMax}% is how much of your
+                    mailbox is clearable, and automation rules earn points back.
                   </p>
+                  {metrics.mailboxTotal > 0 && (
+                    <p className="text-[11px] text-slate-400 mt-2 leading-relaxed border-t border-slate-100 pt-2.5 w-full">
+                      {metrics.mailboxTotal.toLocaleString()} messages
+                      {metrics.inboxTotal > 0 && <> · {metrics.inboxTotal.toLocaleString()} in the inbox</>}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -583,7 +618,9 @@ export function HealthScoreModal({
                       <span className="text-2xl font-bold text-slate-900">-{liveBreakdown.totalDeductions}</span>
                       <span className="text-xs font-normal text-slate-400 ml-1">pts</span>
                     </div>
-                    <span className="text-[11px] text-slate-500 mt-1">Clutter & unread</span>
+                    <span className="text-[11px] text-slate-500 mt-1">
+                      Clutter &amp; unread{pctOf(liveBreakdown.totalDeductions, 100) ? ` — ${Math.round(liveBreakdown.totalDeductions)}% of the score` : ''}
+                    </span>
                   </div>
                   <div className="bg-white border border-slate-200 p-3.5 rounded-xl flex flex-col justify-between shadow-2xs">
                     <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Hygiene Bonus</span>
