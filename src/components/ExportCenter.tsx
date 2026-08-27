@@ -39,8 +39,13 @@ interface Dataset {
   build: () => Promise<{ headers: string[]; rows: unknown[][] } | null>;
 }
 
-/** How many threads a query-backed export will pull at most. */
-const MESSAGE_EXPORT_LIMIT = 1000;
+/**
+ * Exports are complete.
+ *
+ * This was 1,000. A CSV is something people open in a spreadsheet and treat as the
+ * record — a truncated one is not a smaller export, it is a wrong one, and nothing
+ * in the file says which thousand it contains.
+ */
 
 /**
  * Rows a query-backed export will actually produce.
@@ -49,17 +54,16 @@ const MESSAGE_EXPORT_LIMIT = 1000;
  * downloaded 500. The export is capped, so the honest figure is the cap, and the
  * copy below says the number is capped when it is.
  */
-/** Rows the Inbox Health Summary emits. Kept beside its builder so the two agree —
- *  the card had said 20 while the builder produced 18. */
+/** Rows the Inbox Health Summary emits. Kept beside its builder so the two agree. */
 const SUMMARY_ROW_COUNT = 20;
 
+/** Rows a query-backed export will produce — all of them. */
 function cappedRows(total?: number): number | undefined {
-  if (total === undefined) return undefined;
-  return Math.min(total, MESSAGE_EXPORT_LIMIT);
+  return total;
 }
 
 async function messageDataset(query: string) {
-  const emails = await scanFolderMetadata(query, MESSAGE_EXPORT_LIMIT);
+  const emails = await scanFolderMetadata(query);
   return {
     headers: MESSAGE_HEADERS,
     rows: emails.map((e: any) => messageToRow(e, extractSenderDetails(e.sender))),
@@ -175,7 +179,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       id: 'unread',
       group: 'Messages',
       title: 'Unread Inbox',
-      description: `Everything still unread in your inbox, newest first (up to ${MESSAGE_EXPORT_LIMIT.toLocaleString()}).`,
+      description: 'Everything still unread in your inbox.',
       icon: <Inbox className="w-4 h-4" />,
       knownRows: cappedRows(stats?.unread),
       build: () => messageDataset(HEALTH_SCORE_QUERIES.unread),
@@ -399,8 +403,9 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
       </div>
 
       <p className="text-[11px] text-slate-400 mt-5 leading-relaxed">
-        Message exports include up to {MESSAGE_EXPORT_LIMIT.toLocaleString()} rows each and are generated in your
+        Exports contain every matching message and are generated in your
         browser — nothing is uploaded anywhere. Files open directly in Excel, Numbers, or Google Sheets.
+        A large mailbox can take a while to gather.
       </p>
     </div>
   );

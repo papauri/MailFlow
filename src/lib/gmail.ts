@@ -403,15 +403,24 @@ export async function markAllAsReadByQuery(
  * size. Never reports less than the messages actually seen, so the number can be
  * imprecise but not wrong in the direction that matters.
  */
-export const COUNT_MAX_PAGES = 20; // 10,000 messages counted exactly
+/**
+ * Optional page ceiling for a count. There is no default one.
+ *
+ * Counting used to stop at 20 pages and report Gmail's estimate beyond it, so
+ * every figure past 10,000 was approximate and the app had no way to say which.
+ * The loop now runs until the query is exhausted. `maxPages` remains for a caller
+ * that deliberately wants a bounded probe rather than an answer.
+ */
+export const COUNT_MAX_PAGES = 20;
 
-export async function countEmails(query: string, maxPages: number = COUNT_MAX_PAGES): Promise<number> {
+export async function countEmails(query: string, maxPages?: number): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
     let lastEstimate = 0;
+    const pageCeiling = maxPages && maxPages > 0 ? maxPages : Infinity;
 
-    for (let page = 0; page < maxPages; page++) {
+    for (let page = 0; page < pageCeiling; page++) {
       let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
       if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
@@ -703,14 +712,27 @@ export async function fetchMessagesMetadataBatch(
 /** Message ids matching a query, paged. One request per 500 ids. */
 export async function listMessageIds(
   query: string,
-  limit: number = 2000,
-  signal?: AbortSignal
+  /**
+   * Optional ceiling. Omit it — the default is every matching message.
+   *
+   * This used to default to 2,000, which silently truncated whatever the caller
+   * asked for. A truncated list is not a smaller answer, it is a wrong one: a
+   * purge misses mail it claimed to clear, and an audit misses senders it claimed
+   * to have checked. Pass a limit only where a bounded *sample* is genuinely what
+   * is wanted, and say so at the call site.
+   */
+  limit?: number,
+  signal?: AbortSignal,
+  onProgress?: (found: number) => void
 ): Promise<string[]> {
   const ids: string[] = [];
   let pageToken = '';
+  const ceiling = limit && limit > 0 ? limit : Infinity;
 
-  while (ids.length < limit) {
+  while (ids.length < ceiling) {
     if (signal?.aborted) break;
+    // 500 is Gmail's own page size, not a cap on the result — the loop keeps
+    // following nextPageToken until the query is exhausted.
     let url = `/messages?q=${encodeURIComponent(query)}&maxResults=500`;
     if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
 
@@ -719,11 +741,12 @@ export async function listMessageIds(
     if (batch.length === 0) break;
 
     ids.push(...batch.map((m: any) => m.id));
+    if (onProgress) onProgress(ids.length);
     pageToken = res.nextPageToken;
     if (!pageToken) break;
   }
 
-  return ids.slice(0, limit);
+  return ceiling === Infinity ? ids : ids.slice(0, ceiling);
 }
 
 /**
@@ -737,14 +760,21 @@ export async function listMessageIds(
  */
 export async function scanFolderMetadata(
   query: string,
-  limit: number = 3000,
+  /** Optional ceiling. Omit it to scan every message the query matches. */
+  limit?: number,
   onProgress?: (done: number, total: number, phase: 'listing' | 'fetching') => void,
   signal?: AbortSignal
 ): Promise<EmailData[]> {
-  const targetLimit = limit <= 0 ? 5000 : limit;
   if (onProgress) onProgress(0, 0, 'listing');
 
-  const ids = await listMessageIds(query, targetLimit, signal);
+  // Progress during listing too: on a large mailbox the id sweep alone takes long
+  // enough that a bar frozen at zero looks like a hang.
+  const ids = await listMessageIds(
+    query,
+    limit,
+    signal,
+    found => { if (onProgress) onProgress(0, found, 'listing'); }
+  );
   if (ids.length === 0) return [];
 
   if (onProgress) onProgress(0, ids.length, 'fetching');
@@ -846,6 +876,23 @@ export async function fetchMailboxComposition(): Promise<MailboxComposition> {
     mailboxTotal: profile?.messagesTotal ?? 0,
     inboxTotal: inbox?.messagesTotal ?? 0,
   };
+}
+
+/**
+ * Spam and trash, counted exactly from Gmail's own label totals.
+ *
+ * Gmail maintains a running count on every system label, so this is two requests
+ * at one quota unit each and needs no paging at all — against the hundreds of
+ * requests it takes to walk `in:spam OR in:trash` on a large mailbox. Falls back
+ * to null when either label is unavailable so the caller can page instead.
+ */
+export async function fetchSpamAndTrashTotal(): Promise<number | null> {
+  const [spam, trash] = await Promise.all([
+    fetchLabelTotals('SPAM'),
+    fetchLabelTotals('TRASH'),
+  ]);
+  if (!spam && !trash) return null;
+  return (spam?.messagesTotal ?? 0) + (trash?.messagesTotal ?? 0);
 }
 
 /** Back-compat shim for callers that only need the two headline totals. */

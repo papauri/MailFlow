@@ -54,8 +54,8 @@ export interface RoutingSample {
  */
 export async function fetchRoutingSample(): Promise<RoutingSample> {
   const [filed, recent] = await Promise.all([
-    scanFolderMetadata('has:userlabels -in:trash -in:spam -in:chats', 400).catch(() => []),
-    scanFolderMetadata('in:inbox -in:chats -is:draft', 300).catch(() => []),
+    scanFolderMetadata('has:userlabels -in:trash -in:spam -in:chats').catch(() => []),
+    scanFolderMetadata('in:inbox -in:chats -is:draft').catch(() => []),
   ]);
 
   // A message can appear in both halves; keep one copy so counts stay honest.
@@ -87,7 +87,7 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
    * appear as senders; the rest of Inbox Health already excludes them.
    */
   const recentEmails = await scanFolderMetadata(
-    "in:anywhere -in:trash -in:spam -in:sent -is:draft -in:chats", 100
+    "in:anywhere -in:trash -in:spam -in:sent -is:draft -in:chats"
   );
 
   const senderCounts = new Map<string, SenderCluster>();
@@ -178,25 +178,21 @@ export const INBOX_HEALTH_QUERIES = {
 export async function fetchInboxStats(): Promise<InboxStatsResult> {
   const Q = INBOX_HEALTH_QUERIES;
 
-  // Two pages: 1,000 messages counted exactly, then Gmail's own estimate. Keeps the
-  // first paint fast on a large mailbox. The queries are the shared constants, not
-  // respellings — two of the respelled ones had already drifted from the scoring
-  // queries, which made the "Start here" ranking describe a different inbox than the
-  // Inbox Score page.
-  const STAT_PAGE_BOUND = 2;
-
+  // Counted to completion. These were bounded to two pages for a fast first paint,
+  // which meant every figure past 1,000 was Gmail's estimate presented as a count.
+  //
   // Two extra requests costing one quota unit each, against the ~40 units the
   // counts below spend. Fetched in the same round so they cost no extra latency.
   const [size, unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
     fetchMailboxComposition(),
-    countEmails(Q.unread, STAT_PAGE_BOUND),
-    countEmails(Q.oldPromo, STAT_PAGE_BOUND),
-    countEmails(Q.large, STAT_PAGE_BOUND),
-    countEmails(Q.spamAndTrash, STAT_PAGE_BOUND),
-    countEmails(Q.importantUnread, STAT_PAGE_BOUND),
-    countEmails(Q.updatesAndSocial, STAT_PAGE_BOUND),
-    countEmails(Q.withAttachments, STAT_PAGE_BOUND),
-    countEmails(Q.oldMail, STAT_PAGE_BOUND),
+    countEmails(Q.unread),
+    countEmails(Q.oldPromo),
+    countEmails(Q.large),
+    countEmails(Q.spamAndTrash),
+    countEmails(Q.importantUnread),
+    countEmails(Q.updatesAndSocial),
+    countEmails(Q.withAttachments),
+    countEmails(Q.oldMail),
   ]);
 
   const stats: InboxStats = {
@@ -307,20 +303,17 @@ export const categoryScanKey = (categoryId: string, userEmail?: string) =>
   `category-scan:${categoryId}:${userEmail || 'anon'}`;
 
 /**
- * Upper bound on one category scan, so the cost of "scan everything" stays bounded.
+ * No ceiling on a category scan.
  *
- * This had been set to `Infinity`, which contradicted the bound it documents and made
- * the scan the most expensive thing in the app: metadata is billed per message, so an
- * unbounded scan of a 40,000-message Promotions folder is 200,000 quota units — over
- * eighteen minutes of a user's entire Gmail budget, for one tab, repeated for every
- * category by the background warmer.
+ * This was 3,000, justified as a cost bound. The cost is real — metadata is billed
+ * per message — but the bound bought it by analysing a fraction of the category and
+ * presenting the result as the category. Clustering that has not seen the mail
+ * cannot find the sender responsible for it.
  *
- * Three thousand is roughly a minute of budget per category and is well past the
- * point where the clustering stops changing its mind: the models here rank senders
- * and recurring shapes, and a sender that matters is not hiding below the top few
- * thousand messages.
+ * The quota governor already paces the spend; a scan of a large category is slow,
+ * not unsafe, and the progress bar says so.
  */
-export const CATEGORY_SCAN_LIMIT = 3000;
+export const CATEGORY_SCAN_LIMIT = 0;
 
 /**
  * Full metadata scan of one category.
@@ -334,7 +327,7 @@ export async function fetchCategoryScan(
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal
 ): Promise<any[]> {
-  const ids = await listMessageIds(query, CATEGORY_SCAN_LIMIT, signal);
+  const ids = await listMessageIds(query, undefined, signal);
   if (ids.length === 0) return [];
   return fetchMessagesMetadataBatch(ids, onProgress, signal);
 }

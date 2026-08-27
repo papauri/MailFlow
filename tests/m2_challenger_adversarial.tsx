@@ -5,7 +5,7 @@ import { stubGmail, messagePage } from './helpers/browserEnv';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import Dashboard from '../src/components/Dashboard';
-import { EmailData, countEmails, processInChunks, COUNT_MAX_PAGES } from '../src/lib/gmail';
+import { EmailData, countEmails, processInChunks } from '../src/lib/gmail';
 import * as fs from 'fs';
 
 let passed = 0;
@@ -94,15 +94,20 @@ console.log('\n[Suite 2] Static Code Audit: Pagination & Total Count');
     assert(paged === 1120, 'countEmails sums every page it walks', `got ${paged}`);
     assert(pages.requests.length === 3, 'countEmails stops as soon as a page has no nextPageToken', `got ${pages.requests.length}`);
 
-    // Past the bound it falls back to Gmail's own estimate, and must never report
-    // fewer than the messages it actually saw.
+    // Counting is unbounded by default now, so this exercises the opt-in probe: a
+    // caller that passes maxPages gets a bounded walk with Gmail's estimate as a
+    // floor. The stub never runs out of pages, which is exactly why it needs an
+    // explicit bound — against a server that always claims another page, paging
+    // forever is the correct behaviour, and this test used to rely on the ceiling
+    // that no longer exists.
+    const probePages = 4;
     const huge = stubGmail(() => ({ body: messagePage(500, 'more', 250_000) }));
-    const bounded = await countEmails('in:anywhere');
+    const bounded = await countEmails('in:anywhere', probePages);
     huge.restore();
-    assert(huge.requests.length === COUNT_MAX_PAGES,
-      `countEmails stops walking at its ${COUNT_MAX_PAGES}-page bound`, `got ${huge.requests.length}`);
-    assert(bounded >= COUNT_MAX_PAGES * 500,
-      'A bounded count never reports fewer messages than it counted', `got ${bounded}`);
+    assert(huge.requests.length === probePages,
+      `An explicit ${probePages}-page probe stops after ${probePages} requests`, `got ${huge.requests.length}`);
+    assert(bounded >= probePages * 500,
+      'A bounded probe never reports fewer messages than it counted', `got ${bounded}`);
 
     // A transport failure is absorbed, not propagated into the UI as a crash.
     const broken = stubGmail(() => ({ status: 500, body: { error: { message: 'boom' } } }));

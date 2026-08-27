@@ -92,20 +92,19 @@ async function runForensicIntegrityAudit() {
     !gmailCode.includes('return 42;') && !gmailCode.includes('return 100;') && !gmailCode.includes('return 3450;'),
     'gmail.ts countEmails does not contain hardcoded return numbers'
   );
-  // The bound moved from 10 pages to COUNT_MAX_PAGES and the return type from a
-  // "5,000+" string to a number. An audit that pins the old literals reports a
-  // deliberate improvement as a violation, which is exactly the false signal this
-  // suite exists to avoid — so it checks the loop is real and bounded, by name.
+  // Counting is uncapped now and returns a number rather than a "5,000+" string.
+  // An audit pinned to old literals reports a deliberate improvement as a
+  // violation, which is the false signal this suite exists to avoid — so it checks
+  // the loop is real, not that it stops at some particular page.
   check(
     gmailCode.includes('total += res.messages.length') &&
     /for \(let page = 0; page < \w+; page\+\+\)/.test(gmailCode) &&
     gmailCode.includes('resultSizeEstimate'),
-    'gmail.ts countEmails implements a bounded pagination loop with an estimate fallback'
+    'gmail.ts countEmails implements a real pagination loop with an estimate floor'
   );
   check(
-    /export const COUNT_MAX_PAGES = \d+/.test(gmailCode) &&
-    /countEmails\(query: string, maxPages: number = COUNT_MAX_PAGES\)/.test(gmailCode),
-    'The pagination bound is a named exported constant callers may tighten, not a magic number'
+    /countEmails\(query: string, maxPages\?: number\)/.test(gmailCode),
+    'Counting is unbounded by default; a page limit is opt-in, not a built-in ceiling'
   );
 
   // Check 1.2: No facade functions or empty stubs in components

@@ -60,7 +60,7 @@ MailFlow is an enterprise-grade full-stack web application that pairs client-sid
   * `batchArchiveEmails(ids)`: Removes `INBOX` label from messages (`/messages/batchModify`).
   * `batchMarkAsRead(ids)`: Removes `UNREAD` label from messages.
 * **Accurate In-Depth Counting (`countEmails`)**:
-  * Pages Gmail search endpoints to a bound of 10,000 messages for an exact count, falling back to Gmail's own estimate beyond it and never reporting fewer than the messages actually seen.
+  * Pages Gmail search endpoints until the query is exhausted, so the count is exact at any mailbox size. `maxPages` remains available for a caller that deliberately wants a bounded probe rather than an answer.
 
 ### 3.3 Server AI Gateway (`server.ts`)
 The server provides three critical endpoints:

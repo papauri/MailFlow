@@ -167,8 +167,9 @@ export function OmniCleanPage({
     
     try {
       // Step 1: Ingest & Query Gmail using Multipart Batch Engine
-      // If sampleLimit is 0 (Entire Folder), query up to 5000 messages
-      const fetchLimit = sampleLimit === 0 ? 5000 : sampleLimit;
+      // "Entire Folder" means the entire folder. It quietly meant 5,000, so the
+      // option that promised completeness was itself a cap.
+      const fetchLimit = sampleLimit === 0 ? undefined : sampleLimit;
       const depthText = sampleLimit === 0 ? 'entire folder' : `${sampleLimit} messages`;
 
       setStage('fetching');

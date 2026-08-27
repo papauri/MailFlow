@@ -22,6 +22,12 @@ const testSuites: TestSuite[] = [
     description: 'Stale-while-mounted refetch, dedupe across views, optimistic writes reaching the screen'
   },
   {
+    name: 'No Hardcoded Scan Caps',
+    file: 'tests/no_caps_test.ts',
+    milestone: 'Platform',
+    description: 'Listing, counting and every call site run to completion; explicit sample limits still honoured'
+  },
+  {
     name: 'Email Grouping & Sort Presentation',
     file: 'tests/email_grouping_test.ts',
     milestone: 'Platform',

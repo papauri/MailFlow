@@ -142,7 +142,7 @@ Located in `src/lib/gmail.ts`, this module powers high-speed communication with 
 - **`batchMarkAsRead(ids)`**: Removes `UNREAD` label across messages.
 - **`emptyAllTrash(onProgress)`**: Iteratively scans `in:trash` in 1,000-message pages and permanently purges them with live progress callback.
 - **`markAllAsReadByQuery(query, onProgress)`**: Finds all unread emails matching a query and removes `UNREAD` in 1,000-message batches.
-- **`countEmails(query, maxPages?)`**: Pages a query to count it exactly, bounded by `COUNT_MAX_PAGES` (20 pages = 10,000 messages). Past the bound it returns Gmail's own `resultSizeEstimate`, never less than the messages actually seen. Returns a `number`. Callers that need a fast first paint pass a smaller `maxPages`.
+- **`countEmails(query, maxPages?)`**: Pages a query until it is exhausted and returns an exact `number`, at any mailbox size. `maxPages` is optional and unset by default; pass it only for a deliberately bounded probe. Gmail's `resultSizeEstimate` is used only as a floor when a bounded probe stops early.
 
 ---
 
@@ -211,7 +211,7 @@ Located in `server.ts`, the Express backend serves as a universal AI router:
 
 ### 6.6 Pagination & Accurate Mailbox Counting
 - **Cursor Pagination (`nextPageToken`)**: Seamlessly fetches subsequent pages of 50–100 threads via "Load More Emails".
-- **Accurate Count Calculation**: Concurrently runs `countEmails(query)` on search execution to display total mailbox matches, exact to 10,000 and estimated beyond.
+- **Accurate Count Calculation**: Concurrently runs `countEmails(query)` on search execution to display the exact total, however large.
 
 ### 6.7 Inbox Health Analytics & Aggregations (`src/components/InboxHealth.tsx`)
 - **Key Metric Cards**:
@@ -257,6 +257,22 @@ Located in `server.ts`, the Express backend serves as a universal AI router:
   - Categorize with existing user label.
   - Smart Organize (local sender aggregation).
   - AI Deep Organize (semantic categorization).
+
+### 6.12b Scan Completeness
+
+- **No scan is capped.** Listing, counting, category scans, the newsletter audit,
+  sender purges, folder browsing and CSV exports all run until the query is
+  exhausted. Caps used to sit as bare numbers at each call site — 1,500 behind a
+  label reading "Auditing newsletters", 300 behind a purge that reported the sender
+  cleared, 5,000 behind a scope option named "Entire Folder" — and each presented a
+  partial result as a complete one.
+- `listMessageIds`, `scanFolderMetadata` and `countEmails` take an **optional**
+  limit. Omitted, they return everything; passed, they sample deliberately.
+- 500 (page size), 15 (metadata batch size) and the drain-loop round guards are
+  mechanical constants of the Gmail API and the quota governor, not result caps.
+- A large mailbox therefore takes longer rather than returning less. Progress is
+  reported during both the id sweep and the metadata fetch so a long scan is
+  visible rather than looking hung.
 
 ### 6.13 Inbox Health Score Widget (`src/components/HealthScoreWidget.tsx`)
 - Circular SVG progress dial displayed in the main navigation bar.

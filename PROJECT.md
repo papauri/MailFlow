@@ -12,7 +12,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
    - `src/components/LoginScreen.tsx`: Google OAuth login landing view.
    - `src/components/CategoryDistributionModal.tsx`: On-demand Recharts-based email category distribution modal with legends and filtering.
 2. **Services & Utilities**:
-   - `src/lib/gmail.ts`: Gmail REST API client with OAuth bearer token injection, rate limit handling with exponential backoff (HTTP 429), chunked message fetching, bounded exact email counting (`countEmails`, 10,000 then estimate), and bulk actions (trash, archive, mark read).
+   - `src/lib/gmail.ts`: Gmail REST API client with OAuth bearer token injection, rate limit handling with exponential backoff (HTTP 429), chunked message fetching, exact email counting to completion (`countEmails`), and bulk actions (trash, archive, mark read).
    - `src/lib/firebase.ts`: Firebase Google Auth popup integration and OAuth token caching.
    - `src/lib/ai.ts`: AI query translator and natural language inbox pattern recognition.
    - `src/lib/utils.ts`: Tailwind class merger (`cn`).
@@ -29,7 +29,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
 | 5 | BYOK Modal Viewport Scaling | Max-height scaling (`max-h-[85vh]` / `max-h-[90dvh]`), responsive grid for AI provider buttons | M1 | Survey 1 / R1 |
 | 6 | Inbox Health Aggregations Responsiveness | Responsive metric cards, non-wrapping quick filter badges, and compact sender/domain rows | M1 | Survey 1 / R1 |
 | 7 | Search Result Pagination (`nextPageToken`) | Capture `nextPageToken` from Gmail API results and provide "Load More" / "Next Page" functionality | M2 | Survey 2 / R2 |
-| 8 | Accurate Total Matching Count | Concurrently trigger `countEmails(query)` on search to display the total; exact to 10,000 (`COUNT_MAX_PAGES`), Gmail's estimate beyond | M2 | Survey 2 / R2 |
+| 8 | Accurate Total Matching Count | Concurrently trigger `countEmails(query)` on search to display the exact total, uncapped at any mailbox size | M2 | Survey 2 / R2 |
 | 9 | In-Memory Safe Sorting on Loaded Page | Sort visible loaded emails by Date, Size, or Sender using memoized null-safe comparators | M2 | Survey 2 / R2 |
 | 10 | Recharts Package Integration | Install `recharts` (^3.x) in `package.json` compatible with React 19 | M3 | Survey 3 / R3 |
 | 11 | Inbox Health Chart Trigger Button | Add visible "Category Breakdown" button in `InboxHealth.tsx` top banner | M3 | Survey 3 / R3 |
@@ -53,7 +53,7 @@ MailFlow is a modern web application built on React 19, TypeScript 5.8, Tailwind
 
 ### `Dashboard.tsx` ↔ `gmail.ts`
 - `fetchGmailAPI(endpoint: string, options?: RequestInit)` -> returns `{ messages?: Array<{ id: string, threadId: string }>, nextPageToken?: string, resultSizeEstimate?: number }`
-- `countEmails(query: string, maxPages?: number)` -> returns `Promise<number>` (exact to 10,000; Gmail's estimate beyond, never below what was counted)
+- `countEmails(query: string, maxPages?: number)` -> returns `Promise<number>` (exact; pages to completion unless a caller passes an explicit `maxPages` probe)
 - `processInChunks<T, R>(items: T[], chunkSize: number, processor: (item: T) => Promise<R>)` -> returns `Promise<R[]>`
 
 ### `Dashboard.tsx` ↔ `InboxHealth.tsx`

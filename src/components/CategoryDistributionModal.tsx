@@ -142,9 +142,6 @@ function optimisticMetricFor(categoryId: string): string | null {
   return null;
 }
 
-/** First, blocking fetch: one detail request per thread, so keep it small. */
-/** Upper bound on a single category scan, so cost stays predictable. */
-const MAX_SCAN = 3000;
 /** Background rounds: larger, since nobody is waiting on them. */
 const DEEPEN_PAGE = 200;
 

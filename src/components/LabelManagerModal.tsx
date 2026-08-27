@@ -32,6 +32,7 @@ import {
 import { 
   fetchGmailAPI, 
   searchEmails, 
+  scanFolderMetadata,
   batchModifyEmails, 
   batchTrashEmails, 
   batchArchiveEmails, 
@@ -192,7 +193,9 @@ export function LabelManagerModal({
         query += ` ${emailSearchTerm.trim()}`;
       }
 
-      const emails = await searchEmails(query, 50);
+      // Uncapped: this list backs Select All and the bulk actions beneath it, so a
+      // capped fetch meant "select all" quietly meant "select the first fifty".
+      const emails = await scanFolderMetadata(query);
       setFolderEmails(emails || []);
     } catch (e) {
       console.error("Failed to load emails for folder", e);

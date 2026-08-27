@@ -72,9 +72,12 @@ export function UnsubscribeManager({
       setLoading(true);
       setScanProgress(null);
       try {
+        // No cap. It read 1,500 while the label said "Auditing newsletters", so any
+        // sender whose mail fell past that point was silently absent from an audit
+        // that presented itself as complete.
         const emails = await scanFolderMetadata(
-          "category:promotions OR category:updates OR unsubscribe OR label:unread",
-          1500,
+          "(category:promotions OR category:updates OR unsubscribe OR label:unread) -in:trash -in:spam",
+          undefined,
           (done, total) => setScanProgress({ done, total })
         );
         
@@ -164,7 +167,10 @@ export function UnsubscribeManager({
     try {
       launchUnsubscribeLink(sub);
       
-      const existing = await scanFolderMetadata(`from:${sub.email}`, 300);
+      // Uncapped: this is the set about to be trashed or archived, and clearing
+      // 300 of a sender's 4,000 messages while reporting the sender handled is a
+      // wrong answer, not a partial one.
+      const existing = await scanFolderMetadata(`from:${sub.email} -in:trash`);
       let affectedIds: string[] = [];
       if (existing.length > 0) {
         affectedIds = existing.flatMap(e => e.messageIds || [e.id]);
@@ -205,7 +211,10 @@ export function UnsubscribeManager({
   const handleGhostBlock = async (sub: any) => {
     setProcessing(prev => new Set(prev).add(sub.email));
     try {
-      const existing = await scanFolderMetadata(`from:${sub.email}`, 300);
+      // Uncapped: this is the set about to be trashed or archived, and clearing
+      // 300 of a sender's 4,000 messages while reporting the sender handled is a
+      // wrong answer, not a partial one.
+      const existing = await scanFolderMetadata(`from:${sub.email} -in:trash`);
       let trashedIds: string[] = [];
       if (existing.length > 0) {
         trashedIds = existing.flatMap(e => e.messageIds || [e.id]);
