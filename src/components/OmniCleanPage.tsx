@@ -318,6 +318,18 @@ export function OmniCleanPage({
     return computeOmniScanSummary(batches, activeScopeName);
   }, [batches, activeScopeName]);
 
+  // Counts driving the bulk-action buttons, kept separate per action so each
+  // button only appears (and is only clickable) when it actually has candidate
+  // batches — `summary.reclaimableCount` mixes trash/archive/route batches
+  // together, which let "Trash All" show up and silently no-op when only
+  // archive batches existed (and vice versa).
+  const bulkTrashCandidateCount = useMemo(() => {
+    return batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'trash' && b.selectedIds.size > 0).length;
+  }, [batches, completedBatchIds]);
+  const bulkArchiveCandidateCount = useMemo(() => {
+    return batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'archive' && b.selectedIds.size > 0).length;
+  }, [batches, completedBatchIds]);
+
   // Filtered Batches
   const visibleBatches = useMemo(() => {
     return batches.filter(b => {
@@ -719,25 +731,29 @@ export function OmniCleanPage({
                 </div>
               </div>
 
-              {/* Bulk execution buttons */}
-              {summary.reclaimableCount > 0 && (
+              {/* Bulk execution buttons — each only appears when it has candidate batches of its own action type */}
+              {(bulkTrashCandidateCount > 0 || bulkArchiveCandidateCount > 0) && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => handleBulkExecuteAction('trash')}
-                    disabled={Boolean(executingBatchId || bulkActionProgress)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Trash All Trash Batches</span>
-                  </button>
-                  <button
-                    onClick={() => handleBulkExecuteAction('archive')}
-                    disabled={Boolean(executingBatchId || bulkActionProgress)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                    <span>Archive All Archive Batches</span>
-                  </button>
+                  {bulkTrashCandidateCount > 0 && (
+                    <button
+                      onClick={() => handleBulkExecuteAction('trash')}
+                      disabled={Boolean(executingBatchId || bulkActionProgress)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Trash All Trash Batches ({bulkTrashCandidateCount})</span>
+                    </button>
+                  )}
+                  {bulkArchiveCandidateCount > 0 && (
+                    <button
+                      onClick={() => handleBulkExecuteAction('archive')}
+                      disabled={Boolean(executingBatchId || bulkActionProgress)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>Archive All Archive Batches ({bulkArchiveCandidateCount})</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
