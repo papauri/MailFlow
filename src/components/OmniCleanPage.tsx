@@ -97,6 +97,7 @@ export function OmniCleanPage({
   const [executingBatchId, setExecutingBatchId] = useState<string | null>(null);
   const [bulkActionProgress, setBulkActionProgress] = useState<{ total: number; done: number; title: string } | null>(null);
   const [completedBatchIds, setCompletedBatchIds] = useState<Set<string>>(new Set());
+  const [pendingBulkAction, setPendingBulkAction] = useState<{ targetAction: 'trash' | 'archive'; candidateBatches: OmniClusterBatch[] } | null>(null);
 
   /**
    * Keeping the user's place when a batch disappears.
@@ -460,9 +461,17 @@ export function OmniCleanPage({
     }
   };
 
-  // Bulk Apply All Approved "GO" Batches of a specific type
-  const handleBulkExecuteAction = async (targetAction: 'trash' | 'archive') => {
-    const candidateBatches = batches.filter(b => 
+  /**
+   * Opens the in-app confirmation modal for a bulk action.
+   *
+   * This used to call `window.confirm()` directly. Native dialogs are silently
+   * blocked in some embedded/preview hosting contexts (they throw synchronously
+   * instead of prompting), which killed this async handler before it ever
+   * reached the actual trash/archive calls — the button looked like it did
+   * nothing. An in-app modal doesn't depend on the browser's dialog stack.
+   */
+  const requestBulkExecuteAction = (targetAction: 'trash' | 'archive') => {
+    const candidateBatches = batches.filter(b =>
       !completedBatchIds.has(b.id) &&
       b.disposition === 'GO' &&
       b.action === targetAction &&
@@ -470,13 +479,13 @@ export function OmniCleanPage({
     );
 
     if (candidateBatches.length === 0) return;
+    setPendingBulkAction({ targetAction, candidateBatches });
+  };
 
-    const totalEmails = candidateBatches.reduce((sum, b) => sum + b.selectedIds.size, 0);
+  // Bulk Apply All Approved "GO" Batches of a specific type
+  const runBulkExecuteAction = async (targetAction: 'trash' | 'archive', candidateBatches: OmniClusterBatch[]) => {
+    setPendingBulkAction(null);
     const actionName = targetAction === 'trash' ? 'Trash' : 'Archive';
-
-    if (!confirm(`Are you sure you want to bulk ${actionName.toLowerCase()} ${totalEmails} emails across ${candidateBatches.length} batches?`)) {
-      return;
-    }
 
     setBulkActionProgress({ total: candidateBatches.length, done: 0, title: `Bulk ${actionName}ing ${candidateBatches.length} Batches…` });
 
@@ -736,7 +745,7 @@ export function OmniCleanPage({
                 <div className="flex items-center gap-2 shrink-0">
                   {bulkTrashCandidateCount > 0 && (
                     <button
-                      onClick={() => handleBulkExecuteAction('trash')}
+                      onClick={() => requestBulkExecuteAction('trash')}
                       disabled={Boolean(executingBatchId || bulkActionProgress)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
                     >
@@ -746,7 +755,7 @@ export function OmniCleanPage({
                   )}
                   {bulkArchiveCandidateCount > 0 && (
                     <button
-                      onClick={() => handleBulkExecuteAction('archive')}
+                      onClick={() => requestBulkExecuteAction('archive')}
                       disabled={Boolean(executingBatchId || bulkActionProgress)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
                     >
@@ -1150,6 +1159,68 @@ export function OmniCleanPage({
           )}
         </div>
       )}
+
+      {/* In-app Bulk Action Confirmation (replaces window.confirm, which some embedded/preview hosts block) */}
+      <AnimatePresence>
+        {pendingBulkAction && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+            onClick={() => setPendingBulkAction(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.15 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-5"
+            >
+              {(() => {
+                const isTrash = pendingBulkAction.targetAction === 'trash';
+                const actionName = isTrash ? 'Trash' : 'Archive';
+                const totalEmails = pendingBulkAction.candidateBatches.reduce((sum, b) => sum + b.selectedIds.size, 0);
+                return (
+                  <>
+                    <div className="flex items-center gap-2.5 mb-2.5">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                        isTrash ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"
+                      )}>
+                        {isTrash ? <Trash2 className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm">Confirm Bulk {actionName}</h3>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                      Are you sure you want to bulk {actionName.toLowerCase()} {totalEmails} emails across {pendingBulkAction.candidateBatches.length} batches?
+                    </p>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setPendingBulkAction(null)}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => runBulkExecuteAction(pendingBulkAction.targetAction, pendingBulkAction.candidateBatches)}
+                        className={cn(
+                          "px-3.5 py-1.5 text-xs font-bold text-white rounded-lg transition-colors shadow-2xs cursor-pointer",
+                          isTrash ? "bg-rose-700 hover:bg-rose-800" : "bg-amber-700 hover:bg-amber-800"
+                        )}
+                      >
+                        {actionName} All
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
