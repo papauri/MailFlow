@@ -294,10 +294,18 @@ export function CategoryDistributionModal({
    */
   const scan = useCachedResource<any[]>(
     categoryScanKey(selectedCategory, userEmail),
-    () => fetchCategoryScan(
-      (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query,
-      (done, total) => setScanProgress({ done, total })
-    ).finally(() => setScanProgress(null)) as Promise<any[]>
+    (onProgress, onUpdate) => {
+      const accumulated: any[] = [];
+      return fetchCategoryScan(
+        (CATEGORY_CONFIG.find(c => c.id === selectedCategory) || CATEGORY_CONFIG[0]).query,
+        (done, total) => setScanProgress({ done, total }),
+        undefined,
+        (chunk) => {
+          accumulated.push(...chunk);
+          if (onUpdate) onUpdate([...accumulated]);
+        }
+      ).finally(() => setScanProgress(null)) as Promise<any[]>;
+    }
   );
 
   const categoryEmails = (scan.data || []) as EmailData[];
@@ -608,8 +616,8 @@ export function CategoryDistributionModal({
                        "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs whitespace-nowrap",
                        isSelected ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700 group-hover:border-slate-300"
                      )}>
-                       {scanLoading && isSelected
-                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                       {(scanLoading || scan.refreshing) && isSelected
+                         ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Scanning</span></>
                          : isCacheWarm(categoryScanKey(cat.id, userEmail))
                            ? <><CheckCircle2 className="w-3.5 h-3.5" /><span>{isSelected ? 'Viewing' : 'Scanned'}</span></>
                            : <span>Not scanned</span>}
@@ -624,7 +632,7 @@ export function CategoryDistributionModal({
 
       {/* Bottom: Scanner Results */}
       <div id="cleanup-recommendations" className="w-full mt-2">
-         {scanLoading ? (
+         {scanLoading && categoryEmails.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 shadow-xs flex flex-col items-center justify-center gap-3 text-center">
               <SketchLoadingState 
                 scene="measuring"
@@ -805,9 +813,22 @@ export function CategoryDistributionModal({
       aria-labelledby="category-distribution-title"
     >
       <div
-        className="bg-white w-full max-w-5xl shadow-xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-[90vh] sm:rounded-xl"
+        className="bg-white w-full max-w-5xl shadow-xl flex flex-col overflow-hidden border border-slate-200 h-full sm:h-[90vh] sm:rounded-xl relative"
         onClick={(e) => e.stopPropagation()}
       >
+        {(loadingDistribution || scanAllState || (scanLoading && selectedCategory)) && (
+          <div className="absolute top-0 left-0 h-1 bg-slate-100 w-full overflow-hidden z-50">
+            <motion.div 
+              className="h-full bg-blue-500"
+              initial={{ width: 0 }}
+              animate={{ 
+                width: scanProgress ? `${Math.round((scanProgress.done / Math.max(1, scanProgress.total)) * 100)}%` : 
+                       scanAllState ? `${Math.round((scanAllState.done / Math.max(1, scanAllState.total)) * 100)}%` : '100%' 
+              }}
+              transition={{ ease: "linear", duration: (scanProgress || scanAllState) ? 0 : 2, repeat: (scanProgress || scanAllState) ? 0 : Infinity }}
+            />
+          </div>
+        )}
         {headerContent}
         <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6 flex flex-col relative">
           {bodyContent}

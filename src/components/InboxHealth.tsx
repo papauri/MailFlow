@@ -26,14 +26,17 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
    * and absurd in front of a menu. Clusters are no longer fetched here at all; the
    * card that links to them is a link, and Sender Analytics loads its own data.
    */
-  const statsResource = useCachedResource(inboxStatsKey(userEmail), () => fetchInboxStats());
+  const statsResource = useCachedResource<InboxStatsResult>(
+    inboxStatsKey(userEmail),
+    (onProgress, onUpdate) => fetchInboxStats(onProgress, onUpdate)
+  );
   const stats = statsResource.data?.stats ?? null;
 
   // Sizes are a second, slower request behind the counts, so the byte badges fill
   // in after the cards rather than delaying them. Not started until counts land.
   const sizesResource = useCachedResource(
     stats ? inboxSizesKey(userEmail) : null,
-    () => fetchInboxSizes(stats!)
+    () => fetchInboxSizes(stats)
   );
   const sizes = sizesResource.data ?? {};
 

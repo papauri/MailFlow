@@ -402,7 +402,7 @@ export function recommendCleanups(
     }
   }
 
-  return recs.sort((a, b) => b.score - a.score);
+  return recs.sort((a, b) => b.volume - a.volume);
 }
 
 /**

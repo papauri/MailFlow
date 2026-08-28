@@ -18,6 +18,7 @@ type Entry = {
   error: any;
   stale: boolean;
   inFlight: Promise<any> | null;
+  progress?: { done: number; total: number; phase: string };
 };
 
 const cache = new Map<string, Entry>();
@@ -68,10 +69,17 @@ export interface CachedResource<T> {
   /** Data is on screen and being refreshed behind it — never block on this. */
   refreshing: boolean;
   error: any;
+  progress?: { done: number; total: number; phase: string };
   refresh: () => void;
 }
 
-export function useCachedResource<T>(key: string | null, fetcher: () => Promise<T>): CachedResource<T> {
+export function useCachedResource<T>(
+  key: string | null, 
+  fetcher: (
+    onProgress?: (done: number, total: number, phase: string) => void,
+    onUpdate?: (partialData: T) => void
+  ) => Promise<T>
+): CachedResource<T> {
   const [, forceRender] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
@@ -81,17 +89,30 @@ export function useCachedResource<T>(key: string | null, fetcher: () => Promise<
     const entry = getEntry(key);
     if (entry.inFlight) return; // dedupe concurrent mounts of the same resource
 
-    entry.inFlight = fetcherRef.current()
+    entry.inFlight = fetcherRef.current(
+      (done, total, phase) => {
+        const current = getEntry(key);
+        current.progress = { done, total, phase };
+        notify(key);
+      },
+      (partialData) => {
+        const current = getEntry(key);
+        current.data = partialData;
+        notify(key);
+      }
+    )
       .then(data => {
         const current = getEntry(key);
         current.data = data;
         current.error = null;
         current.stale = false;
+        current.progress = undefined;
       })
       .catch(error => {
         const current = getEntry(key);
         current.error = error;
         current.stale = false;
+        current.progress = undefined;
       })
       .finally(() => {
         const current = getEntry(key);
@@ -150,6 +171,7 @@ export function useCachedResource<T>(key: string | null, fetcher: () => Promise<
     loading: !hasData && !entry?.error,
     refreshing: hasData && !!entry?.inFlight,
     error: entry?.error ?? null,
+    progress: entry?.progress,
     refresh: revalidate,
   };
 }

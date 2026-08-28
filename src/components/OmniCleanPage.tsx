@@ -175,6 +175,7 @@ export function OmniCleanPage({
       setStage('fetching');
       setScanProgressText(`Locating message index for ${activeScopeName}…`);
       
+      const allCollectedEmails: any[] = [];
       const rawEmails = await scanFolderMetadata(
         activeQuery,
         fetchLimit,
@@ -188,12 +189,23 @@ export function OmniCleanPage({
             setScanProgressText(`Streaming message metadata: ${done} of ${total} (${pct}%)…`);
           }
         },
-        controller.signal
+        controller.signal,
+        (chunk) => {
+          if (controller.signal.aborted) return;
+          allCollectedEmails.push(...chunk);
+          // Progressively compute batches so the user can interact immediately
+          const partialBatches = clusterEmailsIntoBatches(allCollectedEmails, userLabels);
+          setBatches(partialBatches);
+          
+          if (partialBatches.length > 0) {
+            setExpandedBatchId(prev => prev ? prev : partialBatches[0].id);
+          }
+        }
       );
       
       if (controller.signal.aborted) return;
 
-      if (!rawEmails || rawEmails.length === 0) {
+      if (!allCollectedEmails || allCollectedEmails.length === 0) {
         setStage('ready');
         setBatches([]);
         setScanProgressText('No messages found in this scope.');
@@ -202,13 +214,13 @@ export function OmniCleanPage({
 
       // Step 2: Advanced K-Means & Feature Vector Clustering
       setStage('clustering');
-      setScanProgressText(`Vectorizing features & running K-Means clustering across ${rawEmails.length} messages…`);
+      setScanProgressText(`Finalizing clusters across ${allCollectedEmails.length} messages…`);
       
       // Small tick to allow UI update
       await new Promise(r => setTimeout(r, 40));
       if (controller.signal.aborted) return;
 
-      const initialBatches = clusterEmailsIntoBatches(rawEmails, userLabels);
+      const initialBatches = clusterEmailsIntoBatches(allCollectedEmails, userLabels);
 
       if (initialBatches.length === 0) {
         setStage('ready');
@@ -331,8 +343,7 @@ export function OmniCleanPage({
         }
       }
 
-      return true;
-    });
+    }).sort((a, b) => b.emailIds.length - a.emailIds.length);
   }, [batches, completedBatchIds, filterDisposition, searchQuery]);
 
   // Toggle individual message selection inside a batch review accordion
@@ -765,13 +776,17 @@ export function OmniCleanPage({
             <button
               onClick={() => setFilterDisposition('all')}
               className={cn(
-                "px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer",
+                "px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1",
                 filterDisposition === 'all'
                   ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
               )}
             >
-              All Batches ({batches.length - completedBatchIds.size})
+              <span>All Batches</span>
+              <span className="flex items-center gap-1">
+                {isScanning && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+                ({batches.length - completedBatchIds.size})
+              </span>
             </button>
             <button
               onClick={() => setFilterDisposition('trash')}
@@ -783,7 +798,10 @@ export function OmniCleanPage({
               )}
             >
               <span>Go: Trash</span>
-              <span>({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'trash').length})</span>
+              <span className="flex items-center gap-1">
+                {isScanning && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+                ({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'trash').length})
+              </span>
             </button>
             <button
               onClick={() => setFilterDisposition('archive')}
@@ -795,7 +813,10 @@ export function OmniCleanPage({
               )}
             >
               <span>Go: Archive</span>
-              <span>({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'archive').length})</span>
+              <span className="flex items-center gap-1">
+                {isScanning && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+                ({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'archive').length})
+              </span>
             </button>
             <button
               onClick={() => setFilterDisposition('route')}
@@ -807,7 +828,10 @@ export function OmniCleanPage({
               )}
             >
               <span>Go: File to Folder</span>
-              <span>({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'route_to_label').length})</span>
+              <span className="flex items-center gap-1">
+                {isScanning && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+                ({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'GO' && b.action === 'route_to_label').length})
+              </span>
             </button>
             <button
               onClick={() => setFilterDisposition('stay')}
@@ -819,7 +843,10 @@ export function OmniCleanPage({
               )}
             >
               <span>No: Stay / Keep</span>
-              <span>({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'STAY').length})</span>
+              <span className="flex items-center gap-1">
+                {isScanning && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+                ({batches.filter(b => !completedBatchIds.has(b.id) && b.disposition === 'STAY').length})
+              </span>
             </button>
           </div>
 

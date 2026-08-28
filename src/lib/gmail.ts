@@ -49,11 +49,14 @@ export async function fetchGmailAPI(
       errMsg.includes('expired') ||
       (response.status === 403 && errMsg.includes('insufficient'))
     ) {
-      logout().catch(() => {});
-      setTimeout(() => {
+      logout().then(() => {
         window.location.reload();
-      }, 500);
-      throw new Error("Authentication expired or missing permissions. Please log in again.");
+      }).catch(() => {
+        window.location.reload();
+      });
+      // Return a promise that never resolves so downstream code doesn't crash 
+      // while we wait for the page to reload.
+      return new Promise(() => {});
     }
     throw new Error(err.error?.message || `Gmail API Error: ${response.status}`);
   }
@@ -413,7 +416,7 @@ export async function markAllAsReadByQuery(
  */
 export const COUNT_MAX_PAGES = 20;
 
-export async function countEmails(query: string, maxPages?: number): Promise<number> {
+export async function countEmails(query: string, maxPages?: number, onProgress?: (total: number) => void): Promise<number> {
   try {
     let total = 0;
     let pageToken = "";
@@ -425,15 +428,25 @@ export async function countEmails(query: string, maxPages?: number): Promise<num
       if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetchGmailAPI(url);
 
-      if (!res || !res.messages || res.messages.length === 0) return total;
+      if (!res || !res.messages || res.messages.length === 0) {
+        if (onProgress) onProgress(total);
+        return total;
+      }
       total += res.messages.length;
       if (typeof res.resultSizeEstimate === 'number') lastEstimate = res.resultSizeEstimate;
+      
+      if (onProgress) onProgress(Math.max(total, lastEstimate));
 
       pageToken = res.nextPageToken;
-      if (!pageToken) return total;
+      if (!pageToken) {
+        if (onProgress) onProgress(total);
+        return total;
+      }
     }
 
-    return Math.max(total, lastEstimate);
+    const finalCount = Math.max(total, lastEstimate);
+    if (onProgress) onProgress(finalCount);
+    return finalCount;
   } catch (err) {
     return 0;
   }
@@ -632,7 +645,8 @@ function shapeMessage(msg: any): any {
 export async function fetchMessagesMetadataBatch(
   ids: string[],
   onProgress?: (done: number, total: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onChunk?: (chunk: any[]) => void
 ): Promise<any[]> {
   if (ids.length === 0) return [];
   const token = await getAccessToken();
@@ -697,7 +711,9 @@ export async function fetchMessagesMetadataBatch(
           `Batch returned ${parsed.length} of ${chunk.length} messages — response may not have parsed correctly.`
         );
       }
-      out.push(...parsed.map(shapeMessage));
+      const shapedChunk = parsed.map(shapeMessage);
+      out.push(...shapedChunk);
+      if (onChunk) onChunk(shapedChunk);
     } catch (err) {
       if (signal?.aborted) break;
       console.warn('Batch metadata request errored; continuing.', err);
@@ -763,7 +779,8 @@ export async function scanFolderMetadata(
   /** Optional ceiling. Omit it to scan every message the query matches. */
   limit?: number,
   onProgress?: (done: number, total: number, phase: 'listing' | 'fetching') => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onChunk?: (chunk: EmailData[]) => void
 ): Promise<EmailData[]> {
   if (onProgress) onProgress(0, 0, 'listing');
 
@@ -784,7 +801,8 @@ export async function scanFolderMetadata(
     (done, total) => {
       if (onProgress) onProgress(done, total, 'fetching');
     },
-    signal
+    signal,
+    onChunk
   );
 
   return rawMessages as EmailData[];

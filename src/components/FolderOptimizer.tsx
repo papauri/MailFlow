@@ -47,7 +47,7 @@ export function FolderOptimizer({
    */
   const sample = useCachedResource<RoutingSample>(
     routingSampleKey(userEmail),
-    () => fetchRoutingSample()
+    (onProgress, onUpdate) => fetchRoutingSample(onProgress, onUpdate)
   );
 
   const sampleEmails = sample.data?.emails ?? [];
@@ -81,6 +81,8 @@ export function FolderOptimizer({
         suggestions={suggestions}
         sendersAnalysed={senderCount}
         loading={sample.loading}
+        refreshing={sample.refreshing}
+        progress={sample.progress}
         filedCount={sample.data?.filedCount ?? 0}
         sampleSize={sampleEmails.length}
         sampleEmails={sampleEmails}
@@ -137,6 +139,7 @@ export function FolderOptimizer({
           suggestions={suggestions}
           sendersAnalysed={senderCount}
           loading={sample.loading}
+          progress={sample.progress}
           filedCount={sample.data?.filedCount ?? 0}
           sampleSize={sampleEmails.length}
           sampleEmails={sampleEmails}

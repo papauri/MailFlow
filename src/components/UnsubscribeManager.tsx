@@ -1,5 +1,6 @@
 import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, Sparkles, ArrowLeft } from 'lucide-react';
 import { scanFolderMetadata, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
@@ -72,45 +73,54 @@ export function UnsubscribeManager({
       setLoading(true);
       setScanProgress(null);
       try {
+        const senders = new Map();
+        const logEmails = new Set(actionLog.map(a => a.email));
+
         // No cap. It read 1,500 while the label said "Auditing newsletters", so any
         // sender whose mail fell past that point was silently absent from an audit
         // that presented itself as complete.
         const emails = await scanFolderMetadata(
           "(category:promotions OR category:updates OR unsubscribe OR label:unread) -in:trash -in:spam",
           undefined,
-          (done, total) => setScanProgress({ done, total })
+          (done, total) => setScanProgress({ done, total }),
+          undefined,
+          (chunk) => {
+            chunk.forEach(email => {
+              const details = extractSenderDetails(email.sender);
+              const emailAddr = details.emailAddr;
+              const name = details.displayName;
+              
+              if (!senders.has(emailAddr)) {
+                senders.set(emailAddr, {
+                  email: emailAddr,
+                  name,
+                  brand: details.brand,
+                  count: 0,
+                  listUnsubscribe: email.listUnsubscribe,
+                  exampleSubject: email.subject
+                });
+              }
+              senders.get(emailAddr).count++;
+              
+              if (!senders.get(emailAddr).listUnsubscribe && email.listUnsubscribe) {
+                senders.get(emailAddr).listUnsubscribe = email.listUnsubscribe;
+              }
+            });
+
+            const partialArray = Array.from(senders.values())
+              .filter(s => s.count >= 1 && !logEmails.has(s.email)) 
+              .sort((a, b) => b.count - a.count);
+              
+            setSubscriptions(partialArray);
+          }
         );
         
-        const senders = new Map();
-        emails.forEach(email => {
-          const details = extractSenderDetails(email.sender);
-          const emailAddr = details.emailAddr;
-          const name = details.displayName;
-          
-          if (!senders.has(emailAddr)) {
-            senders.set(emailAddr, {
-              email: emailAddr,
-              name,
-              brand: details.brand,
-              count: 0,
-              listUnsubscribe: email.listUnsubscribe,
-              exampleSubject: email.subject
-            });
-          }
-          senders.get(emailAddr).count++;
-          
-          if (!senders.get(emailAddr).listUnsubscribe && email.listUnsubscribe) {
-            senders.get(emailAddr).listUnsubscribe = email.listUnsubscribe;
-          }
-        });
-        
-        const logEmails = new Set(actionLog.map(a => a.email));
-        
-        const subsArray = Array.from(senders.values())
+        // Final update just in case
+        const finalArray = Array.from(senders.values())
           .filter(s => s.count >= 1 && !logEmails.has(s.email)) 
           .sort((a, b) => b.count - a.count);
           
-        setSubscriptions(subsArray);
+        setSubscriptions(finalArray);
       } catch (e) {
         console.error("Error loading subscriptions", e);
       } finally {
@@ -392,7 +402,10 @@ export function UnsubscribeManager({
             className={cn("py-3 px-4 font-semibold text-xs sm:text-sm border-b-2 transition-all flex items-center gap-2", activeTab === 'active' ? "border-slate-800 text-slate-900 bg-white rounded-t-lg border-t border-x border-slate-200" : "border-transparent text-slate-500 hover:text-slate-700")}
           >
             <span>Active Senders</span>
-            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-bold">{subscriptions.length}</span>
+            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+              {(loading || scanProgress) && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-400" />}
+              {subscriptions.length}
+            </span>
           </button>
           <button 
             onClick={() => setActiveTab('unsubscribed')}
@@ -419,7 +432,7 @@ export function UnsubscribeManager({
 
           {activeTab === 'active' && (
             <>
-              {loading ? (
+              {loading && subscriptions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-4 text-slate-500 p-4 sm:p-16">
                   <SketchLoadingState scene="binning" 
                     title="Finding Subscriptions" 
@@ -447,14 +460,20 @@ export function UnsubscribeManager({
                       className={cn("px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition-all whitespace-nowrap flex items-center gap-1.5", activeSubTab === 'easy_unsub' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}
                     >
                       <MailMinus className="w-4 h-4" />
-                      1-Click Unsubscribe ({canUnsubscribeSubs.length})
+                      <span className="flex items-center gap-1">
+                        1-Click Unsubscribe ({canUnsubscribeSubs.length})
+                        {(loading || scanProgress) && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                      </span>
                     </button>
                     <button 
                       onClick={() => setActiveSubTab('block')}
                       className={cn("px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition-all whitespace-nowrap flex items-center gap-1.5", activeSubTab === 'block' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}
                     >
                       <Skull className="w-4 h-4" />
-                      Block Senders ({ghostBlockSubs.length})
+                      <span className="flex items-center gap-1">
+                        Block Senders ({ghostBlockSubs.length})
+                        {(loading || scanProgress) && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                      </span>
                     </button>
                   </div>
 
@@ -740,12 +759,26 @@ export function UnsubscribeManager({
     </>
   );
 
+  const progressBar = (loading || scanProgress) ? (
+    <div className="absolute top-0 left-0 h-1 bg-slate-100 w-full overflow-hidden z-50 rounded-t-2xl">
+      <motion.div 
+        className="h-full bg-blue-500"
+        initial={{ width: 0 }}
+        animate={{ 
+          width: scanProgress ? `${Math.round((scanProgress.done / Math.max(1, scanProgress.total)) * 100)}%` : '100%' 
+        }}
+        transition={{ ease: "linear", duration: scanProgress ? 0 : 2, repeat: scanProgress ? 0 : Infinity }}
+      />
+    </div>
+  ) : null;
+
   if (isPage) {
     return (
       <div className="w-full flex flex-col gap-4 animate-in fade-in duration-150">
         {toastElement}
-        {headerElement}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[600px]">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[600px] relative">
+          {progressBar}
+          {headerElement}
           {mainBodyContent}
         </div>
       </div>
@@ -754,7 +787,8 @@ export function UnsubscribeManager({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 relative">
+        {progressBar}
         {toastElement}
         {headerElement}
         {mainBodyContent}

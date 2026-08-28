@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'motion/react';
 import {
   Loader2, FolderTree, Filter, CheckCircle2, AlertTriangle, Brain, Search,
 } from 'lucide-react';
@@ -33,6 +34,8 @@ interface Props {
   sendersAnalysed: number;
   /** Training sample still being fetched. */
   loading?: boolean;
+  refreshing?: boolean;
+  progress?: { done: number; total: number; phase: string } | null;
   /** Messages in the sample that carry a user label — the evidence to learn from. */
   filedCount?: number;
   sampleSize?: number;
@@ -69,7 +72,7 @@ interface Props {
  * card, same review toggle, same inline message list, same confirmation.
  */
 export function RoutingSuggestions({
-  mode, suggestions, sendersAnalysed, loading = false, filedCount = 0, sampleSize = 0,
+  mode, suggestions, sendersAnalysed, loading = false, refreshing = false, progress, filedCount = 0, sampleSize = 0,
   sampleEmails = [], aiSettings, onApplied, onLabelsChanged, embedded = false, toolbarActions,
   leadingChips, activeLeadingChip, onLeadingChipSelect,
 }: Props) {
@@ -184,7 +187,7 @@ export function RoutingSuggestions({
    */
   const relevant = isFolderMode
     ? suggestions.filter(s => s.unfiled > 0).sort((a, b) => b.unfiled - a.unfiled)
-    : suggestions;
+    : suggestions.sort((a, b) => b.volume - a.volume);
 
   const visible = completion.visible(relevant)
     .filter(s => !dismissed.has(s.id))
@@ -202,11 +205,11 @@ export function RoutingSuggestions({
       // Deliberately "All", not "Suggested": Automated Rules already has a Suggested
       // chip for its view switch, and two chips reading the same word in one toolbar
       // is worse than a slightly duller label.
-      { id: 'all', label: 'All', count: pool.length },
-      { id: 'new', label: 'New folders', count: pool.filter(s => s.kind === 'new_folder').length },
-      { id: 'existing', label: 'Existing', count: pool.filter(s => s.kind === 'route_existing').length },
+      { id: 'all', label: 'All', count: pool.length, loading },
+      { id: 'new', label: 'New folders', count: pool.filter(s => s.kind === 'new_folder').length, loading },
+      { id: 'existing', label: 'Existing', count: pool.filter(s => s.kind === 'route_existing').length, loading },
     ].filter(c => c.count > 0 || c.id === 'all');
-  }, [relevant, dismissed, completion]);
+  }, [relevant, dismissed, completion, loading]);
 
   const [chip, setChip] = useState('all');
   const shown = visible.filter(s =>
@@ -259,6 +262,7 @@ export function RoutingSuggestions({
         kind="loading"
         title="Learning from your mail…"
         body="Reading how you already file things so the suggestions match your habits."
+        progress={progress}
       />
     );
   } else if (sampleSize === 0) {
@@ -349,7 +353,7 @@ export function RoutingSuggestions({
                   {/* Why the model suggested this… */}
                   <div className="px-3 py-2.5 bg-white/70">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Signals the model used
+                      Why this was suggested
                     </p>
                     <ul className="flex flex-col gap-1">
                       {s.evidence.map((line, i) => (
@@ -421,6 +425,16 @@ export function RoutingSuggestions({
 
   const inner = (
     <>
+      {refreshing && progress && (
+        <div className="absolute top-0 left-0 z-50 h-1 bg-slate-100 w-full overflow-hidden">
+          <motion.div 
+            className="h-full bg-blue-500"
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
+            transition={{ ease: "linear" }}
+          />
+        </div>
+      )}
       {intro}
 
       {error && (
@@ -451,10 +465,10 @@ export function RoutingSuggestions({
     </>
   );
 
-  if (embedded) return <div className="flex flex-col flex-1 min-h-0">{inner}</div>;
+  if (embedded) return <div className="flex flex-col flex-1 min-h-0 relative">{inner}</div>;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[480px]">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden flex flex-col min-h-[480px] relative">
       {inner}
     </div>
   );

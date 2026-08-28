@@ -89,6 +89,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Failed to get access token from Firebase Auth');
     }
 
+    // Verify scopes by making a quick API call to Gmail profile
+    const verifyRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: `Bearer ${credential.accessToken}` }
+    });
+    
+    if (!verifyRes.ok) {
+      await auth.signOut();
+      throw new Error('Missing permissions. Please make sure to check the boxes to grant Gmail permissions during sign in.');
+    }
+
     cachedAccessToken = credential.accessToken;
     sessionTokens.set('gmail_access_token', cachedAccessToken);
     return { user: result.user, accessToken: cachedAccessToken };

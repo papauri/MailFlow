@@ -34,6 +34,7 @@ export interface ToolbarChip {
   id: string;
   label: string;
   count: number;
+  loading?: boolean;
 }
 
 export function AutomationToolbar({
@@ -81,9 +82,12 @@ export function AutomationToolbar({
           : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
       )}
     >
-      {chip.label}
-      <span className={cn("ml-1 tabular-nums", isActive ? "text-white/70" : "text-slate-400")}>
-        {chip.count}
+      <span className="flex items-center gap-1">
+        {chip.label}
+        <span className={cn("ml-1 tabular-nums flex items-center gap-1", isActive ? "text-white/70" : "text-slate-400")}>
+          {chip.loading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+          {chip.count}
+        </span>
       </span>
     </button>
   );

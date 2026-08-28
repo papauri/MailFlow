@@ -52,21 +52,70 @@ export interface RoutingSample {
  * The second half is recent inbox mail: the candidates a rule would act on. Both are
  * needed — filed mail alone shows where things go but not what is still loose.
  */
-export async function fetchRoutingSample(): Promise<RoutingSample> {
-  const [filed, recent] = await Promise.all([
-    scanFolderMetadata('has:userlabels -in:trash -in:spam -in:chats').catch(() => []),
-    scanFolderMetadata('in:inbox -in:chats -is:draft').catch(() => []),
-  ]);
+export async function fetchRoutingSample(
+  onProgress?: (done: number, total: number, phase: string) => void,
+  onUpdate?: (partialData: RoutingSample) => void
+): Promise<RoutingSample> {
+  let filedDone = 0;
+  let filedTotal = 0;
+  let recentDone = 0;
+  let recentTotal = 0;
+  let currentPhase = 'listing';
+  let totalFiledReceived = 0;
 
-  // A message can appear in both halves; keep one copy so counts stay honest.
+  const updateProgress = (source: 'filed' | 'recent', done: number, total: number, phase: string) => {
+    if (source === 'filed') {
+      filedDone = done;
+      filedTotal = total;
+    } else {
+      recentDone = done;
+      recentTotal = total;
+    }
+    
+    // Once one finishes listing, we consider the overall phase to progress to fetching
+    if (phase === 'fetching') currentPhase = 'fetching';
+    
+    if (onProgress) {
+      onProgress(filedDone + recentDone, filedTotal + recentTotal, currentPhase);
+    }
+  };
+
   const byId = new Map<string, any>();
-  for (const e of [...filed, ...recent]) {
-    if (e?.id) byId.set(e.id, e);
-  }
+
+  const handleChunk = (source: 'filed' | 'recent', chunk: any[]) => {
+    if (source === 'filed') totalFiledReceived += chunk.length;
+    
+    for (const e of chunk) {
+      if (e?.id) byId.set(e.id, e);
+    }
+    if (onUpdate) {
+      onUpdate({
+        emails: Array.from(byId.values()),
+        filedCount: totalFiledReceived, // approximation as it streams
+      });
+    }
+  };
+
+  await Promise.all([
+    scanFolderMetadata(
+      'has:userlabels -in:trash -in:spam -in:chats',
+      undefined,
+      (d, t, p) => updateProgress('filed', d, t, p),
+      undefined,
+      (chunk) => handleChunk('filed', chunk)
+    ).catch(() => []),
+    scanFolderMetadata(
+      'in:inbox -in:chats -is:draft',
+      undefined,
+      (d, t, p) => updateProgress('recent', d, t, p),
+      undefined,
+      (chunk) => handleChunk('recent', chunk)
+    ).catch(() => []),
+  ]);
 
   return {
     emails: Array.from(byId.values()),
-    filedCount: filed.length,
+    filedCount: totalFiledReceived,
   };
 }
 
@@ -82,9 +131,63 @@ export async function fetchRoutingSample(): Promise<RoutingSample> {
  * job is choosing where to go next waited on a full-mailbox scan to draw a label
  * over two numbers that are capped at six either way.
  */
-export async function fetchSenderClusters(userEmail?: string): Promise<SenderClusters> {
+export async function fetchSenderClusters(
+  userEmail?: string,
+  onProgress?: (done: number, total: number, phase: string) => void,
+  onUpdate?: (partialData: SenderClusters) => void
+): Promise<SenderClusters> {
   const normalizedUser = (userEmail || '').toLowerCase().trim();
   const userDomain = normalizedUser.includes('@') ? normalizedUser.split('@')[1] : null;
+
+  const senderCounts = new Map<string, SenderCluster>();
+  const domainCounts = new Map<string, DomainCluster>();
+  /** Distinct addresses per domain, so the "N unique senders" line has a source. */
+  const domainSenders = new Map<string, Set<string>>();
+  
+  const allRecentEmails: any[] = [];
+
+  const handleChunk = (chunk: any[]) => {
+    allRecentEmails.push(...chunk);
+    
+    chunk.forEach((e: any) => {
+      const details = extractSenderDetails(e.sender);
+      const email = details.emailAddr;
+      const rootDomain = details.rootDomain;
+
+      if (!senderCounts.has(email)) {
+        senderCounts.set(email, { email, name: details.displayName, count: 0 });
+      }
+      senderCounts.get(email)!.count++;
+
+      // Only track organization / company / service domains for Domain Clusters
+      // (exclude generic public webmail providers and self)
+      if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
+        if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0, senders: 0 });
+        domainCounts.get(rootDomain)!.count++;
+        if (!domainSenders.has(rootDomain)) domainSenders.set(rootDomain, new Set());
+        domainSenders.get(rootDomain)!.add(email);
+      }
+    });
+
+    if (onUpdate) {
+      const topSenders = Array.from(senderCounts.values())
+        .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+
+      const topDomains = Array.from(domainCounts.values())
+        .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6)
+        .map(d => ({ ...d, senders: domainSenders.get(d.domain)?.size ?? 0 }));
+
+      onUpdate({
+        recentEmails: allRecentEmails,
+        topSenders: topSenders.filter(s => s.count > 0),
+        topDomains: topDomains.filter(d => d.count > 0),
+      });
+    }
+  };
 
   /**
    * One sample, and every figure on the page derived from it.
@@ -99,33 +202,12 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
    * appear as senders; the rest of Inbox Health already excludes them.
    */
   const recentEmails = await scanFolderMetadata(
-    "in:anywhere -in:trash -in:spam -in:sent -is:draft -in:chats"
+    "in:anywhere -in:trash -in:spam -in:sent -is:draft -in:chats",
+    undefined,
+    onProgress,
+    undefined,
+    handleChunk
   );
-
-  const senderCounts = new Map<string, SenderCluster>();
-  const domainCounts = new Map<string, DomainCluster>();
-  /** Distinct addresses per domain, so the "N unique senders" line has a source. */
-  const domainSenders = new Map<string, Set<string>>();
-
-  recentEmails.forEach((e: any) => {
-    const details = extractSenderDetails(e.sender);
-    const email = details.emailAddr;
-    const rootDomain = details.rootDomain;
-
-    if (!senderCounts.has(email)) {
-      senderCounts.set(email, { email, name: details.displayName, count: 0 });
-    }
-    senderCounts.get(email)!.count++;
-
-    // Only track organization / company / service domains for Domain Clusters
-    // (exclude generic public webmail providers and self)
-    if (rootDomain && rootDomain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(rootDomain) && rootDomain !== userDomain) {
-      if (!domainCounts.has(rootDomain)) domainCounts.set(rootDomain, { domain: rootDomain, count: 0, senders: 0 });
-      domainCounts.get(rootDomain)!.count++;
-      if (!domainSenders.has(rootDomain)) domainSenders.set(rootDomain, new Set());
-      domainSenders.get(rootDomain)!.add(email);
-    }
-  });
 
   const topSenders = Array.from(senderCounts.values())
     .filter(s => s.email.includes('@') && (!normalizedUser || s.email !== normalizedUser))
@@ -136,12 +218,10 @@ export async function fetchSenderClusters(userEmail?: string): Promise<SenderClu
     .filter(d => d.domain !== 'unknown' && !GENERIC_FREEMAIL_DOMAINS.has(d.domain))
     .sort((a, b) => b.count - a.count)
     .slice(0, 6)
-    // The UI renders "N unique senders" per domain, so the count has to be carried
-    // through rather than left at its zero initialiser.
     .map(d => ({ ...d, senders: domainSenders.get(d.domain)?.size ?? 0 }));
 
   return {
-    recentEmails,
+    recentEmails: allRecentEmails,
     topSenders: topSenders.filter(s => s.count > 0),
     topDomains: topDomains.filter(d => d.count > 0),
   };
@@ -197,29 +277,51 @@ export const inboxSizesKey = (userEmail?: string) => `inbox-sizes:${userEmail ||
  * `fetchInboxSizes` because they are needed by two byte badges and a tie-breaker,
  * not by the cards themselves — the page should not wait on them.
  */
-export async function fetchInboxStats(): Promise<InboxStatsResult> {
+export async function fetchInboxStats(
+  onProgress?: (done: number, total: number, phase: string) => void,
+  onUpdate?: (partialData: InboxStatsResult) => void
+): Promise<InboxStatsResult> {
   const Q = INBOX_HEALTH_QUERIES;
 
-  const [size, unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
-    fetchMailboxComposition(),
-    countEmails(Q.unread),
-    countEmails(Q.oldPromo),
-    countEmails(Q.large),
-    countEmails(Q.spamAndTrash),
-    countEmails(Q.importantUnread),
-    countEmails(Q.updatesAndSocial),
-    countEmails(Q.withAttachments),
-    countEmails(Q.oldMail),
-  ]);
-
-  const stats: InboxStats = {
-    unread, oldPromo, large, spamAndTrash,
-    importantUnread, updatesAndSocial, withAttachments, oldMail,
-    mailboxTotal: size.mailboxTotal,
-    inboxTotal: size.inboxTotal,
+  const currentStats: InboxStats = {
+    unread: 0, oldPromo: 0, large: 0, spamAndTrash: 0,
+    importantUnread: 0, updatesAndSocial: 0, withAttachments: 0, oldMail: 0,
+    mailboxTotal: 0, inboxTotal: 0,
   };
 
-  return { stats, sizes: {} };
+  const notify = () => {
+    if (onUpdate) onUpdate({ stats: { ...currentStats }, sizes: {} });
+  };
+
+  const [size, unread, oldPromo, large, spamAndTrash, importantUnread, updatesAndSocial, withAttachments, oldMail] = await Promise.all([
+    fetchMailboxComposition().then(res => {
+      currentStats.mailboxTotal = res.mailboxTotal;
+      currentStats.inboxTotal = res.inboxTotal;
+      notify();
+      return res;
+    }),
+    countEmails(Q.unread, undefined, v => { currentStats.unread = v; notify(); }),
+    countEmails(Q.oldPromo, undefined, v => { currentStats.oldPromo = v; notify(); }),
+    countEmails(Q.large, undefined, v => { currentStats.large = v; notify(); }),
+    countEmails(Q.spamAndTrash, undefined, v => { currentStats.spamAndTrash = v; notify(); }),
+    countEmails(Q.importantUnread, undefined, v => { currentStats.importantUnread = v; notify(); }),
+    countEmails(Q.updatesAndSocial, undefined, v => { currentStats.updatesAndSocial = v; notify(); }),
+    countEmails(Q.withAttachments, undefined, v => { currentStats.withAttachments = v; notify(); }),
+    countEmails(Q.oldMail, undefined, v => { currentStats.oldMail = v; notify(); }),
+  ]);
+
+  currentStats.unread = unread;
+  currentStats.oldPromo = oldPromo;
+  currentStats.large = large;
+  currentStats.spamAndTrash = spamAndTrash;
+  currentStats.importantUnread = importantUnread;
+  currentStats.updatesAndSocial = updatesAndSocial;
+  currentStats.withAttachments = withAttachments;
+  currentStats.oldMail = oldMail;
+  currentStats.mailboxTotal = size.mailboxTotal;
+  currentStats.inboxTotal = size.inboxTotal;
+
+  return { stats: currentStats, sizes: {} };
 }
 
 /**
@@ -229,7 +331,8 @@ export async function fetchInboxStats(): Promise<InboxStatsResult> {
  * is a list call plus a couple of batched metadata calls, and six of them in front
  * of the first render was most of the wait on a large mailbox.
  */
-export async function fetchInboxSizes(stats: InboxStats): Promise<Record<string, number>> {
+export async function fetchInboxSizes(stats: InboxStats | null): Promise<Record<string, number>> {
+  if (!stats) return {};
   const Q = INBOX_HEALTH_QUERIES;
 
   const [oldPromoSize, largeSize, spamAndTrashSize, attachmentsSize, oldMailSize, updatesAndSocialSize] = await Promise.all([
@@ -338,9 +441,10 @@ export const CATEGORY_SCAN_LIMIT = 0;
 export async function fetchCategoryScan(
   query: string,
   onProgress?: (done: number, total: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onChunk?: (chunk: any[]) => void
 ): Promise<any[]> {
   const ids = await listMessageIds(query, undefined, signal);
   if (ids.length === 0) return [];
-  return fetchMessagesMetadataBatch(ids, onProgress, signal);
+  return fetchMessagesMetadataBatch(ids, onProgress, signal, onChunk);
 }

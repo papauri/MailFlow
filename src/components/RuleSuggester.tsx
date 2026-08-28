@@ -59,7 +59,7 @@ export function RuleSuggester({
   // Same cache key as Folder Optimizer: one background fetch serves both tools.
   const sample = useCachedResource<RoutingSample>(
     routingSampleKey(userEmail),
-    () => fetchRoutingSample()
+    (onProgress, onUpdate) => fetchRoutingSample(onProgress, onUpdate)
   );
 
   const sampleEmails = sample.data?.emails ?? [];
@@ -115,7 +115,7 @@ export function RuleSuggester({
    * own, so it renders the switch itself.
    */
   const viewChips = [
-    { id: 'suggestions', label: 'Suggested', count: suggestions.length },
+    { id: 'suggestions', label: 'Suggested', count: suggestions.length, loading: sample.loading },
     { id: 'active_rules', label: 'Active', count: createdRulesLog.length },
   ];
 
@@ -185,6 +185,8 @@ export function RuleSuggester({
       suggestions={suggestions}
       sendersAnalysed={senderCount}
       loading={sample.loading}
+      refreshing={sample.refreshing}
+      progress={sample.progress}
       filedCount={sample.data?.filedCount ?? 0}
       sampleSize={sampleEmails.length}
       sampleEmails={sampleEmails}

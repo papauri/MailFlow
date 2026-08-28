@@ -82,8 +82,14 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  const statsResource = useCachedResource<InboxStatsResult>(inboxStatsKey(userEmail), () => fetchInboxStats());
-  const clustersResource = useCachedResource<SenderClusters>(senderClustersKey(userEmail), () => fetchSenderClusters(userEmail));
+  const statsResource = useCachedResource<InboxStatsResult>(
+    inboxStatsKey(userEmail),
+    (onProgress, onUpdate) => fetchInboxStats(onProgress, onUpdate)
+  );
+  const clustersResource = useCachedResource<SenderClusters>(
+    senderClustersKey(userEmail),
+    (onProgress, onUpdate) => fetchSenderClusters(userEmail, onProgress, onUpdate)
+  );
 
   const stats = statsResource.data?.stats ?? null;
 
@@ -92,7 +98,7 @@ export function ExportCenter({ userEmail, userLabels = [], onBack }: Props) {
   // and without holding up the dataset list.
   const sizesResource = useCachedResource<Record<string, number>>(
     stats ? inboxSizesKey(userEmail) : null,
-    () => fetchInboxSizes(stats!)
+    () => fetchInboxSizes(stats)
   );
   const sizes = sizesResource.data ?? {};
   const topSenders = clustersResource.data?.topSenders ?? [];

@@ -35,7 +35,7 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
 
   const clusters = useCachedResource<SenderClusters>(
     senderClustersKey(userEmail),
-    () => fetchSenderClusters(userEmail)
+    (onProgress, onUpdate) => fetchSenderClusters(userEmail, onProgress, onUpdate)
   );
 
   const topSenders = clusters.data?.topSenders ?? [];
@@ -71,7 +71,17 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
         }
       />
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs min-h-[400px] p-4 sm:p-6">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs min-h-[400px] p-4 sm:p-6 relative overflow-hidden">
+        {clusters.refreshing && clusters.progress && (
+          <div className="absolute top-0 left-0 h-1 bg-slate-100 w-full overflow-hidden">
+            <motion.div 
+              className="h-full bg-blue-500"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.round((clusters.progress.done / Math.max(1, clusters.progress.total)) * 100)}%` }}
+              transition={{ ease: "linear" }}
+            />
+          </div>
+        )}
         {clusters.loading ? (
           <div className="flex flex-col items-center justify-center min-h-[320px]">
             <SketchLoadingState 
@@ -84,6 +94,7 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
                 "Calculating exact contact engagement metrics..."
               ]}
               progressLabel="Auditing contacts"
+              progress={clusters.progress}
             />
           </div>
         ) : topSenders.length === 0 && topDomains.length === 0 ? (
@@ -101,7 +112,10 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
                   <Target className="w-4 h-4 text-slate-700" />
                 </div>
                 <div className="flex flex-col">
-                  <h3 className="text-sm font-bold text-slate-800">Top Senders</h3>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    Top Senders
+                    {clusters.refreshing && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                  </h3>
                   <p className="text-[11px] text-slate-500">Most frequent contacts in recent history</p>
                 </div>
               </div>
@@ -177,7 +191,10 @@ export function SenderAnalyticsPage({ userEmail, onBack, openFilterPage }: Props
                   <Layers className="w-4 h-4 text-slate-700" />
                 </div>
                 <div className="flex flex-col">
-                  <h3 className="text-sm font-bold text-slate-800">Domain Clusters</h3>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    Domain Clusters
+                    {clusters.refreshing && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                  </h3>
                   <p className="text-[11px] text-slate-500">Companies emailing you the most</p>
                 </div>
               </div>
