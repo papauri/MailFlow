@@ -343,6 +343,7 @@ export function OmniCleanPage({
         }
       }
 
+      return true;
     }).sort((a, b) => b.emailIds.length - a.emailIds.length);
   }, [batches, completedBatchIds, filterDisposition, searchQuery]);
 
