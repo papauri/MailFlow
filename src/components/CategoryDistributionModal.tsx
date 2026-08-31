@@ -705,6 +705,7 @@ export function CategoryDistributionModal({
                 <CleanupRecommendations
                   analysis={cleanupAnalysis}
                   categoryName={currentCategoryConfig.name}
+                  emails={categoryEmails}
                   aiSettings={aiSettings}
                   onInspect={(query, title) => {
                     const params = new URLSearchParams();

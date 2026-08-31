@@ -37,7 +37,7 @@ export function ManageInboxPortal({
           </div>
         </div>
         
-        <div className="flex bg-slate-100 p-1 rounded-xl">
+        <div className="flex bg-slate-100 p-1 rounded-xl max-w-full overflow-x-auto shrink-0">
           <button
             onClick={() => setActiveTab('subscriptions')}
             className={cn(

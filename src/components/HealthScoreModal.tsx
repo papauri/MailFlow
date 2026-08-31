@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Activity, Loader2, TrendingUp, AlertTriangle,
-  HardDrive, Trash2, MailOpen, ShieldCheck, RefreshCw, Sparkles, ArrowLeft,
-  Sliders, UserX, Filter, RotateCcw, Clock
+  HardDrive, Trash2, MailOpen, ShieldCheck, RefreshCw, ArrowLeft,
+  Sliders, UserX, Filter, RotateCcw, Clock, CheckCircle2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
@@ -1186,7 +1186,7 @@ export function HealthScoreModal({
         {celebration && (
           <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-              <Sparkles className="w-8 h-8" />
+              <CheckCircle2 className="w-8 h-8" />
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">{celebration.message}</h3>
             <p className={cn(

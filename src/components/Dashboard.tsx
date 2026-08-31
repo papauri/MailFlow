@@ -13,6 +13,8 @@ import { isFullPageRoute, isHealthSectionRoute, routeLabel } from "../lib/routes
 import { useInboxWarmup } from "../lib/useInboxWarmup";
 import { useRoutePrefetch } from "../lib/useRoutePrefetch";
 import { QuickFiltersDropdown } from "./QuickFiltersDropdown";
+import { SemanticSearchBox } from "./SemanticSearchBox";
+import { parseNaturalLanguageLocal, ParsedQueryResponse } from "../lib/semanticSearch";
 import { cn, formatEmailDate } from "../lib/utils";
 import { sortDirectionLabel, sortDirectionHint } from "../lib/emailGrouping";
 
@@ -72,7 +74,18 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     suggestedFolder?: string;
     suggestedGmailCategory?: string;
     operators?: any;
+    limit?: number;
+    sortBy?: "date" | "size" | "sender";
+    sortDesc?: boolean;
   } | null>(null);
+  const [searchLimit, setSearchLimit] = useState<number | null>(null);
+  const [categorizeByFolder, setCategorizeByFolder] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("ais_categorize_by_folder") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [isSearching, setIsSearching] = useState(false);
   const [emails, setEmails] = useState<EmailData[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -208,6 +221,31 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
   const [connectionStatus, setConnectionStatus] = useState<'idle'|'testing'|'success'|'error'>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
   
+  useEffect(() => {
+    // Automatically detect if server has active Gemini key or user has custom AI configuration
+    fetch('/api/ai-status')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.available) {
+          setUseAI(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const topSenders = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of emails) {
+      if (e.sender) {
+        counts.set(e.sender, (counts.get(e.sender) || 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([sender]) => sender)
+      .slice(0, 12);
+  }, [emails]);
+
   useEffect(() => {
     if (!effectiveAiSettings.apiKey) {
       setConnectionStatus('idle');
@@ -371,7 +409,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     return () => window.removeEventListener('inbox_metrics_updated', clear);
   }, []);
 
-  const handleSearch = async (e?: FormEvent, customQuery?: string, customFilters?: string[], bypassAI: boolean = false) => {
+  const handleSearch = async (
+    e?: FormEvent,
+    customQuery?: string,
+    customFilters?: string[],
+    bypassAI: boolean = false,
+    forceInAnywhere: boolean = false
+  ) => {
     if (e) e.preventDefault();
     const textQuery = customQuery ?? query;
     // Removed early return so we can load all emails initially
@@ -379,12 +423,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     // Anchor to the top only for a genuinely new search. Background refreshes after
     // an action reuse the same query, and yanking the page to the top mid-task threw
     // the user away from the row they had just acted on.
-    //
-    // The test compares the search *inputs*, not the assembled query. It used to be
-    // `textQuery !== lastExecutedQuery`, which compared the raw box text against the
-    // query after `-in:trash`, `-in:sent` and date bounds had been appended. Those
-    // are never equal, so every background refresh counted as a new search — which
-    // is why finishing a batch in Batch Cleanup threw the page back to the top.
     const searchFilters = (customFilters ?? folderFilters).join(',');
     const prevInput = lastSearchInputRef.current;
     const inputsChanged = !prevInput
@@ -399,16 +437,6 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     }
 
     const searchId = ++searchIdRef.current;
-    // Seed from the last result for this exact query so moving back and forth
-    // between pages shows the previous list instantly instead of blanking out,
-    // while the fresh results load behind it and replace them.
-    // Only cache deterministic searches.
-    //
-    // With AI parsing on, the same typed text can resolve to a different Gmail query
-    // and even a different folder, so a key built from the raw text does not identify
-    // the results it was stored against — which is how the cache started serving mail
-    // that did not match what was asked for. Internal navigation always bypasses AI,
-    // so the fast paths that matter are still cached.
     const isDeterministic = bypassAI || !useAI || !textQuery.trim();
     const cacheKey = isDeterministic
       ? searchCacheKey(textQuery, customFilters ?? folderFilters)
@@ -432,6 +460,13 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
 
     let finalQuery = textQuery;
     let actualFolderFilter = customFilters ?? folderFilters;
+    let requestedLimit: number | null = null;
+    let requestedSortBy: "date" | "size" | "sender" | null = null;
+    let requestedSortDesc: boolean | null = null;
+
+    if (forceInAnywhere) {
+      actualFolderFilter = ['anywhere'];
+    }
 
     if (useAI && textQuery.trim() && !bypassAI) {
       try {
@@ -444,24 +479,115 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         
         if (aiRes.status === 429) {
            setAiError("rate_limit");
-           setUseAI(false);
+           const local = parseNaturalLanguageLocal(textQuery);
+           finalQuery = local.query;
+           if (local.inAnywhere || forceInAnywhere) actualFolderFilter = ['anywhere'];
+           if (local.limit) requestedLimit = local.limit;
+           if (local.sortBy) requestedSortBy = local.sortBy;
+           if (local.sortDesc !== undefined) requestedSortDesc = local.sortDesc;
+           setParsedQuery({
+             query: local.query,
+             explanation: local.explanation,
+             operators: { inAnywhere: local.inAnywhere, limit: local.limit, sortBy: local.sortBy, sortDesc: local.sortDesc },
+             limit: local.limit,
+             sortBy: local.sortBy,
+             sortDesc: local.sortDesc
+           });
         } else if (aiRes.status === 503) {
            setAiError("overloaded");
-           setUseAI(false);
+           const local = parseNaturalLanguageLocal(textQuery);
+           finalQuery = local.query;
+           if (local.inAnywhere || forceInAnywhere) actualFolderFilter = ['anywhere'];
+           if (local.limit) requestedLimit = local.limit;
+           if (local.sortBy) requestedSortBy = local.sortBy;
+           if (local.sortDesc !== undefined) requestedSortDesc = local.sortDesc;
+           setParsedQuery({
+             query: local.query,
+             explanation: local.explanation,
+             operators: { inAnywhere: local.inAnywhere, limit: local.limit, sortBy: local.sortBy, sortDesc: local.sortDesc },
+             limit: local.limit,
+             sortBy: local.sortBy,
+             sortDesc: local.sortDesc
+           });
         } else if (!aiRes.ok) {
            setAiError("error");
-           setUseAI(false);
+           const local = parseNaturalLanguageLocal(textQuery);
+           finalQuery = local.query;
+           if (local.inAnywhere || forceInAnywhere) actualFolderFilter = ['anywhere'];
+           if (local.limit) requestedLimit = local.limit;
+           if (local.sortBy) requestedSortBy = local.sortBy;
+           if (local.sortDesc !== undefined) requestedSortDesc = local.sortDesc;
+           setParsedQuery({
+             query: local.query,
+             explanation: local.explanation,
+             operators: { inAnywhere: local.inAnywhere, limit: local.limit, sortBy: local.sortBy, sortDesc: local.sortDesc },
+             limit: local.limit,
+             sortBy: local.sortBy,
+             sortDesc: local.sortDesc
+           });
         } else if (aiRes.ok && data) {
            setParsedQuery(data);
            finalQuery = data.query;
-           if (data.suggestedFolder) {
-             actualFolderFilter = [data.suggestedFolder];
+           if (data.operators?.folder) {
+             actualFolderFilter = [data.operators.folder.replace(/^in:/, '')];
+           } else if (data.operators?.inAnywhere || forceInAnywhere) {
+             actualFolderFilter = ['anywhere'];
+           }
+           if (data.limit || data.operators?.limit) {
+             requestedLimit = data.limit || data.operators?.limit;
+           }
+           if (data.sortBy || data.operators?.sortBy) {
+             requestedSortBy = data.sortBy || data.operators?.sortBy;
+           }
+           if (data.sortDesc !== undefined || data.operators?.sortDesc !== undefined) {
+             requestedSortDesc = data.sortDesc !== undefined ? data.sortDesc : data.operators?.sortDesc;
            }
         }
       } catch (err) {
         console.error("Failed to parse query via AI", err);
+        const local = parseNaturalLanguageLocal(textQuery);
+        finalQuery = local.query;
+        if (local.inAnywhere || forceInAnywhere) actualFolderFilter = ['anywhere'];
+        if (local.limit) requestedLimit = local.limit;
+        if (local.sortBy) requestedSortBy = local.sortBy;
+        if (local.sortDesc !== undefined) requestedSortDesc = local.sortDesc;
+        setParsedQuery({
+          query: local.query,
+          explanation: local.explanation,
+          operators: { inAnywhere: local.inAnywhere, limit: local.limit, sortBy: local.sortBy, sortDesc: local.sortDesc },
+          limit: local.limit,
+          sortBy: local.sortBy,
+          sortDesc: local.sortDesc
+        });
+      }
+    } else if (!bypassAI && textQuery.trim()) {
+      const local = parseNaturalLanguageLocal(textQuery);
+      if (local.query !== textQuery || local.limit || local.sortDesc !== undefined) {
+        finalQuery = local.query;
+        if ((local.inAnywhere || forceInAnywhere) && !customFilters) {
+          actualFolderFilter = ['anywhere'];
+        }
+        if (local.limit) requestedLimit = local.limit;
+        if (local.sortBy) requestedSortBy = local.sortBy;
+        if (local.sortDesc !== undefined) requestedSortDesc = local.sortDesc;
+        setParsedQuery({
+          query: local.query,
+          explanation: local.explanation,
+          operators: { inAnywhere: local.inAnywhere, limit: local.limit, sortBy: local.sortBy, sortDesc: local.sortDesc },
+          limit: local.limit,
+          sortBy: local.sortBy,
+          sortDesc: local.sortDesc
+        });
       }
     }
+
+    if (requestedSortBy) {
+      setSortBy(requestedSortBy);
+    }
+    if (requestedSortDesc !== null && requestedSortDesc !== undefined) {
+      setSortDesc(requestedSortDesc);
+    }
+    setSearchLimit(requestedLimit);
 
     const parts = [finalQuery];
     
@@ -509,13 +635,40 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         }
       });
     
+    const targetSortDesc = requestedSortDesc !== null && requestedSortDesc !== undefined ? requestedSortDesc : sortDesc;
+    const targetLimit = requestedLimit;
+
     try {
       const results = await fetchGmailAPI(`/threads?q=${encodeURIComponent(q)}&maxResults=100`);
       if (searchIdRef.current !== searchId) return;
 
       if (results && results.threads && results.threads.length > 0) {
-        setNextPageToken(results.nextPageToken || null);
-        const detailed = await processInChunks(results.threads, 8, async (thread: any) => {
+        let threadsToProcess = results.threads;
+        
+        // If the user requested oldest-first (e.g. first 5 ever) and there are multiple pages:
+        if (targetSortDesc === false && targetLimit && results.nextPageToken) {
+          let allThreads = [...results.threads];
+          let curToken = results.nextPageToken;
+          let pageCount = 1;
+          // Walk through thread pages (up to 10 pages) to reach the earliest/oldest history in Gmail
+          while (curToken && pageCount < 10) {
+            pageCount++;
+            const nextRes = await fetchGmailAPI(`/threads?q=${encodeURIComponent(q)}&maxResults=100&pageToken=${encodeURIComponent(curToken)}`);
+            if (!nextRes || !nextRes.threads || nextRes.threads.length === 0) break;
+            allThreads.push(...nextRes.threads);
+            curToken = nextRes.nextPageToken || null;
+          }
+          // Gmail thread list is newest-first, so the earliest/oldest threads ever are at the end!
+          threadsToProcess = allThreads.slice(-Math.max(targetLimit * 2, 10));
+          setNextPageToken(null);
+        } else if (targetLimit && targetSortDesc === true) {
+          threadsToProcess = results.threads.slice(0, targetLimit);
+          setNextPageToken(null);
+        } else {
+          setNextPageToken(targetLimit ? null : (results.nextPageToken || null));
+        }
+
+        const detailed = await processInChunks(threadsToProcess, 8, async (thread: any) => {
           try {
             const detail = await fetchGmailAPI(`/threads/${thread.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=List-Unsubscribe`);
             if (!detail.messages || detail.messages.length === 0) return null;
@@ -559,11 +712,27 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           }
         });
         if (searchIdRef.current === searchId) {
-          const fresh = detailed.filter(Boolean) as EmailData[];
+          let fresh = detailed.filter(Boolean) as EmailData[];
+          // Strictly sort by date (or sortBy)
+          fresh.sort((a, b) => {
+            let cmp = 0;
+            const timeA = a.date instanceof Date && !isNaN(a.date.getTime()) 
+              ? a.date.getTime() 
+              : (!isNaN(new Date(a.date).getTime()) ? new Date(a.date).getTime() : 0);
+            const timeB = b.date instanceof Date && !isNaN(b.date.getTime()) 
+              ? b.date.getTime() 
+              : (!isNaN(new Date(b.date).getTime()) ? new Date(b.date).getTime() : 0);
+            cmp = timeA - timeB;
+            return targetSortDesc ? -cmp : cmp;
+          });
+          
+          if (targetLimit) {
+            fresh = fresh.slice(0, targetLimit);
+          }
           setEmails(fresh);
           // Store under what was actually executed, not what was typed.
           if (isDeterministic && cacheKey) {
-            rememberSearch(cacheKey, fresh, results.nextPageToken || null);
+            rememberSearch(cacheKey, fresh, targetLimit ? null : (results.nextPageToken || null));
           }
         }
       } else {
@@ -1112,7 +1281,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
     (parsedQuery?.query || '').toLowerCase().includes('is:unread') ||
     lastExecutedQuery.toLowerCase().includes('is:unread');
 
-  const shouldCategorize = isActuallyUnreadOnly || folderFilters.length > 1 || query.includes(' OR ') || (parsedQuery?.query || '').includes(' OR ') || lastExecutedQuery.includes(' OR ');
+  const shouldCategorize = categorizeByFolder || isActuallyUnreadOnly || folderFilters.length > 1 || query.includes(' OR ') || (parsedQuery?.query || '').includes(' OR ') || lastExecutedQuery.includes(' OR ');
 
   const groupedEmails = useMemo(() => {
     if (!shouldCategorize) {
@@ -1129,6 +1298,8 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           if (f === 'trash' && labels.includes('TRASH')) return 'Trash';
           if (f === 'spam' && labels.includes('SPAM')) return 'Spam';
           if (f === 'inbox' && labels.includes('INBOX')) return 'Primary Inbox';
+          if (f === 'sent' && labels.includes('SENT')) return 'Sent';
+          if (f === 'drafts' && labels.includes('DRAFT')) return 'Drafts';
           if (f === 'category:promotions' && labels.includes('CATEGORY_PROMOTIONS')) return 'Promotions';
           if (f === 'category:updates' && labels.includes('CATEGORY_UPDATES')) return 'Updates';
           if (f === 'category:social' && labels.includes('CATEGORY_SOCIAL')) return 'Social';
@@ -1156,16 +1327,17 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         return userLabel ? userLabel.name : customLabel.replace('Label_', 'Folder ');
       }
       
-      // 4. Standard Categories
+      // 4. Standard Folders & Categories
+      if (labels.includes('INBOX')) return 'Primary Inbox';
       if (labels.includes('CATEGORY_PERSONAL')) return 'Primary Inbox';
       if (labels.includes('CATEGORY_PROMOTIONS')) return 'Promotions';
       if (labels.includes('CATEGORY_UPDATES')) return 'Updates';
       if (labels.includes('CATEGORY_SOCIAL')) return 'Social';
       if (labels.includes('CATEGORY_FORUMS')) return 'Forums';
-      if (labels.includes('INBOX')) return 'Primary Inbox';
       if (labels.includes('SENT')) return 'Sent';
+      if (labels.includes('DRAFT')) return 'Drafts';
       
-      return 'Other';
+      return 'Archived';
     };
 
     filteredEmails.forEach((email: any) => {
@@ -1181,8 +1353,11 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
       'Updates': 4,
       'Social': 5,
       'Forums': 6,
-      'Spam': 7,
-      'Trash': 8,
+      'Sent': 7,
+      'Drafts': 8,
+      'Archived': 9,
+      'Spam': 90,
+      'Trash': 91,
       'Other': 99
     };
 
@@ -1195,7 +1370,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
         if (pA !== pB) return pA - pB;
         return a.title.localeCompare(b.title);
       });
-  }, [filteredEmails, shouldCategorize, userLabels, folderFilters]);
+  }, [filteredEmails, shouldCategorize, userLabels, folderFilters, categorizeByFolder]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
@@ -1541,49 +1716,38 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
           description="Try out the new 'Inbox Health' button above to unleash the automated Folder Optimizer, or select multiple emails below to test out Smart Organize Analytics and the Rule Suggester!"
         />
         <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 sm:gap-4 relative z-30">
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
-              <input 
-                type="text" 
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder={useAI ? "Describe what you're looking for (e.g., 'newsletters from last week')" : "Search emails (e.g. from:boss@company.com)"}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 sm:pl-10 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:bg-white transition-all shadow-inner"
-              />
-            </div>
-            <button 
-              type="submit" 
-              disabled={isSearching}
-              className="bg-slate-800 hover:bg-slate-900 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-medium text-sm sm:text-base transition-all shadow-sm disabled:opacity-70 disabled:cursor-wait flex items-center justify-center shrink-0 min-w-[72px] sm:min-w-[120px]"
-            >
-              {isSearching ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : "Search"}
-            </button>
-          </form>
+          <SemanticSearchBox
+            value={query}
+            onChange={setQuery}
+            onSearch={(customQ, inAnywhere) => handleSearch(undefined, customQ, inAnywhere ? ['anywhere'] : undefined, false, inAnywhere)}
+            isSearching={isSearching}
+            aiSettings={effectiveAiSettings}
+            topSenders={topSenders}
+          />
 
           {aiError && (
-             <div className="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-xl text-sm flex items-start gap-2">
-               <Settings className="w-5 h-5 mt-0.5 shrink-0" />
+             <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl text-sm flex items-start gap-2">
+               <Settings className="w-5 h-5 mt-0.5 shrink-0 text-amber-700" />
                <div>
-                 <p className="font-bold">
-                    {aiError === "rate_limit" ? "Analysis Rate Limit Exceeded" : 
-                     aiError === "overloaded" ? "AI Model Overloaded" : 
-                     "Smart Search Failed"}
+                 <p className="font-semibold">
+                    {aiError === "rate_limit" ? "Service Quota Exceeded" : 
+                     aiError === "overloaded" ? "Service Temporarily Busy" : 
+                     "Search Notice"}
                  </p>
-                 <p className="mt-1 opacity-90">
+                 <p className="mt-1 opacity-90 text-xs">
                     {aiError === "rate_limit" ? (
-                      <>Your API key reached its quota. Smart features have been disabled for this search, falling back to standard Gmail search. To fix this, you can <button onClick={() => setShowSettings(true)} className="underline font-semibold hover:text-orange-900">update your API Key</button>.</>
+                      <>API quota limit reached. Search has gracefully fallen back to standard query syntax. You can <button onClick={() => setShowSettings(true)} className="underline font-semibold hover:text-amber-950">update your API Key in Settings</button>.</>
                     ) : aiError === "overloaded" ? (
-                      "The selected AI model is currently experiencing high demand. Smart features have been disabled for this search. Please try again later."
+                      "Service is currently experiencing high demand. Seamlessly falling back to local query translation."
                     ) : (
-                      "An error occurred while communicating with the AI provider. Smart features have been disabled for this search."
+                      "Notice: Standard local query translation is active."
                     )}
                  </p>
                </div>
              </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-2 relative z-30">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mt-1 pb-1 relative z-30 max-w-full">
             <QuickFiltersDropdown
               onApplyPreset={handleApplyPreset}
               currentQuery={query}
@@ -1607,6 +1771,29 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
               onOpenLabelManager={() => setShowLabelManager(true)}
             />
             <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
+            <label 
+              id="toggle-categorize-folder-filter"
+              className={cn(
+                "flex items-center gap-1.5 sm:gap-2 cursor-pointer group border px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full transition-all shrink-0 select-none",
+                categorizeByFolder
+                  ? "bg-slate-800 border-slate-800 text-white font-semibold shadow-2xs"
+                  : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+              title="Group and categorise emails by folder"
+            >
+              <input
+                type="checkbox"
+                checked={categorizeByFolder}
+                onChange={e => {
+                  const val = e.target.checked;
+                  setCategorizeByFolder(val);
+                  try { localStorage.setItem("ais_categorize_by_folder", String(val)); } catch {}
+                }}
+                className="sr-only"
+              />
+              <Folder className={cn("w-3.5 h-3.5", categorizeByFolder ? "text-white" : "text-slate-500")} />
+              <span className="text-xs sm:text-sm whitespace-nowrap">Categorise by Folder</span>
+            </label>
             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-slate-50 border border-slate-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full hover:bg-slate-100 transition-colors shrink-0">
               <input type="checkbox" checked={onlyUnread} onChange={e => setOnlyUnread(e.target.checked)} className="rounded text-slate-700 focus:ring-slate-500 border-slate-300 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Unread Only</span>
@@ -1616,17 +1803,56 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
               <span className="text-xs sm:text-sm font-medium text-slate-700 group-hover:text-slate-900 whitespace-nowrap">Include Sent</span>
             </label>
           </div>
-
-
         </div>
 
         {parsedQuery && (
-          <div className="bg-slate-100 border border-slate-200 rounded-xl p-4 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
-            <Filter className="w-5 h-5 text-slate-600 shrink-0" />
-            <div>
-              <p className="font-medium text-slate-800">Query Interpretation</p>
-              <p className="text-slate-600 mt-1">{parsedQuery.explanation}</p>
-              <p className="mt-2 text-xs font-mono bg-slate-200 inline-block px-2 py-1 rounded text-slate-700">Gmail Search: {parsedQuery.query}</p>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-start gap-3 min-w-0">
+              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-slate-800 text-sm">Smart Query Interpretation</span>
+                  {parsedQuery.suggestedFolder && (
+                    <span className="text-[11px] px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-full font-medium">
+                      {parsedQuery.suggestedFolder}
+                    </span>
+                  )}
+                  {parsedQuery.limit && (
+                    <span className="text-[11px] px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-full font-medium">
+                      Limit: {parsedQuery.limit}
+                    </span>
+                  )}
+                  {parsedQuery.sortDesc === false && (
+                    <span className="text-[11px] px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-full font-medium">
+                      Oldest First
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-600 text-xs sm:text-sm mt-0.5">{parsedQuery.explanation}</p>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono bg-white border border-slate-200 inline-block px-2 py-0.5 rounded text-slate-700 max-w-full truncate">
+                    Gmail Search: {parsedQuery.query}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={() => handleSearch(undefined, parsedQuery.query, ['anywhere'], true, true)}
+                className="text-xs font-medium px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 transition-colors shadow-2xs"
+              >
+                Search All Mail
+              </button>
+              <button
+                type="button"
+                onClick={() => setParsedQuery(null)}
+                className="text-xs text-slate-400 hover:text-slate-600 p-1"
+                title="Dismiss"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
@@ -1712,7 +1938,7 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                 </span>
               </div>
               
-              <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap max-w-full">
                 {selectedIds.size === 0 ? (
                   <>
                     {/* Search & Sort Capsule */}
@@ -1784,6 +2010,27 @@ export default function Dashboard({ user, onLogout }: { user: any, onLogout?: ()
                         <span>Compact</span>
                       </button>
                     </div>
+
+                    {/* Categorise by Folder Quick Toggle */}
+                    <button
+                      type="button"
+                      id="btn-toolbar-categorize-folder"
+                      onClick={() => {
+                        const next = !categorizeByFolder;
+                        setCategorizeByFolder(next);
+                        try { localStorage.setItem("ais_categorize_by_folder", String(next)); } catch {}
+                      }}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 shadow-2xs",
+                        categorizeByFolder
+                          ? "bg-slate-800 text-white border-slate-800"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      )}
+                      title={categorizeByFolder ? "Active: Emails are categorised and grouped by folder" : "Click to categorise and group emails by folder"}
+                    >
+                      <Folder className={cn("w-3.5 h-3.5", categorizeByFolder ? "text-white" : "text-slate-500")} />
+                      <span className="hidden sm:inline">By Folder</span>
+                    </button>
 
                     {/* Quick Mark All Read button */}
                     <ActionButton 

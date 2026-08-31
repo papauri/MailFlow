@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Search, Trash2, Sparkles, X, ChevronRight, ChevronLeft, ShieldCheck } from 'lucide-react';
+import { Mail, Search, Trash2, Layers, X, ChevronRight, ChevronLeft, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void }) {
@@ -26,7 +26,7 @@ export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void }
   const steps = [
     {
       title: "Welcome to MailFlow",
-      description: "A fast, smart way to clean up your Gmail inbox using advanced data analytics and AI clustering.",
+      description: "A fast, smart way to clean up your Gmail inbox using advanced data analytics and predictive clustering.",
       icon: <Mail className="w-12 h-12 text-slate-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center border border-slate-200">
@@ -41,7 +41,7 @@ export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void }
     },
     {
       title: "Automated Folder Optimizer",
-      description: "Click 'Inbox Health' to access the Folder Optimizer. It uses strict statistical anomalies to automatically group massive clusters of noise in your inbox.",
+      description: "Click 'Inbox Health' to access the Folder Optimizer. It uses statistical pattern analysis to automatically group massive clusters of noise in your inbox.",
       icon: <ShieldCheck className="w-12 h-12 text-emerald-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
@@ -57,12 +57,12 @@ export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void }
     },
     {
       title: "Smart Organize Analytics",
-      description: "Select any batch of emails and hit the 'Organize' button. MailFlow calculates standard deviations to instantly group patterns or uses deep AI to categorize them.",
-      icon: <Sparkles className="w-12 h-12 text-blue-600 mb-4" />,
+      description: "Select any batch of emails and hit the 'Organize' button. MailFlow calculates standard deviations to instantly group patterns and categorize them.",
+      icon: <Layers className="w-12 h-12 text-blue-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-3">
           <div className="bg-white rounded-full px-3 py-1.5 flex items-center justify-center gap-2 border border-slate-300 w-full shadow-sm">
-            <Sparkles className="w-3 h-3 text-blue-500" />
+            <Layers className="w-3 h-3 text-blue-500" />
             <div className="h-2 bg-slate-200 rounded w-24"></div>
           </div>
           <div className="flex gap-2 w-full">
@@ -91,7 +91,7 @@ export function OnboardingWalkthrough({ onComplete }: { onComplete: () => void }
     },
     {
       title: "Unsubscribe & Audit",
-      description: "Identify mailing lists and easily trigger one-click unsubscriptions. MailFlow can even AI-scan your subscriptions for intent to help you decide what to keep.",
+      description: "Identify mailing lists and easily trigger one-click unsubscriptions. MailFlow can scan your subscriptions for engagement to help you decide what to keep.",
       icon: <Trash2 className="w-12 h-12 text-rose-600 mb-4" />,
       image: (
         <div className="bg-slate-100 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 gap-2">

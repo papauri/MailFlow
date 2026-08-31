@@ -86,7 +86,7 @@ export function SmartAutomationsPortal({
         </div>
 
         <div
-          className="flex bg-slate-100 p-0.5 rounded-xl shrink-0 self-start lg:self-auto"
+          className="flex bg-slate-100 p-0.5 rounded-xl shrink-0 self-start lg:self-auto max-w-full overflow-x-auto"
           role="tablist"
           aria-label="Smart Automations tools"
         >

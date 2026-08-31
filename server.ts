@@ -435,56 +435,274 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+  // API Route to check AI availability and status
+  app.get("/api/ai-status", async (req, res) => {
+    try {
+      const hasServerKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 0);
+      res.json({
+        available: hasServerKey,
+        provider: 'gemini',
+        model: 'gemini-3.7-flash',
+        hasServerKey
+      });
+    } catch (err: any) {
+      res.json({ available: false, error: err.message });
+    }
+  });
+
   // API Route to parse natural language to Gmail search query
   app.post("/api/parse-query", async (req, res) => {
     try {
       const { prompt, settings } = req.body;
-      if (!prompt) {
+      if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
         return res.status(400).json({ error: "Prompt is required" });
       }
 
-            const schema = {
+      const schema = {
         type: Type.OBJECT,
         properties: {
           operators: {
             type: Type.OBJECT,
             description: "The structured search operators",
             properties: {
-              from: { type: Type.STRING, description: "Sender name or domain" },
+              from: { type: Type.STRING, description: "Sender name or domain, e.g. .edu, paypal.com, John" },
+              to: { type: Type.STRING, description: "Recipient name or email" },
               subject: { type: Type.STRING, description: "Subject keywords" },
-              after: { type: Type.STRING, description: "YYYY/MM/DD date string" },
-              before: { type: Type.STRING, description: "YYYY/MM/DD date string" },
-              folder: { type: Type.STRING, description: "Specific folder query, e.g. in:inbox, in:spam, in:trash" },
-              general: { type: Type.STRING, description: "Any other keywords or search string, e.g. (otp OR code)" },
-              inAnywhere: { type: Type.BOOLEAN, description: "Should be true by default to search all folders unless specific folder requested" }
+              after: { type: Type.STRING, description: "YYYY/MM/DD date string (inclusive lower bound)" },
+              before: { type: Type.STRING, description: "YYYY/MM/DD date string (exclusive upper bound)" },
+              newer_than: { type: Type.STRING, description: "Relative age string like 7d, 1m, 1y" },
+              older_than: { type: Type.STRING, description: "Relative age string like 1y, 2y, 5y" },
+              has: { type: Type.STRING, description: "attachment, document, spreadsheet, etc." },
+              larger: { type: Type.STRING, description: "e.g. 5M, 10M" },
+              is: { type: Type.STRING, description: "unread, starred, important" },
+              folder: { type: Type.STRING, description: "Specific folder if explicitly requested: in:inbox, in:spam, in:trash, in:sent" },
+              general: { type: Type.STRING, description: "Semantic keywords or synonym OR expression, e.g. (college OR university OR .edu)" },
+              inAnywhere: { type: Type.BOOLEAN, description: "True if search should search all mail (default true for natural language & historical searches, unless user specifically restricted folder)" },
+              limit: { type: Type.INTEGER, description: "Numeric limit of results if explicitly requested (e.g., 5 for 'first 5', 10 for 'top 10', 3 for 'last 3 emails'). Default null/omit if no limit." },
+              sortBy: { type: Type.STRING, description: "Sort field: 'date', 'size', or 'sender'. Default 'date'." },
+              sortDesc: { type: Type.BOOLEAN, description: "True for descending (newest first, largest first), False for ascending (oldest first, e.g. for 'first 5 ever', 'oldest 5', 'earliest 5')." }
             }
           },
-          explanation: { type: Type.STRING, description: "A brief explanation of what the query does" },
-          suggestedFolder: { type: Type.STRING, description: "A human-readable smart folder name like 'Finance', 'Travel', or 'Subscriptions'." },
+          explanation: { type: Type.STRING, description: "A clear, concise 1-sentence explanation of what the query does" },
+          suggestedFolder: { type: Type.STRING, description: "A high-level category name for UI display only (e.g. Education, Receipts, Travel, Archive)." },
           suggestedGmailCategory: { type: Type.STRING, description: "The closest Gmail system category ID: CATEGORY_UPDATES, CATEGORY_PROMOTIONS, CATEGORY_SOCIAL, or CATEGORY_PERSONAL." },
-          query: { type: Type.STRING, description: "The final constructed Gmail search query string (e.g. 'from:amazon.com subject:receipt')" }
+          query: { type: Type.STRING, description: "The final constructed Gmail search query string (e.g. '(college OR university OR from:.edu) after:2011/12/31 before:2013/01/01')" },
+          limit: { type: Type.INTEGER, description: "Numeric limit of results (e.g. 5 for 'first 5', 10 for 'top 10')." },
+          sortBy: { type: Type.STRING, description: "Sort field: 'date', 'size', or 'sender'." },
+          sortDesc: { type: Type.BOOLEAN, description: "True for newest-first/descending, False for oldest-first/chronological earliest." }
         },
-        required: ["operators", "query"]
+        required: ["operators", "query", "explanation"]
       };
 
-      const aiPrompt = `You are an expert at translating natural language into Gmail search operators.
-        Convert the following user request into a structured JSON query object.
-        If the user asks for a specific folder (like inbox, spam, trash), set the 'folder' field to something like "in:inbox".
-        If they don't specify a folder, set 'inAnywhere' to true so it searches everywhere.
-        Extract senders to 'from', subjects to 'subject', and general keywords to 'general'.
-        If they say "larger than 5mb", add "larger:5M" to general.
-        Suggest a human-readable folder name (like "Receipts" or "Project Updates") based on the query.
-        
-        User Request: "${prompt}"
-      `;
+      const currentYear = new Date().getFullYear();
+      const aiPrompt = `You are a world-class, ultra-precise Gmail Search syntax translation engine.
+Your mission is to understand user intent directly, correct any spelling typos, extract all constraints (dates, attachments, topics, senders, formats, sizes, quantities), and translate them into straight-shooting, optimal Gmail search syntax.
+
+CRITICAL RULES FOR ULTRA-SMART SEARCH TRANSLATION:
+
+1. TYPO RECOVERY & NORMALIZATION:
+   - Automatically correct typos (e.g. "reurns" -> "returns", "reciepts" -> "receipts", "attachements" -> "attachments", "univeristy" -> "university", "colege" -> "college", "calender" -> "calendar", "subcription" -> "subscription").
+
+2. NUMERICAL LIMITS & CHRONOLOGICAL DIRECTION ("FIRST N", "LATEST N", "OLDEST N"):
+   - When the user asks for "first 5 from a sender", "first 5 emails from X ever", "oldest 5 from X", "earliest 5 emails":
+     * limit: 5
+     * sortBy: "date"
+     * sortDesc: false (False means oldest first / chronological earliest - finds the first emails ever received from that sender!)
+     * inAnywhere: true (Must search all mail / archives to find the earliest history)
+     * query: 'from:<sender>' (or from query without filler words like "first 5 from")
+     * explanation: 'First 5 emails ever from <sender> (Oldest First)'
+   - When the user asks for "latest 5 emails", "last 5 from X", "recent 5 emails":
+     * limit: 5
+     * sortBy: "date"
+     * sortDesc: true (Newest first)
+   - When the user asks for "top 10 largest", "biggest 5 emails":
+     * limit: 10
+     * sortBy: "size"
+     * sortDesc: true (Largest first)
+   - Always strip the quantity phrases ("first 5", "first 5 emails", "oldest 5", "latest 5", "top 10", "5 emails") from the constructed Gmail search query so it does not search for the literal numbers!
+
+3. YEARS & DATE BOUNDARIES:
+   - Specific single year (e.g. "for 2013", "from 2016", "in 2018", "only from 2016", "2016"):
+     after:<YEAR-1>/12/31 before:<YEAR+1>/01/01
+     Example for 2013: after:2012/12/31 before:2014/01/01
+     Example for 2016: after:2015/12/31 before:2017/01/01
+   - Year ranges (e.g. "between 2014 and 2018", "from 2014 to 2018"):
+     after:2013/12/31 before:2019/01/01
+   - Relative dates:
+     "last week" / "past 7 days" -> newer_than:7d
+     "last month" / "past 30 days" -> newer_than:30d
+     "last year" / "past year" -> newer_than:1y
+     "older than 3 years" -> older_than:3y
+     "before 2015" -> before:2015/01/01
+     "after 2020" / "since 2020" -> after:2019/12/31
+
+4. ATTACHMENTS & FORMATS:
+   - "with attachments" / "attachments only" / "has attachment" / "with files" -> has:attachment
+   - "pdf attachments" / "with pdf" / "pdf files" -> filename:pdf
+   - "spreadsheets" / "excel" / "csv" -> (filename:xlsx OR filename:csv OR has:spreadsheet)
+   - "presentations" / "slides" / "powerpoint" -> (filename:pptx OR has:presentation)
+   - "images" / "photos" / "pictures" -> (filename:jpg OR filename:png OR filename:jpeg OR has:image)
+   - "documents" / "word docs" -> (filename:docx OR filename:pdf OR has:document)
+
+5. DOMAIN & TOPIC SEMANTIC SYNONYM EXPANSION:
+   - Tax / IRS (e.g. "my tax returns for 2013", "tax reurns for 2013"):
+     Expand into: (tax OR taxes OR 1099 OR W2 OR IRS OR "tax return" OR "tax returns" OR turbotax)
+   - College / University (e.g. "emails from college from 2012"):
+     Expand into: (college OR university OR from:.edu OR campus OR alumni OR tuition OR admissions)
+   - Receipts / Invoices / Orders:
+     Expand into: (receipt OR invoice OR order OR confirmation OR payment OR bill OR billed)
+   - Flights / Travel:
+     Expand into: (flight OR airline OR boarding OR ticket OR itinerary OR confirmation OR reservation)
+   - Medical / Healthcare:
+     Expand into: (medical OR doctor OR clinic OR hospital OR prescription OR health OR "lab results")
+   - Banking / Statements:
+     Expand into: (statement OR "bank statement" OR balance OR deposit OR wire)
+   - Jobs / Resumes:
+     Expand into: (resume OR CV OR "job application" OR interview OR offer OR recruiter)
+
+6. SENDER & RECIPIENT OPERATORS:
+   - "from John" -> from:John
+   - "from uber or lyft" -> (from:uber OR from:lyft OR uber OR lyft)
+   - "to Sarah" -> to:Sarah
+   - "from .edu domains" -> from:.edu
+
+7. STATUS & SIZES:
+   - "unread" -> is:unread
+   - "starred" / "flagged" -> is:starred
+   - "large files" / "over 5MB" / "over 10MB" -> larger:5M / larger:10M
+
+8. STRIP CONVERSATIONAL FILLER WORDS:
+   - Strip out: "an email from", "emails with", "only from", "only", "my", "things like", "find", "show me", "where is", "look for", "search for", "all emails about", "emails from", "first 5 from a sender".
+   - Do NOT pass conversational words into Gmail search!
+
+9. SEARCH ALL MAIL (inAnywhere):
+   - For all date-bounded, historical, oldest-first, or broad topic searches, set inAnywhere: true so archived mail is included.
+   - Only set 'folder' if user specifically requested a folder (e.g. "in spam", "in trash", "in inbox", "in sent").
+
+FEW-SHOT EXAMPLES:
+- Request: "first 5 from a sender" (or "first 5 from john@example.com")
+  Query: 'from:john@example.com' (or 'from:sender' if specific sender specified)
+  Explanation: 'First 5 emails ever from sender (Oldest First)'
+  limit: 5
+  sortBy: 'date'
+  sortDesc: false
+  inAnywhere: true
+
+- Request: "first 5 emails from mom ever"
+  Query: 'from:mom'
+  Explanation: 'First 5 emails ever received from mom'
+  limit: 5
+  sortBy: 'date'
+  sortDesc: false
+  inAnywhere: true
+
+- Request: "oldest 10 emails from github"
+  Query: 'from:github'
+  Explanation: 'Oldest 10 emails from github'
+  limit: 10
+  sortBy: 'date'
+  sortDesc: false
+  inAnywhere: true
+
+- Request: "My tax reurns for 2013"
+  Query: '(tax OR taxes OR 1099 OR W2 OR IRS OR "tax return" OR "tax returns" OR turbotax) after:2012/12/31 before:2014/01/01'
+  Explanation: 'Tax returns and IRS tax documents from 2013'
+  inAnywhere: true
+
+- Request: "emails with attachments only from 2016"
+  Query: 'has:attachment after:2015/12/31 before:2017/01/01'
+  Explanation: 'Emails with attachments received in 2016'
+  inAnywhere: true
+
+- Request: "pdf invoices from last year"
+  Query: '(receipt OR invoice OR bill OR payment) filename:pdf newer_than:1y'
+  Explanation: 'PDF invoices and billing documents from the past year'
+  inAnywhere: true
+
+- Request: "flight confirmations in 2019"
+  Query: '(flight OR airline OR boarding OR ticket OR itinerary OR confirmation) after:2018/12/31 before:2020/01/01'
+  Explanation: 'Flight and airline bookings from 2019'
+  inAnywhere: true
+
+Current year context: ${currentYear}
+User Request: "${prompt}"`;
 
       const result = await generateAIContent(aiPrompt, schema, settings);
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI API Error (Parse):", error);
       const isRateLimit = error.message && (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.toLowerCase().includes("rate limit") || error.message.toLowerCase().includes("exhausted"));
       const isOverloaded = error.message && (error.message.includes("503") || error.message.toLowerCase().includes("high demand") || error.message.toLowerCase().includes("unavailable"));
       res.status(isRateLimit ? 429 : isOverloaded ? 503 : 500).json({ error: error.message || "Failed to parse query" });
+    }
+  });
+
+  // API Route for Predictive Semantic Autocomplete (Type-Ahead Search)
+  app.post("/api/semantic-autocomplete", async (req, res) => {
+    try {
+      const { prompt, settings, localContext } = req.body;
+      if (!prompt || typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length < 2) {
+        return res.json({ suggestions: [] });
+      }
+
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          suggestions: {
+            type: Type.ARRAY,
+            description: "3 to 5 smart predictive autocomplete suggestions translating intent into Gmail queries",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING, description: "User-friendly search title (e.g., 'College emails from 2012', 'From .edu senders in 2012')" },
+                subtitle: { type: Type.STRING, description: "Brief description of what this search targets" },
+                query: { type: Type.STRING, description: "Exact, fully formed Gmail search query with correct operators (after:, before:, from:, etc.)" },
+                category: { type: Type.STRING, description: "One of: 'semantic', 'date', 'sender', 'attachment', 'quick_filter'" },
+                badge: { type: Type.STRING, description: "Short pill tag, e.g. '2012 Archive', 'Sender (.edu)', 'Attachments', 'Topic'" },
+                inAnywhere: { type: Type.BOOLEAN, description: "True if search spans all mail archive folders" }
+              },
+              required: ["id", "title", "subtitle", "query", "category", "badge"]
+            }
+          }
+        },
+        required: ["suggestions"]
+      };
+
+      const currentYear = new Date().getFullYear();
+      const sendersContext = localContext?.topSenders?.slice(0, 8).join(', ') || 'None';
+
+      const aiPrompt = `You are a real-time predictive search type-ahead and semantic autocomplete engine for a Gmail workspace.
+As the user types, predict what they are searching for, correct any typos, and provide 3-5 distinct, straight-shooting, structured search completions.
+
+User is typing: "${prompt}"
+
+Rules for Predictions:
+1. Immediately fix spelling typos (e.g., "reurns" -> "returns", "reciepts" -> "receipts", "attachements" -> "attachments").
+2. Translate natural language phrases (dates, years, topics, senders, attachments) into valid Gmail search syntax.
+3. For single years (e.g., 2013, 2016): generate exact bounds after:<YEAR-1>/12/31 before:<YEAR+1>/01/01.
+4. For attachments / files ("with attachments", "attachments only", "pdf"): generate has:attachment or filename:pdf.
+5. For semantic concepts (e.g., taxes, flights, receipts, college, statements):
+   - Provide a primary comprehensive query with semantic synonyms (e.g. (tax OR taxes OR 1099 OR W2 OR IRS OR "tax return"))
+   - Provide a sender/domain-focused query or attachment query if relevant
+6. Strip conversational filler words ("an email from", "find", "show me", "my", "things like") from the Gmail query.
+7. Set 'inAnywhere: true' on historical/archive/general searches so the user finds messages across all mail.
+8. Make titles clean, readable, concise, and straight-shooting.
+
+Current Year: ${currentYear}
+Known Senders Context: ${sendersContext}`;
+
+      // Use flash-lite or fast flash for lowest latency autocomplete
+      const fastSettings = {
+        ...settings,
+        model: settings?.model || 'gemini-3.7-flash'
+      };
+
+      const result = await generateAIContent(aiPrompt, schema, fastSettings);
+      res.json(result || { suggestions: [] });
+    } catch (error: any) {
+      console.error("AI API Error (Autocomplete):", error);
+      res.json({ suggestions: [] });
     }
   });
 

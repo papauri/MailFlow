@@ -6,7 +6,7 @@ import { PageHeader } from './PageHeader';
 import {
   fetchInboxStats, fetchInboxSizes, inboxStatsKey, inboxSizesKey, InboxStatsResult, InboxStats
 } from '../lib/inboxAnalytics';
-import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Sparkles, Folder, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, HardDrive, Trash2, MailOpen, ShieldAlert, SlidersHorizontal, ArrowRight, Target, Filter, ShieldCheck, PieChart, Tag, AlertCircle, User, Clock, Bell, Layers, Download, Calculator, Activity, Compass, Folder, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SketchLoadingState } from "./SketchLoader";
 import { StorageBreakdownBar } from './StorageBreakdownBar';
@@ -190,7 +190,7 @@ export function InboxHealth({ userEmail, onApplyQuery, aiSettings, userLabels, o
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs relative overflow-hidden mb-4 sm:mb-6">
         <div className="flex items-start gap-4 relative z-10">
           <div className="bg-slate-50 text-slate-700 border border-slate-200 p-2.5 rounded-xl shrink-0 hidden sm:block">
-            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
+            <Compass className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-1">

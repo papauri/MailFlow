@@ -1,7 +1,7 @@
 import { SketchLoadingState } from './SketchLoader';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, Sparkles, ArrowLeft } from 'lucide-react';
+import { MailMinus, ShieldCheck, Search, Loader2, Skull, X, Undo2, CheckCircle2, Trash2, Filter, Tag, Archive, ArrowLeft } from 'lucide-react';
 import { scanFolderMetadata, batchTrashEmails, batchArchiveEmails, batchModifyEmails } from '../lib/gmail';
 import { cn } from '../lib/utils';
 import { useActionCompletion } from '../lib/useActionCompletion';
@@ -377,7 +377,7 @@ export function UnsubscribeManager({
             disabled={analyzing}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-all shadow-xs disabled:opacity-50 cursor-pointer"
           >
-            {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+            {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />}
             <span>Sender Audit</span>
           </button>
         )}

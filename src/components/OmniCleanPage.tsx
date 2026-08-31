@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { PageHeader } from './PageHeader';
 import {
-  Sparkles,
+  Compass,
   Trash2,
   Archive,
   FolderInput,
@@ -735,7 +735,7 @@ export function OmniCleanPage({
                   {executiveSummary.verdictText}
                 </p>
                 <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md w-fit">
-                  <Sparkles className="w-3 h-3 text-slate-600 shrink-0" />
+                  <Compass className="w-3 h-3 text-slate-600 shrink-0" />
                   <span>Recommendation: {executiveSummary.recommendedImmediateAction}</span>
                 </div>
               </div>

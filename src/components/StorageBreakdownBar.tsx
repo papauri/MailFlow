@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Trash2, Tag, Bell, Clock, ArrowRight, Sparkles, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { HardDrive, Trash2, Tag, Bell, Clock, ArrowRight, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { countEmails, estimateQuerySize } from '../lib/gmail';
 import { formatBytes } from '../lib/csvExport';
 import { cn } from '../lib/utils';

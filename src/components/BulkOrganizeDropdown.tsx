@@ -205,9 +205,9 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
       if (!res.ok) {
         if (res.status === 429) {
            setAiAvailable(false);
-           throw new Error("AI limit reached or API key invalid. Please check your settings.");
+           throw new Error("Quota limit reached. Please check your settings.");
         }
-        throw new Error("Failed to get AI suggestions");
+        throw new Error("Failed to get organization suggestions");
       }
       
       const data = await res.json();
@@ -217,7 +217,7 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
       }));
       setSuggestions(recs);
     } catch (err: any) {
-      setError(err.message || "Failed to organize with AI");
+      setError(err.message || "Failed to organize selection");
     } finally {
       setLoading(false);
     }
@@ -233,8 +233,8 @@ export function BulkOrganizeDropdown({ selectedIds, emails, userLabels, aiSettin
           >
             <Tag className="w-4 h-4 text-slate-500 shrink-0" />
             <div className="flex flex-col">
-              <span className="font-medium">Categorize with existing label</span>
-              <span className="text-xs text-slate-500">Select a Gmail label to apply to all selected emails</span>
+              <span className="font-medium">Categorise by Folder / Label</span>
+              <span className="text-xs text-slate-500">Select a folder or label to apply to all selected emails</span>
             </div>
           </button>
           
